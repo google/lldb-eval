@@ -1,0 +1,337 @@
+// Copyright 2020 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include <limits>
+#include <string>
+
+static void TestArithmetic() {
+  int a = 1;
+  int int_max = std::numeric_limits<int>::max();
+  int int_min = std::numeric_limits<int>::min();
+  unsigned int uint_max = std::numeric_limits<unsigned int>::max();
+  unsigned int uint_zero = 0;
+  long long ll_max = std::numeric_limits<long long>::max();
+  long long ll_min = std::numeric_limits<long long>::min();
+  unsigned long long ull_max = std::numeric_limits<unsigned long long>::max();
+  unsigned long long ull_zero = 0;
+
+  // BREAK(TestArithmetic)
+}
+
+static void TestPointerArithmetic() {
+  const char* p_char1 = "hello";
+
+  int offset = 5;
+  int array[10];
+  array[0] = 0;
+  array[offset] = offset;
+
+  int* p_int0 = &array[0];
+  const int* cp_int0 = &array[0];
+  const int* cp_int5 = &array[offset];
+
+  typedef int* td_int_ptr_t;
+  td_int_ptr_t td_int_ptr0 = &array[0];
+
+  void* p_void = (void*)p_char1;
+  void** pp_void0 = &p_void;
+  void** pp_void1 = pp_void0 + 1;
+
+  // BREAK(TestPointerArithmetic)
+}
+
+static void TestLogicalOperators() {
+  bool trueVar = true;
+  bool falseVar = false;
+
+  const char* p_ptr = "🦊";
+  const char* p_nullptr = nullptr;
+
+  struct S {
+  } s;
+
+  // BREAK(TestLogicalOperators)
+}
+
+static void TestLocalVariables() {
+  int a = 1;
+  int b = 2;
+
+  char c = -3;
+  unsigned short s = 4;
+
+  // BREAK(TestLocalVariables)
+}
+
+static void TestIndirection() {
+  int val = 1;
+  int* p = &val;
+
+  // BREAK(TestIndirection)
+}
+
+// Referenced by TestInstanceVariables
+class C {
+ public:
+  int field_ = 1337;
+};
+
+// Referenced by TestAddressOf
+int globalVar = 0xDEADBEEF;
+extern int externGlobalVar;
+
+class TestMethods {
+ public:
+  void TestInstanceVariables() {
+    C c;
+    c.field_ = -1;
+
+    C& c_ref = c;
+    C* c_ptr = &c;
+
+    // BREAK(TestInstanceVariables)
+  }
+
+  void TestAddressOf(int param) {
+    std::string s = "hello";
+    const char* s_str = s.c_str();
+
+    // BREAK(TestAddressOf)
+  }
+
+ private:
+  int field_ = 1;
+};
+
+static void TestSubscript() {
+  const char* char_ptr = "lorem";
+  const char char_arr[] = "ipsum";
+
+  int int_arr[] = {1, 2, 3};
+
+  C c_arr[2];
+  c_arr[0].field_ = 0;
+  c_arr[1].field_ = 1;
+
+  C(&c_arr_ref)[2] = c_arr;
+
+  int idx_1 = 1;
+  const int& idx_1_ref = idx_1;
+
+  typedef int td_int_t;
+  typedef td_int_t td_td_int_t;
+  typedef int* td_int_ptr_t;
+  typedef int& td_int_ref_t;
+
+  td_int_t td_int_idx_1 = 1;
+  td_td_int_t td_td_int_idx_2 = 2;
+
+  td_int_t td_int_arr[3] = {1, 2, 3};
+  td_int_ptr_t td_int_ptr = td_int_arr;
+
+  td_int_ref_t td_int_idx_1_ref = td_int_idx_1;
+  td_int_t(&td_int_arr_ref)[3] = td_int_arr;
+
+  unsigned char uchar_idx = std::numeric_limits<unsigned char>::max();
+  uint8_t uint8_arr[256];
+  uint8_arr[255] = 0xAB;
+
+  // BREAK(TestSubscript)
+}
+
+// Referenced by TestCStyleCast
+namespace ns {
+
+typedef int myint;
+
+class Foo {};
+
+namespace inner {
+
+using mydouble = double;
+
+class Foo {};
+
+}  // namespace inner
+
+}  // namespace ns
+
+static void TestCStyleCast() {
+  int a = 1;
+  int* ap = &a;
+  void* vp = &a;
+
+  int na = -1;
+  float f = 1.1;
+
+  typedef int myint;
+
+  myint myint_ = 1;
+  ns::myint ns_myint_ = 2;
+  ns::Foo ns_foo_;
+  ns::Foo* ns_foo_ptr_ = &ns_foo_;
+
+  ns::inner::mydouble ns_inner_mydouble_ = 1.2;
+  ns::inner::Foo ns_inner_foo_;
+  ns::inner::Foo* ns_inner_foo_ptr_ = &ns_inner_foo_;
+
+  // BREAK(TestCStyleCastBasicType)
+  // BREAK(TestCStyleCastPointer)
+}
+
+// Referenced by TestQualifiedId.
+namespace ns {
+
+int i = 1;
+
+namespace ns {
+
+int i = 2;
+
+}  // namespace ns
+
+}  // namespace ns
+
+class Foo {
+ public:
+  static const int x = 42;
+  static const int y;
+};
+
+const int Foo::y = 42;
+
+static void TestQualifiedId() {
+  // BREAK(TestQualifiedId)
+}
+
+// Referenced by TestTemplateTypes.
+template <typename T>
+struct T_1 {
+  static const int cx;
+  typedef double myint;
+
+  T_1() {}
+  T_1(T x) : x(x) {}
+  T x;
+};
+
+template <typename T>
+const int T_1<T>::cx = 42;
+
+template <>
+const int T_1<int>::cx = 24;
+
+template <typename T1, typename T2>
+struct T_2 {
+  typedef float myint;
+
+  T_2() {}
+  T1 x;
+  T2 y;
+};
+
+namespace ns {
+
+template <typename T>
+struct T_1 {
+  static const int cx;
+  typedef int myint;
+
+  T_1() {}
+  T_1(T x) : x(x) {}
+  T x;
+};
+
+template <typename T>
+const int T_1<T>::cx = 46;
+
+template <>
+const int T_1<int>::cx = 64;
+
+}  // namespace ns
+
+static void TestTemplateTypes() {
+  int i;
+  int* p = &i;
+
+  { T_1<int> _; }
+  { T_1<int*> _; }
+  { T_1<int**> _; }
+  { T_1<int&> _(i); }
+  { T_1<int*&> _(p); }
+  { T_1<double> _; }
+  { T_2<int, char> _; }
+  { T_2<char, int> _; }
+  { T_2<T_1<int>, T_1<char>> _; }
+  { T_2<T_1<T_1<int>>, T_1<char>> _; }
+
+  { ns::T_1<int> _; }
+  { ns::T_1<ns::T_1<int>> _; }
+
+  { T_1<int>::myint _ = 0; }
+  { T_1<int*>::myint _ = 0; }
+  { T_1<int**>::myint _ = 0; }
+  { T_1<int&>::myint _ = 0; }
+  { T_1<int*&>::myint _ = 0; }
+  { T_1<T_1<int>>::myint _ = 0; }
+  { T_1<T_1<int*>>::myint _ = 0; }
+  { T_1<T_1<int**>>::myint _ = 0; }
+  { T_1<T_1<int&>>::myint _ = 0; }
+  { T_1<T_1<int*&>>::myint _ = 0; }
+
+  { T_2<int, char>::myint _ = 0; }
+  { T_2<int*, char&>::myint _ = 0; }
+  { T_2<int&, char*>::myint _ = 0; }
+  { T_2<T_1<T_1<int>>, T_1<char>>::myint _ = 0; }
+
+  { ns::T_1<int>::myint _ = 0; }
+  { ns::T_1<int*>::myint _ = 0; }
+  { ns::T_1<int**>::myint _ = 0; }
+  { ns::T_1<int&>::myint _ = 0; }
+  { ns::T_1<int*&>::myint _ = 0; }
+  { ns::T_1<T_1<int>>::myint _ = 0; }
+  { ns::T_1<T_1<int*>>::myint _ = 0; }
+  { ns::T_1<T_1<int**>>::myint _ = 0; }
+  { ns::T_1<T_1<int&>>::myint _ = 0; }
+  { ns::T_1<T_1<int*&>>::myint _ = 0; }
+  { ns::T_1<ns::T_1<int>>::myint _ = 0; }
+  { ns::T_1<ns::T_1<int*>>::myint _ = 0; }
+  { ns::T_1<ns::T_1<int**>>::myint _ = 0; }
+  { ns::T_1<ns::T_1<int&>>::myint _ = 0; }
+  { ns::T_1<ns::T_1<int*&>>::myint _ = 0; }
+
+  (void)T_1<double>::cx;
+  (void)ns::T_1<double>::cx;
+  (void)ns::T_1<ns::T_1<int>>::cx;
+
+  // BREAK(TestTemplateTypes)
+}
+
+int main() {
+  TestMethods tm;
+
+  TestArithmetic();
+  TestPointerArithmetic();
+  TestLogicalOperators();
+  TestLocalVariables();
+  tm.TestInstanceVariables();
+  TestIndirection();
+  tm.TestAddressOf(42);
+  TestSubscript();
+  TestCStyleCast();
+  TestQualifiedId();
+  TestTemplateTypes();
+
+  // break here
+}
