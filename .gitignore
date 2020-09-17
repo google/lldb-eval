@@ -1,0 +1,5 @@
+# Visual Studio Code configuration
+.vscode
+
+# Bazel directories/symlinks
+bazel-*
