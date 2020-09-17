@@ -29,6 +29,7 @@
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Lex/PreprocessorOptions.h"
 #include "clang/Lex/Token.h"
+#include "llvm/Support/Host.h"
 
 int main(int argc, char** argv) {
   // "parse" command line arguments.
@@ -38,6 +39,7 @@ int main(int argc, char** argv) {
 
   clang::SourceManager& sm = smff.get();
   clang::DiagnosticsEngine& de = sm.getDiagnostics();
+  de.setClient(new clang::IgnoringDiagConsumer);
 
   // Create default target info.
   auto tOpts = std::make_shared<clang::TargetOptions>();
