@@ -1076,7 +1076,7 @@ ExprResult Parser::ParseNumericConstant(clang::Token token) {
   // Parse numeric constant, it can be either integer or float.
   std::string tok_spelling = pp_->getSpelling(token);
 
-#if LLVM_VERSION_MAJOR >= 12
+#if LLVM_VERSION_MAJOR >= 11
   clang::NumericLiteralParser literal(
       tok_spelling, token.getLocation(), pp_->getSourceManager(),
       pp_->getLangOpts(), pp_->getTargetInfo(), pp_->getDiagnostics());
