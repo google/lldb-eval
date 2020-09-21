@@ -1,6 +1,6 @@
 # On Windows clang.exe tries to find the MSVC toolchain by looking at environmental variables,
-# # querying Visual Studio instances via COM (>=2017) and reading Registry keys (<=2015).
-# # ProgramData data is typically required for COM api querying, unless a custom location for
-# # Visual Studio package cache is defined.
-#
-# build --action_env=ProgramData
+# querying Visual Studio instances via COM (>=2017) and reading Registry keys (<=2015).
+# ProgramData data is typically required for COM api querying, unless a custom location for
+# Visual Studio package cache is defined.
+
+build --action_env=ProgramData
