@@ -31,7 +31,7 @@ debug information, aiming at sub-millisecond evaluation speed.
 
 Install the dependencies:
 
-```(bash)
+```bash
 sudo apt install lld-10 clang-10 lldb-10 llvm-10-dev libclang-10-dev liblldb-10-dev
 ```
 
@@ -47,7 +47,7 @@ basically the same as for Linux. You will need: `CMake`, `Python3`, `SWIG`,
 
 Run the `x64 Native Tools Command Prompt for VS 2019`:
 
-```(bash)
+```bash
 git clone https://github.com/llvm/llvm-project.git
 cd llvm-project
 mkdir build_x64_optdebug
@@ -72,7 +72,7 @@ instructions on its website.
 You need to set the `LLVM_INSTALL_PATH` environmental variable with a location
 to your LLVM installation:
 
-```(bash)
+```bash
 # If you installed the packages via "apt install".
 export LLVM_INSTALL_PATH=/usr/lib/llvm-10
 
@@ -82,7 +82,7 @@ export LLVM_INSTALL_PATH=C:\src\llvm-project\build_x64_optdebug\install
 
 Now you can build and test `lldb-eval`:
 
-```(bash)
+```bash
 # Build and run all tests
 bazel test :all
 
