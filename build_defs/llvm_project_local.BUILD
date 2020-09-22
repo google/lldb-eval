@@ -183,9 +183,9 @@ cc_library(
             "bin/liblldb.dll",
             "lib/liblldb.lib",
         ],
-        "//conditions:default": [
-            "lib/liblldb.so",
-        ],
+        "//conditions:default": glob([
+            "lib/liblldb.so*",
+        ]),
     }),
     hdrs = glob([
         "include/lldb/**/*.h",
