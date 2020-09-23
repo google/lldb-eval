@@ -510,8 +510,9 @@ TEST_F(InterpreterTest, TestQualifiedId) {
   TestExpr("ns::ns::i", "2");
 
   {
-    // This is not suppored by LLDB yet.
+#ifdef _WIN32
     ExpectErrorLLDB _(this);
+#endif
 
     TestExpr("::Foo::y", "42");
     TestExpr("Foo::y", "42");
@@ -547,9 +548,12 @@ TEST_F(InterpreterTest, TestTemplateTypes) {
   TestExpr("(ns::T_1<ns::T_1<int> >*)p", expected);
   TestExpr("(::ns::T_1<ns::T_1<int> >*)p", expected);
 
-  // Resolving nested templates for global variables is not implemented yet.
+#ifdef _WIN32
   TestExprErr("ns::T_1<ns::T_1<int> >::cx",
               "use of undeclared identifier 'ns::T_1<ns::T_1<int> >::cx'");
+#else
+  TestExpr("ns::T_1<ns::T_1<int> >::cx", "46");
+#endif
 
   TestExpr("T_1<int>::cx", "24");
   TestExpr("T_1<double>::cx", "42");
