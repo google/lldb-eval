@@ -140,10 +140,9 @@ Parser::Parser(ExpressionContext& expr_ctx) : expr_ctx_(&expr_ctx) {
   clang::SourceManager& sm = expr_ctx_->GetSourceManager();
   clang::DiagnosticsEngine& de = sm.getDiagnostics();
 
-  // Create default target info.
-  std::shared_ptr<clang::TargetOptions> tOpts =
-      std::make_shared<clang::TargetOptions>();
+  auto tOpts = std::make_shared<clang::TargetOptions>();
   tOpts->Triple = llvm::sys::getDefaultTargetTriple();
+
   ti_.reset(clang::TargetInfo::CreateTargetInfo(de, tOpts));
 
   lang_opts_ = std::make_unique<clang::LangOptions>();
