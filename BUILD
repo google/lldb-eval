@@ -86,6 +86,7 @@ cc_binary(
         ":lldb-eval",
         ":runner",
         "@bazel_tools//tools/cpp/runfiles",
+        "@llvm_project_local//:lldb-api",
     ],
 )
 

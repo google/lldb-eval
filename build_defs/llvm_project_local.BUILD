@@ -140,6 +140,24 @@ cc_library(
 )
 
 cc_library(
+    name = "llvm-shared",
+    srcs = select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": glob([
+            "lib/libLLVM*.so",
+        ]),
+    }),
+    hdrs = [":llvm-headers"],
+    includes = ["include"],
+    deps = [
+        ":llvm-core",
+        ":llvm-mc",
+        ":llvm-support",
+    ],
+)
+
+cc_library(
     name = "clang-basic",
     srcs = select({
         "@bazel_tools//src/conditions:windows": [
@@ -193,4 +211,8 @@ cc_library(
         "include/lldb/**/*.inc",
     ]),
     includes = ["include"],
+    deps = [
+        ":llvm-shared",  # liblldb can be dynamically linked and depend on libLLVM.
+        ":llvm-support",
+    ],
 )
