@@ -117,12 +117,15 @@ void Interpreter::Visit(const IdentifierNode* node) {
     lldb::SBValueList values = target_.FindGlobalVariables(
         name.c_str(), /*max_matches=*/std::numeric_limits<uint32_t>::max());
 
-    // Find the variable by full name match. lldb::SBValue::GetName() returns
-    // strings like "int const ns::foo", so we look for " ns::foo" to check just
-    // the name and avoid partial suffix match.
+    // Find the corrent variable by matching the name. lldb::SBValue::GetName()
+    // can return strings like "::globarVar", "ns::i" or "int const ns::foo"
+    // depending on the version and the platform.
     for (uint32_t i = 0; i < values.GetSize(); ++i) {
       lldb::SBValue val = values.GetValueAtIndex(i);
-      if (llvm::StringRef(val.GetName()).endswith(" " + name)) {
+      llvm::StringRef val_name = val.GetName();
+
+      if (val_name == name || val_name == "::" + name ||
+          val_name.endswith(" " + name)) {
         value = val;
         break;
       }
