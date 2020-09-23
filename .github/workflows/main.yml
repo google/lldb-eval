@@ -8,17 +8,13 @@ jobs:
     runs-on: ubuntu-18.04
 
     env:
-      LLVM_INSTALL_PATH: /usr/lib/llvm-11
+      LLVM_INSTALL_PATH: /usr/lib/llvm-10
   
     steps:
       - uses: actions/checkout@v2
       
       - name: Setup LLVM deps
-        run: |
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          sudo apt-add-repository "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-11 main"
-          sudo apt update
-          sudo apt install -y lld-11 clang-11 lldb-11 llvm-11-dev libclang-11-dev liblldb-11-dev
+        run: sudo apt install -y lld-10 clang-10 lldb-10 llvm-10-dev libclang-10-dev liblldb-10-dev
       
       - name: Setup Bazel
         uses: abhinavsingh/setup-bazel@v3
