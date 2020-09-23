@@ -1,4 +1,5 @@
 # lldb-eval - blazing fast debug expression evaluation
+[![Build Status](https://github.com/google/lldb-eval/workflows/Build%20&%20Test/badge.svg)](https://github.com/google/lldb-eval/actions?workflow=Build+%26+Test)
 
 ## What
 
