@@ -1,0 +1,2 @@
+# On Linux Bazel extension for VSCode doesn't handle this symlink correctly.
+bazel-lldb-eval
