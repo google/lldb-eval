@@ -15,5 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - run: buildifier -mode=diff -r .
-    - run: buildifier -mode=check -r .
+    - uses: thompsonja/bazel-buildifier@v0.2.1
+      with:
+        warnings: all
