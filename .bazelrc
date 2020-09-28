@@ -4,3 +4,41 @@
 # Visual Studio package cache is defined.
 
 build --action_env=ProgramData
+
+# AddressSanitizer (ASan).
+build:asan --strip=never
+build:asan --copt -fsanitize=address
+build:asan --copt -DADDRESS_SANITIZER
+build:asan --copt -O0
+build:asan --copt -g
+build:asan --copt -fno-omit-frame-pointer
+build:asan --linkopt -fsanitize=address
+
+# MemorySanitizer (MSan).
+build:msan --strip=never
+build:msan --copt=-fsanitize=memory
+build:msan --copt=-DMEMORY_SANITIZER
+build:msan --copt=-O0
+build:msan --copt=-fsanitize-memory-track-origins
+build:msan --copt=-fsanitize-memory-use-after-dtor
+build:msan --copt=-fno-omit-frame-pointer
+build:msan --copt=-DGPR_NO_DIRECT_SYSCALLS
+build:msan --linkopt=-fsanitize=memory
+build:msan --action_env=MSAN_OPTIONS=poison_in_dtor=1
+
+# ThreadSanitizer (TSan).
+build:tsan --strip=never
+build:tsan --copt=-fsanitize=thread
+build:tsan --copt=-DTHREAD_SANITIZER
+build:tsan --copt=-fno-omit-frame-pointer
+build:tsan --copt=-DGPR_NO_DIRECT_SYSCALLS
+build:tsan --linkopt=-fsanitize=thread
+
+# UndefinedBehaviorSanitizer (UBSan).
+build:ubsan --strip=never
+build:ubsan --copt=-fsanitize=undefined
+build:ubsan --copt=-DUNDEFINED_BEHAVIOR_SANITIZER
+build:ubsan --copt=-fno-omit-frame-pointer
+build:ubsan --copt=-DNDEBUG
+build:ubsan --copt=-fno-sanitize=function,vptr
+build:ubsan --linkopt=-fsanitize=undefined
