@@ -10,3 +10,10 @@ jobs:
       with:
         clangFormatVersion: 11
         inplace: ""
+  
+  buildifier:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - run: buildifier -mode=diff -r .
+    - run: buildifier -mode=check -r .
