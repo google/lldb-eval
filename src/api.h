@@ -18,9 +18,9 @@
 #define LLDB_EVAL_API_H_
 
 #include "defines.h"
+#include "lldb/API/SBError.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBValue.h"
-#include "lldb/API/SBError.h"
 
 namespace lldb_eval {
 
