@@ -22,7 +22,7 @@
 #include <string>
 #include <variant>
 
-namespace eval_fuzzer {
+namespace fuzzer {
 
 class BinaryExpr;
 class UnaryExpr;
@@ -30,11 +30,15 @@ class VariableExpr;
 class IntegerConstant;
 class DoubleConstant;
 
-enum class UnOp: unsigned char {
-  Plus, Neg, LogicalNot, BitNot, EnumLast = BitNot,
+enum class UnOp : unsigned char {
+  Plus,
+  Neg,
+  LogicalNot,
+  BitNot,
+  EnumLast = BitNot,
 };
 
-enum class BinOp: unsigned char {
+enum class BinOp : unsigned char {
   // Arithmetic operators
   Plus,
   Minus,
@@ -61,22 +65,12 @@ enum class BinOp: unsigned char {
   EnumLast = Ge,
 };
 
-using Expr = std::variant<
-    IntegerConstant
-  , DoubleConstant
-  , VariableExpr
-  , BinaryExpr
-  , UnaryExpr
->;
+using Expr = std::variant<IntegerConstant, DoubleConstant, VariableExpr,
+                          BinaryExpr, UnaryExpr>;
 constexpr size_t NUM_EXPR_KINDS = std::variant_size_v<Expr>;
 
 class BinaryExpr {
-  std::unique_ptr<Expr> m_lhs;
-  std::unique_ptr<Expr> m_rhs;
-  BinOp m_op;
-  bool m_gen_parens;
-
-public:
+ public:
   BinaryExpr(Expr lhs, BinOp op, Expr rhs, bool gen_parens);
 
   const Expr& lhs() const;
@@ -84,57 +78,67 @@ public:
   BinOp op() const;
   bool gen_parens() const;
   int precedence() const;
+
+ private:
+  std::unique_ptr<Expr> lhs_;
+  std::unique_ptr<Expr> rhs_;
+  BinOp op_;
+  bool gen_parens_;
 };
 
 class UnaryExpr {
-  std::unique_ptr<Expr> m_expr;
-  UnOp m_op;
-  bool m_gen_parens;
-
  public:
   UnaryExpr(UnOp op, Expr expr, bool gen_parens);
 
   UnOp op() const;
   const Expr& expr() const;
   bool gen_parens() const;
+
+ private:
+  std::unique_ptr<Expr> expr_;
+  UnOp op_;
+  bool gen_parens_;
 };
 
 class VariableExpr {
-  std::string m_name;
-  bool m_gen_parens;
-
  public:
   explicit VariableExpr(std::string name, bool gen_parens);
 
   const std::string& name() const;
   bool gen_parens() const;
+
+ private:
+  std::string name_;
+  bool gen_parens_;
 };
 
 class IntegerConstant {
-  uint64_t m_value;
-  bool m_gen_parens;
-
  public:
   IntegerConstant(uint64_t value, bool gen_parens);
 
   uint64_t value() const;
   bool gen_parens() const;
+
+ private:
+  uint64_t value_;
+  bool gen_parens_;
 };
 
 class DoubleConstant {
-  double m_value;
-  bool m_gen_parens;
-
  public:
   DoubleConstant(double value, bool gen_parens);
 
   double value() const;
   bool gen_parens() const;
+
+ private:
+  double value_;
+  bool gen_parens_;
 };
 
 std::string stringify_expr(const Expr& expr);
 void dump_expr(const Expr& expr);
 
-} // namespace eval_fuzzer
+}  // namespace fuzzer
 
-#endif // INCLUDE_AST_H
+#endif  // INCLUDE_AST_H

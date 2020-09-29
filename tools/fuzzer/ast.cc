@@ -15,7 +15,6 @@
  */
 
 #include "ast.h"
-#include "ast_visitor.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -23,7 +22,9 @@
 #include <sstream>
 #include <utility>
 
-namespace eval_fuzzer {
+#include "ast_visitor.h"
+
+namespace fuzzer {
 
 struct BinOpInfo {
   int precedence;
@@ -37,94 +38,85 @@ struct BinOpInfo {
  * https://en.cppreference.com/w/cpp/language/operator_precedence
  */
 static const BinOpInfo BIN_OP_TABLE[] = {
-  {6,  "+"  }, // BinOp::Plus
-  {6,  "-"  }, // BinOp::Minus
-  {5,  "*"  }, // BinOp::Mult
-  {5,  "/"  }, // BinOp::Div
-  {5,  "%"  }, // BinOp::Mod
-  {14, "&&" }, // BinOp::LogicalAnd
-  {15, "||" }, // BinOp::LogicalOr
-  {11, "&"  }, // BinOp::BitAnd
-  {13, "|"  }, // BinOp::BitOr
-  {12, "^"  }, // BinOp::BitXor
-  {7,  "<<" }, // BinOp::Shl
-  {7,  ">>" }, // BinOp::Shr
-  {10, "==" }, // BinOp::Eq
-  {10, "!=" }, // BinOp::Ne
-  {9,  "<"  }, // BinOp::Lt
-  {9,  "<=" }, // BinOp::Le
-  {9,  ">"  }, // BinOp::Gt
-  {9,  ">=" }, // BinOp::Ge
+    {6, "+"},    // BinOp::Plus
+    {6, "-"},    // BinOp::Minus
+    {5, "*"},    // BinOp::Mult
+    {5, "/"},    // BinOp::Div
+    {5, "%"},    // BinOp::Mod
+    {14, "&&"},  // BinOp::LogicalAnd
+    {15, "||"},  // BinOp::LogicalOr
+    {11, "&"},   // BinOp::BitAnd
+    {13, "|"},   // BinOp::BitOr
+    {12, "^"},   // BinOp::BitXor
+    {7, "<<"},   // BinOp::Shl
+    {7, ">>"},   // BinOp::Shr
+    {10, "=="},  // BinOp::Eq
+    {10, "!="},  // BinOp::Ne
+    {9, "<"},    // BinOp::Lt
+    {9, "<="},   // BinOp::Le
+    {9, ">"},    // BinOp::Gt
+    {9, ">="},   // BinOp::Ge
 };
 
-static const char* UN_OP_TABLE[((size_t) UnOp::EnumLast) + 1] = {
-  "+", // UnOp::Plus
-  "-", // UnOp::Neg
-  "!", // UnOp::LogicalNot
-  "~", // UnOp::BitNot
+static const char* UN_OP_TABLE[((size_t)UnOp::EnumLast) + 1] = {
+    "+",  // UnOp::Plus
+    "-",  // UnOp::Neg
+    "!",  // UnOp::LogicalNot
+    "~",  // UnOp::BitNot
 };
 
 BinaryExpr::BinaryExpr(Expr lhs, BinOp op, Expr rhs, bool gen_parens)
-  : m_lhs(std::make_unique<Expr>(std::move(lhs)))
-  , m_rhs(std::make_unique<Expr>(std::move(rhs)))
-  , m_op(op)
-  , m_gen_parens(gen_parens)
-{}
+    : lhs_(std::make_unique<Expr>(std::move(lhs))),
+      rhs_(std::make_unique<Expr>(std::move(rhs))),
+      op_(op),
+      gen_parens_(gen_parens) {}
 
-const Expr& BinaryExpr::lhs() const { return *m_lhs; }
-const Expr& BinaryExpr::rhs() const { return *m_rhs; }
-BinOp BinaryExpr::op() const { return m_op; }
-bool BinaryExpr::gen_parens() const { return m_gen_parens; }
+const Expr& BinaryExpr::lhs() const { return *lhs_; }
+const Expr& BinaryExpr::rhs() const { return *rhs_; }
+BinOp BinaryExpr::op() const { return op_; }
+bool BinaryExpr::gen_parens() const { return gen_parens_; }
 int BinaryExpr::precedence() const {
-  return BIN_OP_TABLE[(size_t) m_op].precedence;
+  return BIN_OP_TABLE[(size_t)op_].precedence;
 }
 
 VariableExpr::VariableExpr(std::string name, bool gen_parens)
-  : m_name(std::move(name))
-  , m_gen_parens(gen_parens)
-{}
+    : name_(std::move(name)), gen_parens_(gen_parens) {}
 
-const std::string& VariableExpr::name() const { return m_name; }
-bool VariableExpr::gen_parens() const { return m_gen_parens; }
+const std::string& VariableExpr::name() const { return name_; }
+bool VariableExpr::gen_parens() const { return gen_parens_; }
 
 UnaryExpr::UnaryExpr(UnOp op, Expr expr, bool gen_parens)
-  : m_expr(std::make_unique<Expr>(std::move(expr)))
-  , m_op(op)
-  , m_gen_parens(gen_parens)
-{}
+    : expr_(std::make_unique<Expr>(std::move(expr))),
+      op_(op),
+      gen_parens_(gen_parens) {}
 
-UnOp UnaryExpr::op() const { return m_op; }
-const Expr& UnaryExpr::expr() const { return *m_expr; }
-bool UnaryExpr::gen_parens() const { return m_gen_parens; }
+UnOp UnaryExpr::op() const { return op_; }
+const Expr& UnaryExpr::expr() const { return *expr_; }
+bool UnaryExpr::gen_parens() const { return gen_parens_; }
 
 IntegerConstant::IntegerConstant(uint64_t value, bool gen_parens)
-  : m_value(value)
-  , m_gen_parens(gen_parens)
-{}
+    : value_(value), gen_parens_(gen_parens) {}
 
-uint64_t IntegerConstant::value() const { return m_value; }
-bool IntegerConstant::gen_parens() const { return m_gen_parens; }
+uint64_t IntegerConstant::value() const { return value_; }
+bool IntegerConstant::gen_parens() const { return gen_parens_; }
 
 DoubleConstant::DoubleConstant(double value, bool gen_parens)
-  : m_value(value)
-  , m_gen_parens(gen_parens)
-{}
+    : value_(value), gen_parens_(gen_parens) {}
 
-double DoubleConstant::value() const { return m_value; }
-bool DoubleConstant::gen_parens() const { return m_gen_parens; }
+double DoubleConstant::value() const { return value_; }
+bool DoubleConstant::gen_parens() const { return gen_parens_; }
 
 /**
  * A visitor that converts an expression into a string.
  */
-class ExprPrinter final: public DefaultVisitor {
-  using DefaultVisitor::visit;
-
-  std::ostringstream m_os;
+class ExprPrinter final : public Visitor {
+ public:
+  using Visitor::visit;
 
   void visit(const BinaryExpr& e) override {
     bool gen_parens = e.gen_parens();
     if (gen_parens) {
-      m_os << "(";
+      os_ << "(";
     }
 
     // Rules for parenthesising the left hand side:
@@ -139,19 +131,18 @@ class ExprPrinter final: public DefaultVisitor {
     //    Example: We do not have to emit `(3 - 4) + 5`, `3 - 4 + 5` will also
     //    do.
     const auto* lhs_bin = std::get_if<BinaryExpr>(&e.lhs());
-    bool lhs_gen_parens = lhs_bin != nullptr
-        && !lhs_bin->gen_parens()
-        && lhs_bin->precedence() < e.precedence();
+    bool lhs_gen_parens = lhs_bin != nullptr && !lhs_bin->gen_parens() &&
+                          lhs_bin->precedence() < e.precedence();
 
     if (lhs_gen_parens) {
-      m_os << "(";
+      os_ << "(";
       visit(e.lhs());
-      m_os << ")";
+      os_ << ")";
     } else {
       visit(e.lhs());
     }
 
-    m_os << " " << BIN_OP_TABLE[(size_t) e.op()].symbol << " ";
+    os_ << " " << BIN_OP_TABLE[(size_t)e.op()].symbol << " ";
 
     // Rules for parenthesising the right hand side:
     // 1. If the right hand side is already parenthesised, no need to do
@@ -167,82 +158,81 @@ class ExprPrinter final: public DefaultVisitor {
     //    emit `3 + (4 + 5)` instead of `3 + 4 + 5`, even though both
     //    expressions are equivalent.
     const auto* rhs_bin = std::get_if<BinaryExpr>(&e.rhs());
-    bool rhs_gen_parens = rhs_bin != nullptr
-        && !rhs_bin->gen_parens()
-        && rhs_bin->precedence() <= e.precedence();
+    bool rhs_gen_parens = rhs_bin != nullptr && !rhs_bin->gen_parens() &&
+                          rhs_bin->precedence() <= e.precedence();
     if (rhs_gen_parens) {
-      m_os << "(";
+      os_ << "(";
       visit(e.rhs());
-      m_os << ")";
+      os_ << ")";
     } else {
       visit(e.rhs());
     }
 
     if (gen_parens) {
-      m_os << ")";
+      os_ << ")";
     }
   }
 
   void visit(const VariableExpr& e) override {
     if (e.gen_parens()) {
-      m_os << "(";
+      os_ << "(";
     }
 
-    m_os << e.name();
+    os_ << e.name();
 
     if (e.gen_parens()) {
-      m_os << ")";
+      os_ << ")";
     }
   }
 
   void visit(const IntegerConstant& e) override {
     if (e.gen_parens()) {
-      m_os << "(";
+      os_ << "(";
     }
 
-    m_os << e.value();
+    os_ << e.value();
 
     if (e.gen_parens()) {
-      m_os << ")";
+      os_ << ")";
     }
   }
 
   void visit(const DoubleConstant& e) override {
     if (e.gen_parens()) {
-      m_os << "(";
+      os_ << "(";
     }
 
-    m_os << e.value();
+    os_ << e.value();
 
     if (e.gen_parens()) {
-      m_os << ")";
+      os_ << ")";
     }
   }
 
   void visit(const UnaryExpr& e) override {
     if (e.gen_parens()) {
-      m_os << "(";
+      os_ << "(";
     }
 
-    m_os << UN_OP_TABLE[(size_t) e.op()];
+    os_ << UN_OP_TABLE[(size_t)e.op()];
 
     const auto* inner_as_binary = std::get_if<BinaryExpr>(&e.expr());
     const auto* inner_as_unary = std::get_if<UnaryExpr>(&e.expr());
     if (inner_as_binary != nullptr) {
       // Case 1: Inner expression is a binary expression: Just be conservative
       // and emit parentheses
-      m_os << "(";
+      os_ << "(";
       visit(*inner_as_binary);
-      m_os << ")";
+      os_ << ")";
 
     } else if (inner_as_unary != nullptr) {
       // Case 2: Avoiding emitting cases such as `++3` or `--3`
-      bool needs_space = (e.op() == UnOp::Plus || e.op() == UnOp::Neg)
-          && e.op() == inner_as_unary->op()
-          && !inner_as_unary->gen_parens();
+      bool needs_space = (e.op() == UnOp::Plus || e.op() == UnOp::Neg) &&
+                         e.op() == inner_as_unary->op() &&
+                         !inner_as_unary->gen_parens();
 
       if (needs_space) {
-        m_os << ' ';
+        os_ << ' ';
       }
       visit(*inner_as_unary);
     } else {
@@ -250,17 +240,19 @@ class ExprPrinter final: public DefaultVisitor {
     }
 
     if (e.gen_parens()) {
-      m_os << ")";
+      os_ << ")";
     }
   }
 
- public:
-  std::string to_string() const { return m_os.str(); }
+  std::string to_string() const { return os_.str(); }
+
+ private:
+  std::ostringstream os_;
 };
 
 std::string stringify_expr(const Expr& expr) {
   ExprPrinter printer;
-  printer.DefaultVisitor::visit(expr);
+  printer.Visitor::visit(expr);
 
   return printer.to_string();
 }
@@ -268,15 +260,12 @@ std::string stringify_expr(const Expr& expr) {
 /**
  * A visitor that dumps an expression to `stdout` for debugging purposes.
  */
-class ExprDumper final: public DefaultVisitor {
-  using DefaultVisitor::visit;
-
-  int indent = 0;
-
-  static constexpr int SPACES_PER_INDENTATION = 2;
+class ExprDumper final : public Visitor {
+ public:
+  using Visitor::visit;
 
   void visit(const BinaryExpr& e) override {
-    const auto* symbol = BIN_OP_TABLE[(size_t) e.op()].symbol;
+    const auto* symbol = BIN_OP_TABLE[(size_t)e.op()].symbol;
     printf("%*sBinary expression of type %s\n", indent, "", symbol);
 
     indent += SPACES_PER_INDENTATION;
@@ -288,11 +277,13 @@ class ExprDumper final: public DefaultVisitor {
   }
 
   void visit(const VariableExpr& e) override {
-    printf("%*sVariable expression for identifier `%s`\n", indent, "", e.name().c_str());
+    printf("%*sVariable expression for identifier `%s`\n", indent, "",
+           e.name().c_str());
   }
 
   void visit(const IntegerConstant& e) override {
-    printf("%*sInteger constant with value `%" PRIu64 "`\n", indent, "", e.value());
+    printf("%*sInteger constant with value `%" PRIu64 "`\n", indent, "",
+           e.value());
   }
 
   void visit(const DoubleConstant& e) override {
@@ -300,7 +291,7 @@ class ExprDumper final: public DefaultVisitor {
   }
 
   void visit(const UnaryExpr& e) override {
-    const auto* symbol = UN_OP_TABLE[(size_t) e.op()];
+    const auto* symbol = UN_OP_TABLE[(size_t)e.op()];
     printf("%*sUnary expression of type %s\n", indent, "", symbol);
 
     indent += SPACES_PER_INDENTATION;
@@ -309,11 +300,16 @@ class ExprDumper final: public DefaultVisitor {
 
     indent -= SPACES_PER_INDENTATION;
   }
+
+ private:
+  static constexpr int SPACES_PER_INDENTATION = 2;
+
+  int indent = 0;
 };
 
 void dump_expr(const Expr& expr) {
   ExprDumper dumper;
-  dumper.DefaultVisitor::visit(expr);
+  dumper.Visitor::visit(expr);
 }
 
-} // namespace eval_fuzzer
+}  // namespace fuzzer

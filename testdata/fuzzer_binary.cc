@@ -20,7 +20,7 @@ void break_here() {}
 
 int main() {
   int x = 42;
-  (void) x;
+  (void)x;
 
   break_here();
 

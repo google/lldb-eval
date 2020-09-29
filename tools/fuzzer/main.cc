@@ -14,11 +14,15 @@
  * limitations under the License.
  */
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <random>
+#include <string>
+#include <utility>
+
 #include "ast.h"
 #include "expr_gen.h"
-
-#include "src/api.h"
-
 #include "lldb/API/SBBreakpoint.h"
 #include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBError.h"
@@ -27,15 +31,8 @@
 #include "lldb/API/SBTarget.h"
 #include "lldb/API/SBThread.h"
 #include "lldb/API/SBValue.h"
-
+#include "src/api.h"
 #include "tools/cpp/runfiles/runfiles.h"
-
-#include <algorithm>
-#include <cstdint>
-#include <cstdio>
-#include <random>
-#include <string>
-#include <utility>
 
 using bazel::tools::cpp::runfiles::Runfiles;
 
@@ -46,19 +43,19 @@ constexpr char EXECUTABLE_PATH_KEY[] = "lldb_eval/testdata/fuzzer_binary";
 
 int main(int argc, char** argv) {
   // No need to use argc when running via Bazel
-  (void) argc;
+  (void)argc;
 
-  std::string error;
-  std::unique_ptr<Runfiles> runfiles(Runfiles::Create(argv[0], &error));
+  std::string err;
+  std::unique_ptr<Runfiles> runfiles(Runfiles::Create(argv[0], &err));
   if (runfiles == nullptr) {
-    fprintf(stderr, "Could not launch the fuzzer: %s\n", error.c_str());
+    fprintf(stderr, "Could not launch the fuzzer: %s\n", err.c_str());
     return 1;
   }
 
 #ifndef _WIN32
   std::string lldb_server = runfiles->Rlocation(LLDB_SERVER_KEY);
   setenv("LLDB_DEBUGSERVER_PATH", lldb_server.c_str(), 0);
-#endif // !_WIN32
+#endif  // !_WIN32
 
   std::string exe_path = runfiles->Rlocation(EXECUTABLE_PATH_KEY);
   std::string dirname_buf = exe_path;
@@ -67,7 +64,7 @@ int main(int argc, char** argv) {
   auto seed = rd();
   printf("Seed for this run is: %u\n", seed);
 
-  const char* ARGV[] = { exe_path.c_str(), nullptr };
+  const char* ARGV[] = {exe_path.c_str(), nullptr};
 
   lldb::SBDebugger::Initialize();
   {
@@ -85,27 +82,30 @@ int main(int argc, char** argv) {
     auto var_value = frame.GetValueForVariablePath(VAR);
     printf("Value of variable `%s` is: %s\n", VAR, var_value.GetValue());
 
-    eval_fuzzer::ExprGenerator gen(seed);
+    fuzzer::ExprGenerator gen(seed);
     std::vector<std::string> exprs;
 
     size_t padding = 0;
     for (int i = 0; i < 20; i++) {
       auto gen_expr = gen.generate();
-      auto str = eval_fuzzer::stringify_expr(gen_expr);
+      auto str = fuzzer::stringify_expr(gen_expr);
 
       padding = std::max(padding, str.size());
       exprs.emplace_back(std::move(str));
     }
-    for (const auto& e: exprs) {
+    for (const auto& e : exprs) {
       auto lldb_value = frame.EvaluateExpression(e.c_str());
-      printf("lldb:      `%-*s` yields: `%s`\n", (int) padding, e.c_str(), lldb_value.GetValue());
+      printf("lldb:      `%-*s` yields: `%s`\n", (int)padding, e.c_str(),
+             lldb_value.GetValue());
 
-      lldb::SBError lldb_error;
-      auto lldb_eval_value = lldb_eval::EvaluateExpression(frame, e.c_str(), lldb_error);
-      printf("lldb-eval: `%-*s` yields: `%s`\n", (int) padding, e.c_str(), lldb_eval_value.GetValue());
+      lldb::SBError err;
+      auto lldb_eval_value =
+          lldb_eval::EvaluateExpression(frame, e.c_str(), err);
+      printf("lldb-eval: `%-*s` yields: `%s`\n", (int)padding, e.c_str(),
+             lldb_eval_value.GetValue());
       printf("------------------------------------------------------------\n");
     }
-    thread.Resume();
+    proc.Destroy();
   }
   lldb::SBDebugger::Terminate();
 

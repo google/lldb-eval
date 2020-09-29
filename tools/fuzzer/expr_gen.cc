@@ -14,14 +14,15 @@
  * limitations under the License.
  */
 
-#include "ast.h"
 #include "expr_gen.h"
 
 #include <cassert>
 #include <random>
 #include <variant>
 
-namespace eval_fuzzer {
+#include "ast.h"
+
+namespace fuzzer {
 
 struct ExprKindInfo {
   float initial_weight;
@@ -29,21 +30,21 @@ struct ExprKindInfo {
 };
 
 static const std::array<ExprKindInfo, NUM_EXPR_KINDS> EXPR_KIND_INFO = {{
-  { 1.0, 0.0 }, // ExprKind::IntegerConstant
-  { 0.0, 0.0 }, // ExprKind::DoubleConstant
-  { 1.0, 0.0 }, // ExprKind::VariableExpr
-  { 7.0, 0.4 }, // ExprKind::BinaryExpr
-  { 3.0, 0.4 }, // ExprKind::UnaryExpr
+    {1.0, 0.0},  // ExprKind::IntegerConstant
+    {0.0, 0.0},  // ExprKind::DoubleConstant
+    {1.0, 0.0},  // ExprKind::VariableExpr
+    {7.0, 0.4},  // ExprKind::BinaryExpr
+    {3.0, 0.4},  // ExprKind::UnaryExpr
 }};
 
 bool ExprGenerator::fifty_fifty() {
   std::bernoulli_distribution fifty_fifty_distr;
-  return fifty_fifty_distr(m_rng);
+  return fifty_fifty_distr(rng_);
 }
 
 IntegerConstant ExprGenerator::gen_integer_constant(const WeightsArray&) {
   std::uniform_int_distribution<uint64_t> value_distr(0, MAX_INT_VALUE);
-  auto value = value_distr(m_rng);
+  auto value = value_distr(rng_);
   auto gen_parens = fifty_fifty();
 
   return IntegerConstant(value, gen_parens);
@@ -51,7 +52,7 @@ IntegerConstant ExprGenerator::gen_integer_constant(const WeightsArray&) {
 
 DoubleConstant ExprGenerator::gen_double_constant(const WeightsArray&) {
   std::uniform_real_distribution<double> value_distr(0.0, MAX_DOUBLE_VALUE);
-  auto value = value_distr(m_rng);
+  auto value = value_distr(rng_);
   auto gen_parens = fifty_fifty();
 
   return DoubleConstant(value, gen_parens);
@@ -66,15 +67,16 @@ VariableExpr ExprGenerator::gen_variable_expr(const WeightsArray&) {
 BinaryExpr ExprGenerator::gen_binary_expr(const WeightsArray& weights) {
   WeightsArray new_weights = weights;
 
-  auto idx = (size_t) ExprKind::BinaryExpr;
+  auto idx = (size_t)ExprKind::BinaryExpr;
   new_weights[idx] *= EXPR_KIND_INFO[idx].dampening_factor;
 
   auto lhs = gen_with_weights(new_weights);
   auto rhs = gen_with_weights(new_weights);
 
   // The interval of `uniform_int_distribution` is inclusive.
-  std::uniform_int_distribution<size_t> op_distr(0, (size_t) BinOp::EnumLast - 1);
-  auto op = (BinOp) op_distr(m_rng);
+  std::uniform_int_distribution<size_t> op_distr(0,
+                                                 (size_t)BinOp::EnumLast - 1);
+  auto op = (BinOp)op_distr(rng_);
   bool gen_parens = fifty_fifty();
 
   return BinaryExpr(std::move(lhs), op, std::move(rhs), gen_parens);
@@ -83,13 +85,13 @@ BinaryExpr ExprGenerator::gen_binary_expr(const WeightsArray& weights) {
 UnaryExpr ExprGenerator::gen_unary_expr(const WeightsArray& weights) {
   WeightsArray new_weights = weights;
 
-  auto idx = (size_t) ExprKind::UnaryExpr;
+  auto idx = (size_t)ExprKind::UnaryExpr;
   new_weights[idx] *= EXPR_KIND_INFO[idx].dampening_factor;
 
   auto expr = gen_with_weights(new_weights);
 
-  std::uniform_int_distribution<size_t> op_distr(0, (size_t) UnOp::EnumLast - 1);
-  auto op = (UnOp) op_distr(m_rng);
+  std::uniform_int_distribution<size_t> op_distr(0, (size_t)UnOp::EnumLast - 1);
+  auto op = (UnOp)op_distr(rng_);
   bool gen_parens = fifty_fifty();
 
   return UnaryExpr(op, std::move(expr), gen_parens);
@@ -98,20 +100,20 @@ UnaryExpr ExprGenerator::gen_unary_expr(const WeightsArray& weights) {
 Expr ExprGenerator::gen_with_weights(const WeightsArray& weights) {
   // No need to pull `<numeric>` just for one sum.
   float sum = 0;
-  for (const auto& e: weights) {
+  for (const auto& e : weights) {
     sum += e;
   }
 
   std::uniform_real_distribution<float> distr(0, sum);
-  auto val = distr(m_rng);
+  auto val = distr(rng_);
 
-  // Make sure `kind` is always initialised
+  // Make sure `kind` is always initialized.
   float running_sum = 0;
-  ExprKind kind = ExprKind::IntegerConstant;;
+  ExprKind kind = ExprKind::IntegerConstant;
   for (size_t i = 0; i < weights.size(); i++) {
     running_sum += weights[i];
     if (val < running_sum) {
-      kind = (ExprKind) i;
+      kind = (ExprKind)i;
       break;
     }
   }
@@ -146,4 +148,4 @@ Expr ExprGenerator::generate() {
   return gen_with_weights(weights);
 }
 
-} // namespace eval_fuzzer
+}  // namespace fuzzer

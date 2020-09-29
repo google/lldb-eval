@@ -17,47 +17,31 @@
 #ifndef INCLUDE_AST_VISITOR_H
 #define INCLUDE_AST_VISITOR_H
 
-#include "ast.h"
-
 #include <variant>
 
-namespace eval_fuzzer {
+#include "ast.h"
 
-struct Visitor {
+namespace fuzzer {
+
+class Visitor {
+ public:
   virtual ~Visitor() {}
 
-  virtual void visit(const UnaryExpr&       e) = 0;
-  virtual void visit(const BinaryExpr&      e) = 0;
-  virtual void visit(const VariableExpr&    e) = 0;
+  virtual void visit(const UnaryExpr& e) = 0;
+  virtual void visit(const BinaryExpr& e) = 0;
+  virtual void visit(const VariableExpr& e) = 0;
   virtual void visit(const IntegerConstant& e) = 0;
-  virtual void visit(const DoubleConstant&  e) = 0;
+  virtual void visit(const DoubleConstant& e) = 0;
 
   void visit(const Expr& e) { std::visit(*this, e); }
 
-  void operator()(const UnaryExpr&       e) { visit(e); }
-  void operator()(const BinaryExpr&      e) { visit(e); }
-  void operator()(const VariableExpr&    e) { visit(e); }
+  void operator()(const UnaryExpr& e) { visit(e); }
+  void operator()(const BinaryExpr& e) { visit(e); }
+  void operator()(const VariableExpr& e) { visit(e); }
   void operator()(const IntegerConstant& e) { visit(e); }
-  void operator()(const DoubleConstant&  e) { visit(e); }
+  void operator()(const DoubleConstant& e) { visit(e); }
 };
 
-struct DefaultVisitor: public Visitor {
-  using Visitor::visit;
+}  // namespace fuzzer
 
-  void visit(const BinaryExpr& e) override {
-    visit(e.lhs());
-    visit(e.rhs());
-  }
-
-  void visit(const UnaryExpr& e) override {
-    visit(e.expr());
-  }
-
-  void visit(const VariableExpr&)    override {}
-  void visit(const IntegerConstant&) override {}
-  void visit(const DoubleConstant&)  override {}
-};
-
-} // namespace eval_fuzzer
-
-#endif // INCLUDE_AST_VISITOR_H
+#endif  // INCLUDE_AST_VISITOR_H

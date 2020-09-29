@@ -18,6 +18,7 @@ genrule(
         "@llvm_project_local//:lld",
     ],
 )
+
 filegroup(
     name = "test_binary_srcs",
     srcs = [
