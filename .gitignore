@@ -3,3 +3,6 @@
 
 # Bazel directories/symlinks
 bazel-*
+
+# YouCompleteMe
+.ycm_extra_conf.py

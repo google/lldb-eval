@@ -8,7 +8,7 @@ COPTS = select({
         "/external:I external/llvm_project_local/include",
     ],
     "//conditions:default": [
-        "-std=c++14",
+        "-std=c++17",
         "-fno-exceptions",
         "-fno-rtti",
     ],
@@ -23,4 +23,41 @@ cc_binary(
         "@llvm_project_local//:clang-lex",
         "@llvm_project_local//:llvm-support",
     ],
+)
+
+cc_library(
+  name = "fuzzer_lib",
+    srcs = [
+        "fuzzer/ast.cc",
+        "fuzzer/expr_gen.cc",
+    ],
+    hdrs = [
+        "fuzzer/ast.h",
+        "fuzzer/ast_visitor.h",
+        "fuzzer/expr_gen.h",
+    ],
+    copts = COPTS,
+)
+
+cc_binary(
+    name = "fuzzer",
+    srcs = ["fuzzer/main.cc"],
+    copts = COPTS,
+    deps = [
+        "//tools:fuzzer_lib",
+        "//:lldb-eval",
+        "@bazel_tools//tools/cpp/runfiles",
+        "@llvm_project_local//:lldb-api",
+    ],
+    data = [
+        "//testdata:fuzzer_binary_gen",
+        "//testdata:fuzzer_binary_srcs",
+    ] + select({
+        "@bazel_tools//src/conditions:windows": [
+            # There is no lldb-server on Windows.
+        ],
+        "//conditions:default": [
+            "@llvm_project_local//:lldb-server",
+        ],
+    }),
 )
