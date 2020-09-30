@@ -102,7 +102,7 @@ class UnaryExpr {
 
 class VariableExpr {
  public:
-  explicit VariableExpr(std::string name, bool gen_parens);
+  VariableExpr(std::string name, bool gen_parens);
 
   const std::string& name() const;
   bool gen_parens() const;

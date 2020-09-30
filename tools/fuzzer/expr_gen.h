@@ -47,8 +47,6 @@ class ExprGenerator {
 
   using WeightsArray = std::array<float, NUM_EXPR_KINDS>;
 
-  std::mt19937 rng_;
-
   bool fifty_fifty();
   IntegerConstant gen_integer_constant(const WeightsArray&);
   DoubleConstant gen_double_constant(const WeightsArray&);
@@ -57,6 +55,9 @@ class ExprGenerator {
   UnaryExpr gen_unary_expr(const WeightsArray&);
 
   Expr gen_with_weights(const WeightsArray&);
+
+ private:
+  std::mt19937 rng_;
 };
 
 }  // namespace fuzzer
