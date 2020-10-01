@@ -21,6 +21,7 @@
 #include <memory>
 #include <sstream>
 #include <utility>
+#include <variant>
 
 #include "ast_visitor.h"
 
@@ -65,46 +66,39 @@ static const char* UN_OP_TABLE[((size_t)UnOp::EnumLast) + 1] = {
     "~",  // UnOp::BitNot
 };
 
-BinaryExpr::BinaryExpr(Expr lhs, BinOp op, Expr rhs, bool gen_parens)
+BinaryExpr::BinaryExpr(Expr lhs, BinOp op, Expr rhs)
     : lhs_(std::make_unique<Expr>(std::move(lhs))),
       rhs_(std::make_unique<Expr>(std::move(rhs))),
-      op_(op),
-      gen_parens_(gen_parens) {}
+      op_(op) {}
 
 const Expr& BinaryExpr::lhs() const { return *lhs_; }
 const Expr& BinaryExpr::rhs() const { return *rhs_; }
 BinOp BinaryExpr::op() const { return op_; }
-bool BinaryExpr::gen_parens() const { return gen_parens_; }
 int BinaryExpr::precedence() const {
   return BIN_OP_TABLE[(size_t)op_].precedence;
 }
 
-VariableExpr::VariableExpr(std::string name, bool gen_parens)
-    : name_(std::move(name)), gen_parens_(gen_parens) {}
-
+VariableExpr::VariableExpr(std::string name) : name_(std::move(name)) {}
 const std::string& VariableExpr::name() const { return name_; }
-bool VariableExpr::gen_parens() const { return gen_parens_; }
 
-UnaryExpr::UnaryExpr(UnOp op, Expr expr, bool gen_parens)
-    : expr_(std::make_unique<Expr>(std::move(expr))),
-      op_(op),
-      gen_parens_(gen_parens) {}
-
+UnaryExpr::UnaryExpr(UnOp op, Expr expr)
+    : expr_(std::make_unique<Expr>(std::move(expr))), op_(op) {}
 UnOp UnaryExpr::op() const { return op_; }
 const Expr& UnaryExpr::expr() const { return *expr_; }
-bool UnaryExpr::gen_parens() const { return gen_parens_; }
 
-IntegerConstant::IntegerConstant(uint64_t value, bool gen_parens)
-    : value_(value), gen_parens_(gen_parens) {}
-
+IntegerConstant::IntegerConstant(uint64_t value) : value_(value) {}
 uint64_t IntegerConstant::value() const { return value_; }
-bool IntegerConstant::gen_parens() const { return gen_parens_; }
 
-DoubleConstant::DoubleConstant(double value, bool gen_parens)
-    : value_(value), gen_parens_(gen_parens) {}
-
+DoubleConstant::DoubleConstant(double value) : value_(value) {}
 double DoubleConstant::value() const { return value_; }
-bool DoubleConstant::gen_parens() const { return gen_parens_; }
+
+ParenthesizedExpr::ParenthesizedExpr(Expr expr)
+    : expr_(std::make_unique<Expr>(std::move(expr))) {}
+const Expr& ParenthesizedExpr::expr() const { return *expr_; };
+
+AddressOf::AddressOf(Expr expr)
+    : expr_(std::make_unique<Expr>(std::move(expr))) {}
+const Expr& AddressOf::expr() const { return *expr_; }
 
 /**
  * A visitor that converts an expression into a string.
@@ -114,134 +108,50 @@ class ExprPrinter final : public Visitor {
   using Visitor::visit;
 
   void visit(const BinaryExpr& e) override {
-    bool gen_parens = e.gen_parens();
-    if (gen_parens) {
-      os_ << "(";
-    }
-
-    // Rules for parenthesising the left hand side:
-    // 1. If the left hand side is already parenthesised, no need to do
-    //    anything.
-    // 2. If the left hand side has a strictly lower precedence than ours,
-    //    then we will have to emit parens.
-    //    Example: We emit `(3 + 4) * 5` instead of `3 + 4 * 5`.
-    // 3. If the left hand side has the same precedence as we do, then we
-    //    don't have to emit any parens. This is because all lldb-eval
-    //    binary operators have left-to-right associativity.
-    //    Example: We do not have to emit `(3 - 4) + 5`, `3 - 4 + 5` will also
-    //    do.
-    const auto* lhs_bin = std::get_if<BinaryExpr>(&e.lhs());
-    bool lhs_gen_parens = lhs_bin != nullptr && !lhs_bin->gen_parens() &&
-                          lhs_bin->precedence() < e.precedence();
-
-    if (lhs_gen_parens) {
-      os_ << "(";
-      visit(e.lhs());
-      os_ << ")";
-    } else {
-      visit(e.lhs());
-    }
-
+    visit(e.lhs());
     os_ << " " << BIN_OP_TABLE[(size_t)e.op()].symbol << " ";
-
-    // Rules for parenthesising the right hand side:
-    // 1. If the right hand side is already parenthesised, no need to do
-    //    anything.
-    // 2. If the right hand side has a strictly lower precedence than ours,
-    //    then we will have to emit parens.
-    //    Example: We emit `5 * (3 + 4)` instead of `5 * 3 + 4`.
-    // 3. If the right hand side has the same precedence as we do, then we
-    //    should emit parens for good measure. This is because all lldb-eval
-    //    binary operators have left-to-right associativity and we do not
-    //    want to violate this with respect to the generated AST.
-    //    Example: We emit `3 - (4 + 5)` instead of `3 - 4 + 5`. We also
-    //    emit `3 + (4 + 5)` instead of `3 + 4 + 5`, even though both
-    //    expressions are equivalent.
-    const auto* rhs_bin = std::get_if<BinaryExpr>(&e.rhs());
-    bool rhs_gen_parens = rhs_bin != nullptr && !rhs_bin->gen_parens() &&
-                          rhs_bin->precedence() <= e.precedence();
-    if (rhs_gen_parens) {
-      os_ << "(";
-      visit(e.rhs());
-      os_ << ")";
-    } else {
-      visit(e.rhs());
-    }
-
-    if (gen_parens) {
-      os_ << ")";
-    }
+    visit(e.rhs());
   }
 
-  void visit(const VariableExpr& e) override {
-    if (e.gen_parens()) {
-      os_ << "(";
-    }
+  void visit(const VariableExpr& e) override { os_ << e.name(); }
 
-    os_ << e.name();
+  void visit(const IntegerConstant& e) override { os_ << e.value(); }
 
-    if (e.gen_parens()) {
-      os_ << ")";
-    }
-  }
-
-  void visit(const IntegerConstant& e) override {
-    if (e.gen_parens()) {
-      os_ << "(";
-    }
-
-    os_ << e.value();
-
-    if (e.gen_parens()) {
-      os_ << ")";
-    }
-  }
-
-  void visit(const DoubleConstant& e) override {
-    if (e.gen_parens()) {
-      os_ << "(";
-    }
-
-    os_ << e.value();
-
-    if (e.gen_parens()) {
-      os_ << ")";
-    }
-  }
+  void visit(const DoubleConstant& e) override { os_ << e.value(); }
 
   void visit(const UnaryExpr& e) override {
-    if (e.gen_parens()) {
-      os_ << "(";
-    }
-
     os_ << UN_OP_TABLE[(size_t)e.op()];
 
-    const auto* inner_as_binary = std::get_if<BinaryExpr>(&e.expr());
     const auto* inner_as_unary = std::get_if<UnaryExpr>(&e.expr());
-    if (inner_as_binary != nullptr) {
-      // Case 1: Inner expression is a binary expression: Just be conservative
-      // and emit parentheses
-      os_ << "(";
-      visit(*inner_as_binary);
-      os_ << ")";
-
-    } else if (inner_as_unary != nullptr) {
-      // Case 2: Avoiding emitting cases such as `++3` or `--3`
+    if (inner_as_unary != nullptr) {
+      // Avoid emitting cases such as `++3` or `--3`, print `+ +3` and `- -3`
+      // instead.
       bool needs_space = (e.op() == UnOp::Plus || e.op() == UnOp::Neg) &&
-                         e.op() == inner_as_unary->op() &&
-                         !inner_as_unary->gen_parens();
-
+                         e.op() == inner_as_unary->op();
       if (needs_space) {
         os_ << ' ';
       }
+
       visit(*inner_as_unary);
     } else {
       visit(e.expr());
     }
+  }
 
-    if (e.gen_parens()) {
-      os_ << ")";
+  void visit(const ParenthesizedExpr& e) override {
+    os_ << "(";
+    visit(e.expr());
+    os_ << ")";
+  }
+
+  void visit(const AddressOf& e) override {
+    os_ << "&";
+
+    if (std::holds_alternative<AddressOf>(e.expr())) {
+      // Avoid accidentally printing e.g. `&&x`, print `& &x` instead.
+      os_ << " ";
     }
+    visit(e.expr());
   }
 
   std::string to_string() const { return os_.str(); }
@@ -295,9 +205,23 @@ class ExprDumper final : public Visitor {
     printf("%*sUnary expression of type %s\n", indent, "", symbol);
 
     indent += SPACES_PER_INDENTATION;
-
     visit(e.expr());
+    indent -= SPACES_PER_INDENTATION;
+  }
 
+  void visit(const ParenthesizedExpr& e) override {
+    printf("%*sParenthesized expression\n", indent, "");
+
+    indent += SPACES_PER_INDENTATION;
+    visit(e.expr());
+    indent -= SPACES_PER_INDENTATION;
+  }
+
+  void visit(const AddressOf& e) override {
+    printf("%*sAddress of\n", indent, "");
+
+    indent += SPACES_PER_INDENTATION;
+    visit(e.expr());
     indent -= SPACES_PER_INDENTATION;
   }
 
@@ -311,5 +235,7 @@ void dump_expr(const Expr& expr) {
   ExprDumper dumper;
   dumper.Visitor::visit(expr);
 }
+
+int bin_op_precedence(BinOp op) { return BIN_OP_TABLE[(size_t)op].precedence; }
 
 }  // namespace fuzzer

@@ -47,7 +47,8 @@ class ExprGenerator {
 
   using WeightsArray = std::array<float, NUM_EXPR_KINDS>;
 
-  bool fifty_fifty();
+  Expr maybe_parenthesized(Expr expr);
+
   IntegerConstant gen_integer_constant(const WeightsArray&);
   DoubleConstant gen_double_constant(const WeightsArray&);
   VariableExpr gen_variable_expr(const WeightsArray&);

@@ -29,6 +29,8 @@ class UnaryExpr;
 class VariableExpr;
 class IntegerConstant;
 class DoubleConstant;
+class ParenthesizedExpr;
+class AddressOf;
 
 enum class UnOp : unsigned char {
   Plus,
@@ -66,78 +68,90 @@ enum class BinOp : unsigned char {
 };
 
 using Expr = std::variant<IntegerConstant, DoubleConstant, VariableExpr,
-                          BinaryExpr, UnaryExpr>;
+                          UnaryExpr, BinaryExpr, ParenthesizedExpr, AddressOf>;
 constexpr size_t NUM_EXPR_KINDS = std::variant_size_v<Expr>;
 
 class BinaryExpr {
  public:
-  BinaryExpr(Expr lhs, BinOp op, Expr rhs, bool gen_parens);
+  BinaryExpr(Expr lhs, BinOp op, Expr rhs);
 
   const Expr& lhs() const;
   const Expr& rhs() const;
   BinOp op() const;
-  bool gen_parens() const;
   int precedence() const;
 
  private:
   std::unique_ptr<Expr> lhs_;
   std::unique_ptr<Expr> rhs_;
   BinOp op_;
-  bool gen_parens_;
 };
 
 class UnaryExpr {
  public:
-  UnaryExpr(UnOp op, Expr expr, bool gen_parens);
+  UnaryExpr(UnOp op, Expr expr);
 
   UnOp op() const;
   const Expr& expr() const;
-  bool gen_parens() const;
 
  private:
   std::unique_ptr<Expr> expr_;
   UnOp op_;
-  bool gen_parens_;
 };
 
 class VariableExpr {
  public:
-  VariableExpr(std::string name, bool gen_parens);
+  explicit VariableExpr(std::string name);
 
   const std::string& name() const;
-  bool gen_parens() const;
 
  private:
   std::string name_;
-  bool gen_parens_;
 };
 
 class IntegerConstant {
  public:
-  IntegerConstant(uint64_t value, bool gen_parens);
+  explicit IntegerConstant(uint64_t value);
 
   uint64_t value() const;
-  bool gen_parens() const;
 
  private:
   uint64_t value_;
-  bool gen_parens_;
 };
 
 class DoubleConstant {
  public:
-  DoubleConstant(double value, bool gen_parens);
+  explicit DoubleConstant(double value);
 
   double value() const;
-  bool gen_parens() const;
 
  private:
   double value_;
-  bool gen_parens_;
+};
+
+class ParenthesizedExpr {
+ public:
+  explicit ParenthesizedExpr(Expr expr);
+
+  const Expr& expr() const;
+
+ private:
+  std::unique_ptr<Expr> expr_;
+};
+
+class AddressOf {
+ public:
+  explicit AddressOf(Expr expr);
+
+  const Expr& expr() const;
+
+ private:
+  std::unique_ptr<Expr> expr_;
 };
 
 std::string stringify_expr(const Expr& expr);
 void dump_expr(const Expr& expr);
+
+int bin_op_precedence(BinOp op);
 
 }  // namespace fuzzer
 

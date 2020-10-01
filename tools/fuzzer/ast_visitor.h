@@ -32,6 +32,8 @@ class Visitor {
   virtual void visit(const VariableExpr& e) = 0;
   virtual void visit(const IntegerConstant& e) = 0;
   virtual void visit(const DoubleConstant& e) = 0;
+  virtual void visit(const ParenthesizedExpr& e) = 0;
+  virtual void visit(const AddressOf& e) = 0;
 
   void visit(const Expr& e) { std::visit(*this, e); }
 
@@ -40,6 +42,8 @@ class Visitor {
   void operator()(const VariableExpr& e) { visit(e); }
   void operator()(const IntegerConstant& e) { visit(e); }
   void operator()(const DoubleConstant& e) { visit(e); }
+  void operator()(const ParenthesizedExpr& e) { visit(e); }
+  void operator()(const AddressOf& e) { visit(e); }
 };
 
 }  // namespace fuzzer

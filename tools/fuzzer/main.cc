@@ -84,6 +84,7 @@ void run_fuzzer(lldb::SBFrame& frame) {
     padding = std::max(padding, str.size());
     exprs.emplace_back(std::move(str));
   }
+
   for (const auto& e : exprs) {
     auto lldb_value = frame.EvaluateExpression(e.c_str());
     printf("lldb:      `%-*s` yields: `%s`\n", (int)padding, e.c_str(),
