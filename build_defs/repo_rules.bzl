@@ -20,8 +20,9 @@ def _impl(repository_ctx):
     llvm_path = repository_ctx.os.environ.get("LLVM_INSTALL_PATH")
     if llvm_path == None:
         fail(
-          "Error: LLVM_INSTALL_PATH is not defined. Set it to a location " +
-          "with LLVM {bin,lib,include} directories. E.g. \"/usr/lib/llvm\".")
+            "Error: LLVM_INSTALL_PATH is not defined. Set it to a location " +
+            "with LLVM {bin,lib,include} directories. E.g. \"/usr/lib/llvm\".",
+        )
 
     repository_ctx.symlink(llvm_path + "/bin", "bin")
     repository_ctx.symlink(llvm_path + "/lib", "lib")
