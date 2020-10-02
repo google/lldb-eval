@@ -81,11 +81,19 @@ export LLVM_INSTALL_PATH=/usr/lib/llvm-10
 export LLVM_INSTALL_PATH=C:\src\llvm-project\build_x64_optdebug\install
 ```
 
+Depending on your distribution of LLVM, you may need to provide
+`--@llvm_project_local//:llvm_build={static,dynamic}` flag. If your `liblldb.so`
+is linked dynamically (this is the case for the one distributed via `apt`),
+then you need to use `llvm_build=dynamic`. By default, `llvm_build=static` is
+used (use this when building `LLDB` from source).
+
+> **Hint:** You can add this option to your `user.bazelrc`.
+
 Now you can build and test `lldb-eval`:
 
 ```bash
 # Build and run all tests
-bazel test :all
+bazel test :all --@llvm_project_local//:llvm_build=dynamic
 
 # Evaluate a sample expression
 bazel run :main -- "(1 + 2) * 42 / 4"

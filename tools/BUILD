@@ -46,17 +46,11 @@ cc_binary(
     data = [
         "//testdata:fuzzer_binary_gen",
         "//testdata:fuzzer_binary_srcs",
-    ] + select({
-        "@bazel_tools//src/conditions:windows": [
-            # There is no lldb-server on Windows.
-        ],
-        "//conditions:default": [
-            "@llvm_project_local//:lldb-server",
-        ],
-    }),
+        "@llvm_project_local//:lldb-server",
+    ],
     deps = [
+        ":fuzzer_lib",
         "//:lldb-eval",
-        "//tools:fuzzer_lib",
         "@bazel_tools//tools/cpp/runfiles",
         "@llvm_project_local//:lldb-api",
     ],
