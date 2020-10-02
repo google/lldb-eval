@@ -107,7 +107,8 @@ lldb::SBProcess LaunchTestProgram(const Runfiles& runfiles,
             if (bpId == bp.GetID()) {
               running = false;
             } else {
-              std::cerr << "Stopped at unknown breakpoint: " << bpId << std::endl;
+              std::cerr << "Stopped at unknown breakpoint: " << bpId
+                        << std::endl;
             }
           }
           break;
