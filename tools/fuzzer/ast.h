@@ -31,6 +31,10 @@ class IntegerConstant;
 class DoubleConstant;
 class ParenthesizedExpr;
 class AddressOf;
+class FieldAccess;
+class PtrFieldAccess;
+class ArrayIndex;
+class TernaryExpr;
 
 enum class UnOp : unsigned char {
   Plus,
@@ -68,7 +72,8 @@ enum class BinOp : unsigned char {
 };
 
 using Expr = std::variant<IntegerConstant, DoubleConstant, VariableExpr,
-                          UnaryExpr, BinaryExpr, ParenthesizedExpr, AddressOf>;
+                          UnaryExpr, BinaryExpr, ParenthesizedExpr, AddressOf,
+                          FieldAccess, PtrFieldAccess, ArrayIndex, TernaryExpr>;
 constexpr size_t NUM_EXPR_KINDS = std::variant_size_v<Expr>;
 
 class BinaryExpr {
@@ -146,6 +151,56 @@ class AddressOf {
 
  private:
   std::unique_ptr<Expr> expr_;
+};
+
+class FieldAccess {
+ public:
+  FieldAccess(Expr expr, std::string field);
+
+  const Expr& expr() const;
+  const std::string& field() const;
+
+ private:
+  std::unique_ptr<Expr> expr_;
+  std::string field_;
+};
+
+class PtrFieldAccess {
+ public:
+  PtrFieldAccess(Expr expr, std::string field);
+
+  const Expr& expr() const;
+  const std::string& field() const;
+
+ private:
+  std::unique_ptr<Expr> expr_;
+  std::string field_;
+};
+
+class ArrayIndex {
+ public:
+  ArrayIndex(Expr expr, Expr idx);
+
+  const Expr& expr() const;
+  const Expr& idx() const;
+
+ private:
+  std::unique_ptr<Expr> expr_;
+  std::unique_ptr<Expr> idx_;
+};
+
+class TernaryExpr {
+ public:
+  TernaryExpr(Expr cond, Expr lhs, Expr rhs);
+
+  const Expr& cond() const;
+  const Expr& lhs() const;
+  const Expr& rhs() const;
+
+ private:
+  std::unique_ptr<Expr> cond_;
+  std::unique_ptr<Expr> lhs_;
+  std::unique_ptr<Expr> rhs_;
 };
 
 std::string stringify_expr(const Expr& expr);

@@ -21,6 +21,7 @@
 #include <variant>
 
 #include "ast.h"
+#include "ast_visitor.h"
 
 namespace fuzzer {
 
@@ -36,6 +37,52 @@ static const std::array<ExprKindInfo, NUM_EXPR_KINDS> EXPR_KIND_INFO = {{
     {7.0, 0.4},  // ExprKind::BinaryExpr
     {3.0, 0.4},  // ExprKind::UnaryExpr
 }};
+
+class PrecedenceVisitor final : public Visitor {
+ public:
+  using Visitor::visit;
+
+  int precedence() const { return precedence_; }
+
+  void visit(const UnaryExpr&) override { precedence_ = 3; }
+
+  void visit(const BinaryExpr& e) override {
+    precedence_ = bin_op_precedence(e.op());
+  }
+
+  // Merely set a precedence higher than the largest one possible
+  void visit(const VariableExpr&) override { precedence_ = 0; }
+
+  // Merely set a precedence higher than the largest one possible
+  void visit(const IntegerConstant&) override { precedence_ = 0; }
+
+  // Merely set a precedence higher than the largest one possible
+  void visit(const DoubleConstant&) override { precedence_ = 0; }
+
+  // Merely set a precedence higher than the largest one possible
+  void visit(const ParenthesizedExpr&) override { precedence_ = 0; }
+
+  void visit(const AddressOf&) override { precedence_ = 3; }
+
+  void visit(const FieldAccess&) override { precedence_ = 2; }
+
+  void visit(const PtrFieldAccess&) override { precedence_ = 2; }
+
+  void visit(const ArrayIndex&) override { precedence_ = 2; }
+
+  void visit(const TernaryExpr&) override { precedence_ = 16; }
+
+ private:
+  // Default value, large enough to be lower than
+  int precedence_ = 20;
+};
+
+int expr_precedence(const Expr& e) {
+  PrecedenceVisitor visitor;
+  visitor.visit(e);
+
+  return visitor.precedence();
+}
 
 IntegerConstant ExprGenerator::gen_integer_constant(const WeightsArray&) {
   std::uniform_int_distribution<uint64_t> value_distr(0, MAX_INT_VALUE);
@@ -75,8 +122,8 @@ BinaryExpr ExprGenerator::gen_binary_expr(const WeightsArray& weights) {
   //    binary operators have left-to-right associativity.
   //    Example: We do not have to emit `(3 - 4) + 5`, `3 - 4 + 5` will also
   //    do.
-  const auto* lhs_bin = std::get_if<BinaryExpr>(&lhs);
-  if (lhs_bin != nullptr && lhs_bin->precedence() < bin_op_precedence(op)) {
+  auto lhs_precedence = expr_precedence(lhs);
+  if (lhs_precedence > bin_op_precedence(op)) {
     lhs = ParenthesizedExpr(std::move(lhs));
   }
 
@@ -93,8 +140,8 @@ BinaryExpr ExprGenerator::gen_binary_expr(const WeightsArray& weights) {
   //    Example: We emit `3 - (4 + 5)` instead of `3 - 4 + 5`. We also
   //    emit `3 + (4 + 5)` instead of `3 + 4 + 5`, even though both
   //    expressions are equivalent.
-  const auto* rhs_bin = std::get_if<BinaryExpr>(&rhs);
-  if (rhs_bin != nullptr && rhs_bin->precedence() <= bin_op_precedence(op)) {
+  auto rhs_precedence = expr_precedence(rhs);
+  if (rhs_precedence >= bin_op_precedence(op)) {
     rhs = ParenthesizedExpr(std::move(rhs));
   }
 
@@ -107,7 +154,9 @@ UnaryExpr ExprGenerator::gen_unary_expr(const WeightsArray& weights) {
   std::uniform_int_distribution<size_t> op_distr(0, (size_t)UnOp::EnumLast - 1);
   auto op = (UnOp)op_distr(rng_);
 
-  if (std::holds_alternative<BinaryExpr>(expr)) {
+  constexpr int UNARY_PRECEDENCE = 3;
+
+  if (expr_precedence(expr) > UNARY_PRECEDENCE) {
     expr = ParenthesizedExpr(std::move(expr));
   }
 

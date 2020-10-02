@@ -100,6 +100,32 @@ AddressOf::AddressOf(Expr expr)
     : expr_(std::make_unique<Expr>(std::move(expr))) {}
 const Expr& AddressOf::expr() const { return *expr_; }
 
+FieldAccess::FieldAccess(Expr expr, std::string field)
+    : expr_(std::make_unique<Expr>(std::move(expr))),
+      field_(std::move(field)) {}
+const Expr& FieldAccess::expr() const { return *expr_; }
+const std::string& FieldAccess::field() const { return field_; }
+
+PtrFieldAccess::PtrFieldAccess(Expr expr, std::string field)
+    : expr_(std::make_unique<Expr>(std::move(expr))),
+      field_(std::move(field)) {}
+const Expr& PtrFieldAccess::expr() const { return *expr_; }
+const std::string& PtrFieldAccess::field() const { return field_; }
+
+ArrayIndex::ArrayIndex(Expr expr, Expr idx)
+    : expr_(std::make_unique<Expr>(std::move(expr))),
+      idx_(std::make_unique<Expr>(std::move(idx))) {}
+const Expr& ArrayIndex::expr() const { return *expr_; }
+const Expr& ArrayIndex::idx() const { return *idx_; }
+
+TernaryExpr::TernaryExpr(Expr cond, Expr lhs, Expr rhs)
+    : cond_(std::make_unique<Expr>(std::move(cond))),
+      lhs_(std::make_unique<Expr>(std::move(lhs))),
+      rhs_(std::make_unique<Expr>(std::move(rhs))) {}
+const Expr& TernaryExpr::cond() const { return *cond_; }
+const Expr& TernaryExpr::lhs() const { return *lhs_; }
+const Expr& TernaryExpr::rhs() const { return *rhs_; }
+
 /**
  * A visitor that converts an expression into a string.
  */
@@ -154,6 +180,31 @@ class ExprPrinter final : public Visitor {
     visit(e.expr());
   }
 
+  void visit(const FieldAccess& e) override {
+    visit(e.expr());
+    os_ << "." << e.field();
+  }
+
+  void visit(const PtrFieldAccess& e) override {
+    visit(e.expr());
+    os_ << "->" << e.field();
+  }
+
+  void visit(const ArrayIndex& e) override {
+    visit(e.expr());
+    os_ << "[";
+    visit(e.idx());
+    os_ << "]";
+  }
+
+  void visit(const TernaryExpr& e) override {
+    visit(e.cond());
+    os_ << " ? ";
+    visit(e.lhs());
+    os_ << " : ";
+    visit(e.rhs());
+  }
+
   std::string to_string() const { return os_.str(); }
 
  private:
@@ -176,59 +227,109 @@ class ExprDumper final : public Visitor {
 
   void visit(const BinaryExpr& e) override {
     const auto* symbol = BIN_OP_TABLE[(size_t)e.op()].symbol;
-    printf("%*sBinary expression of type %s\n", indent, "", symbol);
+    printf("%*sBinary expression of type %s\n", indent_, "", symbol);
 
-    indent += SPACES_PER_INDENTATION;
+    indent_ += SPACES_PER_INDENTATION;
 
     visit(e.lhs());
     visit(e.rhs());
 
-    indent -= SPACES_PER_INDENTATION;
+    indent_ -= SPACES_PER_INDENTATION;
   }
 
   void visit(const VariableExpr& e) override {
-    printf("%*sVariable expression for identifier `%s`\n", indent, "",
+    printf("%*sVariable expression for identifier `%s`\n", indent_, "",
            e.name().c_str());
   }
 
   void visit(const IntegerConstant& e) override {
-    printf("%*sInteger constant with value `%" PRIu64 "`\n", indent, "",
+    printf("%*sInteger constant with value `%" PRIu64 "`\n", indent_, "",
            e.value());
   }
 
   void visit(const DoubleConstant& e) override {
-    printf("%*sDouble constant with value `%f`\n", indent, "", e.value());
+    printf("%*sDouble constant with value `%f`\n", indent_, "", e.value());
   }
 
   void visit(const UnaryExpr& e) override {
     const auto* symbol = UN_OP_TABLE[(size_t)e.op()];
-    printf("%*sUnary expression of type %s\n", indent, "", symbol);
+    printf("%*sUnary expression of type %s\n", indent_, "", symbol);
 
-    indent += SPACES_PER_INDENTATION;
+    indent_ += SPACES_PER_INDENTATION;
     visit(e.expr());
-    indent -= SPACES_PER_INDENTATION;
+    indent_ -= SPACES_PER_INDENTATION;
   }
 
   void visit(const ParenthesizedExpr& e) override {
-    printf("%*sParenthesized expression\n", indent, "");
+    printf("%*sParenthesized expression\n", indent_, "");
 
-    indent += SPACES_PER_INDENTATION;
+    indent_ += SPACES_PER_INDENTATION;
     visit(e.expr());
-    indent -= SPACES_PER_INDENTATION;
+    indent_ -= SPACES_PER_INDENTATION;
   }
 
   void visit(const AddressOf& e) override {
-    printf("%*sAddress of\n", indent, "");
+    printf("%*sAddress of\n", indent_, "");
 
-    indent += SPACES_PER_INDENTATION;
+    indent_ += SPACES_PER_INDENTATION;
     visit(e.expr());
-    indent -= SPACES_PER_INDENTATION;
+    indent_ -= SPACES_PER_INDENTATION;
+  }
+
+  void visit(const FieldAccess& e) override {
+    printf("%*sField access for field `%s`\n", indent_, "", e.field().c_str());
+
+    indent_ += SPACES_PER_INDENTATION;
+    visit(e.expr());
+    indent_ -= SPACES_PER_INDENTATION;
+  }
+
+  void visit(const PtrFieldAccess& e) override {
+    printf("%*sPointer field access for field `%s`\n", indent_, "",
+           e.field().c_str());
+
+    indent_ += SPACES_PER_INDENTATION;
+    visit(e.expr());
+    indent_ -= SPACES_PER_INDENTATION;
+  }
+
+  void visit(const ArrayIndex& e) override {
+    printf("%*sArray index\n", indent_, "");
+
+    printf("%*sArray\n", indent_, "");
+    indent_ += SPACES_PER_INDENTATION;
+    visit(e.expr());
+    indent_ -= SPACES_PER_INDENTATION;
+
+    printf("%*sIndex:\n", indent_, "");
+    indent_ += SPACES_PER_INDENTATION;
+    visit(e.idx());
+    indent_ -= SPACES_PER_INDENTATION;
+  }
+
+  void visit(const TernaryExpr& e) override {
+    printf("%*sTernary expression\n", indent_, "");
+
+    printf("%*sCondition:\n", indent_, "");
+    indent_ += SPACES_PER_INDENTATION;
+    visit(e.cond());
+    indent_ -= SPACES_PER_INDENTATION;
+
+    printf("%*sLeft-hand size:\n", indent_, "");
+    indent_ += SPACES_PER_INDENTATION;
+    visit(e.lhs());
+    indent_ -= SPACES_PER_INDENTATION;
+
+    printf("%*sRight-hand size:\n", indent_, "");
+    indent_ += SPACES_PER_INDENTATION;
+    visit(e.rhs());
+    indent_ -= SPACES_PER_INDENTATION;
   }
 
  private:
   static constexpr int SPACES_PER_INDENTATION = 2;
 
-  int indent = 0;
+  int indent_ = 0;
 };
 
 void dump_expr(const Expr& expr) {
