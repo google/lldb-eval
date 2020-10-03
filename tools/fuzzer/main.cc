@@ -73,7 +73,8 @@ void run_fuzzer(lldb::SBFrame& frame) {
   auto var_value = frame.GetValueForVariablePath(VAR);
   printf("Value of variable `%s` is: %s\n", VAR, var_value.GetValue());
 
-  fuzzer::ExprGenerator gen(seed);
+  auto rng = std::make_unique<fuzzer::DefaultGeneratorRng>(seed);
+  fuzzer::ExprGenerator gen(std::move(rng));
   std::vector<std::string> exprs;
 
   size_t padding = 0;

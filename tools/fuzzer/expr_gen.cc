@@ -85,15 +85,14 @@ int expr_precedence(const Expr& e) {
 }
 
 IntegerConstant ExprGenerator::gen_integer_constant(const WeightsArray&) {
-  std::uniform_int_distribution<uint64_t> value_distr(0, MAX_INT_VALUE);
-  auto value = value_distr(rng_);
+  auto value = rng_->gen_u64(0, MAX_INT_VALUE);
 
   return IntegerConstant(value);
 }
 
 DoubleConstant ExprGenerator::gen_double_constant(const WeightsArray&) {
   std::uniform_real_distribution<double> value_distr(0.0, MAX_DOUBLE_VALUE);
-  auto value = value_distr(rng_);
+  auto value = rng_->gen_double(0.0, MAX_DOUBLE_VALUE);
 
   return DoubleConstant(value);
 }
@@ -103,14 +102,10 @@ VariableExpr ExprGenerator::gen_variable_expr(const WeightsArray&) {
 }
 
 BinaryExpr ExprGenerator::gen_binary_expr(const WeightsArray& weights) {
+  auto op = (BinOp)rng_->gen_int((int)BinOp::EnumFirst, (int)BinOp::EnumLast);
+
   auto lhs = gen_with_weights(weights);
   auto rhs = gen_with_weights(weights);
-
-  // The interval of `uniform_int_distribution` is inclusive.
-  int op_min = (int)BinOp::EnumFirst;
-  int op_max = (int)BinOp::EnumLast;
-  std::uniform_int_distribution<int> op_distr(op_min, op_max);
-  BinOp op = (BinOp)op_distr(rng_);
 
   // Rules for parenthesising the left hand side:
   // 1. If the left hand side is not a binary expression, then there is no need
@@ -151,12 +146,7 @@ BinaryExpr ExprGenerator::gen_binary_expr(const WeightsArray& weights) {
 
 UnaryExpr ExprGenerator::gen_unary_expr(const WeightsArray& weights) {
   auto expr = gen_with_weights(weights);
-
-  int op_min = (int)UnOp::EnumFirst;
-  int op_max = (int)UnOp::EnumLast;
-
-  std::uniform_int_distribution<int> op_distr(op_min, op_max);
-  UnOp op = (UnOp)op_distr(rng_);
+  auto op = (UnOp)rng_->gen_int((int)UnOp::EnumFirst, (int)UnOp::EnumLast);
 
   constexpr int UNARY_PRECEDENCE = 3;
 
@@ -176,8 +166,7 @@ Expr ExprGenerator::gen_with_weights(const WeightsArray& weights) {
     sum += e;
   }
 
-  std::uniform_real_distribution<float> distr(0, sum);
-  auto val = distr(rng_);
+  auto val = rng_->gen_double(0, sum);
 
   float running_sum = 0;
   // Make sure `kind` is always initialized.
@@ -222,8 +211,7 @@ Expr ExprGenerator::gen_with_weights(const WeightsArray& weights) {
 }
 
 Expr ExprGenerator::maybe_parenthesized(Expr expr) {
-  std::bernoulli_distribution fifty_fifty_distr;
-  bool parenthesize = fifty_fifty_distr(rng_);
+  bool parenthesize = rng_->gen_bernoulli();
   if (parenthesize) {
     return ParenthesizedExpr(std::move(expr));
   }
@@ -238,6 +226,26 @@ Expr ExprGenerator::generate() {
   }
 
   return gen_with_weights(weights);
+}
+
+int DefaultGeneratorRng::gen_int(int min, int max) {
+  std::uniform_int_distribution<int> distr(min, max);
+  return distr(rng_);
+}
+
+uint64_t DefaultGeneratorRng::gen_u64(uint64_t min, uint64_t max) {
+  std::uniform_int_distribution<uint64_t> distr(min, max);
+  return distr(rng_);
+}
+
+double DefaultGeneratorRng::gen_double(double min, double max) {
+  std::uniform_real_distribution<double> distr(min, max);
+  return distr(rng_);
+}
+
+bool DefaultGeneratorRng::gen_bernoulli(float p) {
+  std::bernoulli_distribution distr(p);
+  return distr(rng_);
 }
 
 }  // namespace fuzzer

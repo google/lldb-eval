@@ -1,4 +1,4 @@
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
 COPTS = select({
     "@bazel_tools//src/conditions:windows": [
@@ -24,6 +24,7 @@ cc_binary(
         "@llvm_project_local//:llvm-support",
     ],
 )
+
 
 cc_library(
     name = "fuzzer_lib",
@@ -58,6 +59,19 @@ cc_binary(
         "//:lldb-eval",
         "//tools:fuzzer_lib",
         "@bazel_tools//tools/cpp/runfiles",
+        "@llvm_project_local//:lldb-api",
+    ],
+)
+
+cc_test(
+    name = "fuzzer_test",
+    srcs = ["fuzzer/test.cc"],
+    copts = COPTS,
+    deps = [
+        "//:lldb-eval",
+        "//tools:fuzzer_lib",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@llvm_project_local//:lldb-api",
     ],
 )

@@ -25,9 +25,33 @@
 
 namespace fuzzer {
 
+class GeneratorRng {
+ public:
+  virtual ~GeneratorRng() {}
+
+  virtual int gen_int(int min, int max) = 0;
+  virtual uint64_t gen_u64(uint64_t min, uint64_t max) = 0;
+  virtual double gen_double(double min, double max) = 0;
+  virtual bool gen_bernoulli(float p = 0.5) = 0;
+};
+
+class DefaultGeneratorRng : public GeneratorRng {
+ public:
+  explicit DefaultGeneratorRng(uint32_t seed) : rng_(seed) {}
+
+  int gen_int(int min, int max) override;
+  uint64_t gen_u64(uint64_t min, uint64_t max) override;
+  double gen_double(double min, double max) override;
+  bool gen_bernoulli(float p = 0.5) override;
+
+ private:
+  std::mt19937 rng_;
+};
+
 class ExprGenerator {
  public:
-  explicit ExprGenerator(uint32_t seed) : rng_(seed) {}
+  explicit ExprGenerator(std::unique_ptr<GeneratorRng> rng)
+      : rng_(std::move(rng)) {}
 
   Expr generate();
 
@@ -58,7 +82,7 @@ class ExprGenerator {
   Expr gen_with_weights(const WeightsArray&);
 
  private:
-  std::mt19937 rng_;
+  std::unique_ptr<GeneratorRng> rng_;
 };
 
 }  // namespace fuzzer

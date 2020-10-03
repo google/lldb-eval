@@ -15,7 +15,7 @@ jobs:
       with:
         clangFormatVersion: 11
         inplace: ""
-  
+
   buildifier:
     runs-on: ubuntu-latest
     steps:
