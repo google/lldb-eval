@@ -37,16 +37,19 @@ class ArrayIndex;
 class TernaryExpr;
 
 enum class UnOp : unsigned char {
-  Plus,
+  EnumFirst,
+  Plus = EnumFirst,
   Neg,
   LogicalNot,
   BitNot,
   EnumLast = BitNot,
 };
+constexpr size_t NUM_UN_OPS = (size_t)UnOp::EnumLast + 1;
 
 enum class BinOp : unsigned char {
+  EnumFirst,
   // Arithmetic operators
-  Plus,
+  Plus = EnumFirst,
   Minus,
   Mult,
   Div,
@@ -70,6 +73,7 @@ enum class BinOp : unsigned char {
   // Used to determine the last enum element
   EnumLast = Ge,
 };
+constexpr size_t NUM_BIN_OPS = (size_t)BinOp::EnumLast + 1;
 
 using Expr = std::variant<IntegerConstant, DoubleConstant, VariableExpr,
                           UnaryExpr, BinaryExpr, ParenthesizedExpr, AddressOf,

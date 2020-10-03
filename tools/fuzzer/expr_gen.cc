@@ -107,9 +107,10 @@ BinaryExpr ExprGenerator::gen_binary_expr(const WeightsArray& weights) {
   auto rhs = gen_with_weights(weights);
 
   // The interval of `uniform_int_distribution` is inclusive.
-  auto op_max = (size_t)BinOp::EnumLast - 1;
-  std::uniform_int_distribution<size_t> op_distr(0, op_max);
-  auto op = (BinOp)op_distr(rng_);
+  int op_min = (int)BinOp::EnumFirst;
+  int op_max = (int)BinOp::EnumLast;
+  std::uniform_int_distribution<int> op_distr(op_min, op_max);
+  BinOp op = (BinOp)op_distr(rng_);
 
   // Rules for parenthesising the left hand side:
   // 1. If the left hand side is not a binary expression, then there is no need
@@ -151,8 +152,11 @@ BinaryExpr ExprGenerator::gen_binary_expr(const WeightsArray& weights) {
 UnaryExpr ExprGenerator::gen_unary_expr(const WeightsArray& weights) {
   auto expr = gen_with_weights(weights);
 
-  std::uniform_int_distribution<size_t> op_distr(0, (size_t)UnOp::EnumLast - 1);
-  auto op = (UnOp)op_distr(rng_);
+  int op_min = (int)UnOp::EnumFirst;
+  int op_max = (int)UnOp::EnumLast;
+
+  std::uniform_int_distribution<int> op_distr(op_min, op_max);
+  UnOp op = (UnOp)op_distr(rng_);
 
   constexpr int UNARY_PRECEDENCE = 3;
 
