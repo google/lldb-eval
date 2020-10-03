@@ -226,110 +226,115 @@ class ExprDumper final : public Visitor {
   using Visitor::visit;
 
   void visit(const BinaryExpr& e) override {
+    emit_marked_indentation();
+
     const auto* symbol = BIN_OP_TABLE[(size_t)e.op()].symbol;
-    printf("%*sBinary expression of type %s\n", indent_, "", symbol);
+    printf("Binary expression of type `%s`:\n", symbol);
 
-    indent_ += SPACES_PER_INDENTATION;
+    emit_indentation();
+    printf("Left-hand side:\n");
+    nested_indentation_visit(e.lhs());
 
-    visit(e.lhs());
-    visit(e.rhs());
-
-    indent_ -= SPACES_PER_INDENTATION;
+    emit_indentation();
+    printf("Right-hand side:\n");
+    nested_indentation_visit(e.rhs());
   }
 
   void visit(const VariableExpr& e) override {
-    printf("%*sVariable expression for identifier `%s`\n", indent_, "",
-           e.name().c_str());
+    emit_marked_indentation();
+    printf("Variable expression for identifier `%s`\n", e.name().c_str());
   }
 
   void visit(const IntegerConstant& e) override {
-    printf("%*sInteger constant with value `%" PRIu64 "`\n", indent_, "",
-           e.value());
+    emit_marked_indentation();
+    printf("Integer constant with value `%" PRIu64 "`\n", e.value());
   }
 
   void visit(const DoubleConstant& e) override {
-    printf("%*sDouble constant with value `%f`\n", indent_, "", e.value());
+    emit_marked_indentation();
+    printf("Double constant with value `%f`\n", e.value());
   }
 
   void visit(const UnaryExpr& e) override {
+    emit_marked_indentation();
     const auto* symbol = UN_OP_TABLE[(size_t)e.op()];
-    printf("%*sUnary expression of type %s\n", indent_, "", symbol);
+    printf("Unary expression of type %s\n", symbol);
 
-    indent_ += SPACES_PER_INDENTATION;
-    visit(e.expr());
-    indent_ -= SPACES_PER_INDENTATION;
+    nested_indentation_visit(e.expr());
   }
 
   void visit(const ParenthesizedExpr& e) override {
-    printf("%*sParenthesized expression\n", indent_, "");
+    emit_marked_indentation();
+    printf("Parenthesized expression:\n");
 
-    indent_ += SPACES_PER_INDENTATION;
-    visit(e.expr());
-    indent_ -= SPACES_PER_INDENTATION;
+    nested_indentation_visit(e.expr());
   }
 
   void visit(const AddressOf& e) override {
-    printf("%*sAddress of\n", indent_, "");
+    emit_marked_indentation();
+    printf("Address of:\n");
 
-    indent_ += SPACES_PER_INDENTATION;
-    visit(e.expr());
-    indent_ -= SPACES_PER_INDENTATION;
+    nested_indentation_visit(e.expr());
   }
 
   void visit(const FieldAccess& e) override {
-    printf("%*sField access for field `%s`\n", indent_, "", e.field().c_str());
+    emit_marked_indentation();
+    printf("Field access on `%s`:\n", e.field().c_str());
 
-    indent_ += SPACES_PER_INDENTATION;
-    visit(e.expr());
-    indent_ -= SPACES_PER_INDENTATION;
+    nested_indentation_visit(e.expr());
   }
 
   void visit(const PtrFieldAccess& e) override {
-    printf("%*sPointer field access for field `%s`\n", indent_, "",
-           e.field().c_str());
+    emit_marked_indentation();
+    printf("Pointer field access on `%s`:\n", e.field().c_str());
 
-    indent_ += SPACES_PER_INDENTATION;
-    visit(e.expr());
-    indent_ -= SPACES_PER_INDENTATION;
+    nested_indentation_visit(e.expr());
   }
 
   void visit(const ArrayIndex& e) override {
-    printf("%*sArray index\n", indent_, "");
+    emit_marked_indentation();
+    printf("Array index:\n");
 
-    printf("%*sArray\n", indent_, "");
-    indent_ += SPACES_PER_INDENTATION;
-    visit(e.expr());
-    indent_ -= SPACES_PER_INDENTATION;
+    emit_indentation();
+    printf("Array:\n");
+    nested_indentation_visit(e.expr());
 
-    printf("%*sIndex:\n", indent_, "");
-    indent_ += SPACES_PER_INDENTATION;
-    visit(e.idx());
-    indent_ -= SPACES_PER_INDENTATION;
+    emit_indentation();
+    printf("Index:\n");
+    nested_indentation_visit(e.idx());
   }
 
   void visit(const TernaryExpr& e) override {
-    printf("%*sTernary expression\n", indent_, "");
+    emit_marked_indentation();
+    printf("Ternary expression:\n");
 
-    printf("%*sCondition:\n", indent_, "");
-    indent_ += SPACES_PER_INDENTATION;
-    visit(e.cond());
-    indent_ -= SPACES_PER_INDENTATION;
+    emit_indentation();
+    printf("Condition:\n");
+    nested_indentation_visit(e.cond());
 
-    printf("%*sLeft-hand size:\n", indent_, "");
-    indent_ += SPACES_PER_INDENTATION;
-    visit(e.lhs());
-    indent_ -= SPACES_PER_INDENTATION;
+    emit_indentation();
+    printf("Left-hand side:\n");
+    nested_indentation_visit(e.lhs());
 
-    printf("%*sRight-hand size:\n", indent_, "");
-    indent_ += SPACES_PER_INDENTATION;
-    visit(e.rhs());
-    indent_ -= SPACES_PER_INDENTATION;
+    emit_indentation();
+    printf("Right-hand side:\n");
+    nested_indentation_visit(e.rhs());
   }
 
  private:
   static constexpr int SPACES_PER_INDENTATION = 2;
 
-  int indent_ = 0;
+  void emit_marked_indentation() { printf("%*s%s", indent_spaces_, "", "+ "); }
+  void emit_indentation() { printf("%*s%s", indent_spaces_, "", "  "); }
+
+  void nested_indentation_visit(const Expr& e) {
+    indent_spaces_ += SPACES_PER_INDENTATION;
+    visit(e);
+    indent_spaces_ -= SPACES_PER_INDENTATION;
+  }
+
+ private:
+  int indent_spaces_ = 0;
 };
 
 void dump_expr(const Expr& expr) {
