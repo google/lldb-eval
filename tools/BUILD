@@ -25,7 +25,6 @@ cc_binary(
     ],
 )
 
-
 cc_library(
     name = "fuzzer_lib",
     srcs = [
