@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "ast.h"
+#include "ast_visitor.h"
 #include "expr_gen.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -20,68 +21,131 @@ void PrintTo(const Expr& expr, std::ostream* os) {
 
 }  // namespace fuzzer
 
-class FakeGeneratorRng : public GeneratorRng {
+class FakeGeneratorRng : public GeneratorRng, private Visitor {
  public:
-  FakeGeneratorRng(std::vector<uint64_t> fake_u64_results,
-                   std::vector<int> fake_int_results,
-                   std::vector<double> fake_double_results,
-                   std::vector<bool> fake_bool_results)
-      : fake_u64_results_(std::move(fake_u64_results)),
-        fake_int_results_(std::move(fake_int_results)),
-        fake_double_results_(std::move(fake_double_results)),
-        fake_bool_results_(std::move(fake_bool_results)) {
-    std::reverse(fake_u64_results_.begin(), fake_u64_results_.end());
-    std::reverse(fake_int_results_.begin(), fake_int_results_.end());
-    std::reverse(fake_double_results_.begin(), fake_double_results_.end());
-    std::reverse(fake_bool_results_.begin(), fake_bool_results_.end());
+  FakeGeneratorRng() {}
+
+  BinOp gen_bin_op() override {
+    assert(!bin_ops_.empty());
+    BinOp op = bin_ops_.back();
+    bin_ops_.pop_back();
+
+    return op;
   }
 
-  int gen_int(int min, int max) override {
-    assert(!fake_int_results_.empty());
-    auto val = fake_int_results_.back();
-    fake_int_results_.pop_back();
+  UnOp gen_un_op() override {
+    assert(!un_ops_.empty());
+    UnOp op = un_ops_.back();
+    un_ops_.pop_back();
 
-    assert(min <= val && val <= max);
-    return val;
+    return op;
   }
 
-  uint64_t gen_u64(uint64_t min, uint64_t max) override {
-    assert(!fake_u64_results_.empty());
-    auto val = fake_u64_results_.back();
-    fake_u64_results_.pop_back();
+  ExprKind gen_expr_kind(const WeightsArray&) override {
+    assert(!kinds_.empty());
+    ExprKind kind = kinds_.back();
+    kinds_.pop_back();
 
-    assert(min <= val && val <= max);
-    return val;
+    return kind;
   }
 
-  double gen_double(double min, double max) override {
-    assert(!fake_double_results_.empty());
-    auto val = fake_double_results_.back();
-    fake_double_results_.pop_back();
+  uint64_t gen_u64(uint64_t, uint64_t) override {
+    assert(!u64_constants_.empty());
+    uint64_t constant = u64_constants_.back();
+    u64_constants_.pop_back();
 
-    assert(min <= val && val <= max);
-    return val;
+    return constant;
   }
 
-  bool gen_bernoulli(float p = 0.5) override {
-    assert(!fake_bool_results_.empty());
-    auto val = fake_bool_results_.back();
-    fake_bool_results_.pop_back();
+  double gen_double(double, double) override {
+    assert(!double_constants_.empty());
+    double constant = double_constants_.back();
+    double_constants_.pop_back();
 
-    if (p == 0.0) {
-      assert(!val);
-    } else if (p == 1.0) {
-      assert(val);
-    }
+    return constant;
+  }
 
-    return val;
+  bool gen_parenthesize(float) override { return false; }
+
+  static FakeGeneratorRng from_expr(const Expr& expr) {
+    FakeGeneratorRng rng;
+    rng.visit(expr);
+
+    std::reverse(rng.un_ops_.begin(), rng.un_ops_.end());
+    std::reverse(rng.bin_ops_.begin(), rng.bin_ops_.end());
+    std::reverse(rng.u64_constants_.begin(), rng.u64_constants_.end());
+    std::reverse(rng.double_constants_.begin(), rng.double_constants_.end());
+    std::reverse(rng.kinds_.begin(), rng.kinds_.end());
+
+    return rng;
   }
 
  private:
-  std::vector<uint64_t> fake_u64_results_;
-  std::vector<int> fake_int_results_;
-  std::vector<double> fake_double_results_;
-  std::vector<bool> fake_bool_results_;
+  using Visitor::visit;
+
+  void visit(const UnaryExpr& e) override {
+    kinds_.push_back(ExprKind::UnaryExpr);
+    un_ops_.push_back(e.op());
+    visit(e.expr());
+  }
+
+  void visit(const BinaryExpr& e) override {
+    kinds_.push_back(ExprKind::BinaryExpr);
+    bin_ops_.push_back(e.op());
+    visit(e.lhs());
+    visit(e.rhs());
+  }
+
+  void visit(const VariableExpr&) override {
+    kinds_.push_back(ExprKind::VariableExpr);
+  }
+
+  void visit(const IntegerConstant& e) override {
+    kinds_.push_back(ExprKind::IntegerConstant);
+    u64_constants_.push_back(e.value());
+  }
+
+  void visit(const DoubleConstant& e) override {
+    kinds_.push_back(ExprKind::DoubleConstant);
+    double_constants_.push_back(e.value());
+  }
+
+  void visit(const ParenthesizedExpr& e) override { visit(e.expr()); }
+
+  void visit(const AddressOf& e) override {
+    kinds_.push_back(ExprKind::AddressOf);
+    visit(e.expr());
+  }
+
+  void visit(const FieldAccess& e) override {
+    kinds_.push_back(ExprKind::FieldAccess);
+    visit(e.expr());
+  }
+
+  void visit(const PtrFieldAccess& e) override {
+    kinds_.push_back(ExprKind::PtrFieldAccess);
+    visit(e.expr());
+  }
+
+  void visit(const ArrayIndex& e) override {
+    kinds_.push_back(ExprKind::ArrayIndex);
+    visit(e.expr());
+    visit(e.idx());
+  }
+
+  void visit(const TernaryExpr& e) override {
+    kinds_.push_back(ExprKind::TernaryExpr);
+    visit(e.cond());
+    visit(e.lhs());
+    visit(e.rhs());
+  }
+
+ private:
+  std::vector<UnOp> un_ops_;
+  std::vector<BinOp> bin_ops_;
+  std::vector<uint64_t> u64_constants_;
+  std::vector<double> double_constants_;
+  std::vector<ExprKind> kinds_;
 };
 
 struct Mismatch {
@@ -207,81 +271,54 @@ MATCHER_P(MatchesAst, expected,
   return false;
 }
 
-TEST(Fuzzer, BinaryPrecedenceLower) {
-  // clang-format off
-  Expr expected = BinaryExpr(
-      IntegerConstant(3),
-      BinOp::Mult,
-      ParenthesizedExpr(
-          BinaryExpr(IntegerConstant(4), BinOp::Plus, IntegerConstant(5))));
-  // clang-format on
+class OperatorPrecedence : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    // clang-format off
+    Expr expected1 = BinaryExpr(
+        IntegerConstant(3),
+        BinOp::Mult,
+        ParenthesizedExpr(
+            BinaryExpr(IntegerConstant(4), BinOp::Plus, IntegerConstant(5))));
+    // clang-format on
 
-  auto fake_rng = std::make_unique<FakeGeneratorRng>(
-      std::vector<uint64_t>{3, 4, 5},
-      std::vector<int>{(int)BinOp::Mult, (int)BinOp::Plus},
-      std::vector<double>{2.1, 0.0, 2.1, 0.0, 0.0},
-      std::vector<bool>(5, false));
+    // clang-format off
+    Expr expected2 = BinaryExpr(
+        BinaryExpr(IntegerConstant(3), BinOp::Mult, IntegerConstant(4)),
+        BinOp::Plus,
+        IntegerConstant(5));
+    // clang-format on
 
-  ExprGenerator gen(std::move(fake_rng));
-  auto expr = gen.generate();
+    // clang-format off
+    Expr expected3 = BinaryExpr(
+        BinaryExpr(IntegerConstant(3), BinOp::Minus, IntegerConstant(4)),
+        BinOp::Plus,
+        IntegerConstant(5));
+    // clang-format on
 
-  EXPECT_THAT(expr, MatchesAst(std::cref(expected)));
-}
+    // clang-format off
+    Expr expected4 = BinaryExpr(
+        IntegerConstant(3),
+        BinOp::Minus,
+        ParenthesizedExpr(
+            BinaryExpr(IntegerConstant(4), BinOp::Plus, IntegerConstant(5))));
+    // clang-format on
 
-TEST(Fuzzer, BinaryPrecedenceHigher) {
-  // clang-format off
-  Expr expected = BinaryExpr(
-      BinaryExpr(IntegerConstant(3), BinOp::Mult, IntegerConstant(4)),
-      BinOp::Plus,
-      IntegerConstant(5));
-  // clang-format on
+    expected_exprs_.emplace_back(std::move(expected4));
+    expected_exprs_.emplace_back(std::move(expected3));
+    expected_exprs_.emplace_back(std::move(expected2));
+    expected_exprs_.emplace_back(std::move(expected1));
+  }
 
-  auto fake_rng = std::make_unique<FakeGeneratorRng>(
-      std::vector<uint64_t>{3, 4, 5},
-      std::vector<int>{(int)BinOp::Plus, (int)BinOp::Mult},
-      std::vector<double>{2.1, 2.1, 0.0, 0.0, 0.0},
-      std::vector<bool>(5, false));
+  std::vector<Expr> expected_exprs_;
+};
 
-  ExprGenerator gen(std::move(fake_rng));
-  auto expr = gen.generate();
+TEST_F(OperatorPrecedence, CorrectAst) {
+  Expr expected(std::move(expected_exprs_.back()));
+  expected_exprs_.pop_back();
 
-  EXPECT_THAT(expr, MatchesAst(std::cref(expected)));
-}
-
-TEST(Fuzzer, BinaryAssociativityLeftLeaning) {
-  // clang-format off
-  Expr expected = BinaryExpr(
-      BinaryExpr(IntegerConstant(3), BinOp::Minus, IntegerConstant(4)),
-      BinOp::Plus,
-      IntegerConstant(5));
-  // clang-format on
-
-  auto fake_rng = std::make_unique<FakeGeneratorRng>(
-      std::vector<uint64_t>{3, 4, 5},
-      std::vector<int>{(int)BinOp::Plus, (int)BinOp::Minus},
-      std::vector<double>{2.1, 2.1, 0.0, 0.0, 0.0},
-      std::vector<bool>(5, false));
-
-  ExprGenerator gen(std::move(fake_rng));
-  auto expr = gen.generate();
-
-  EXPECT_THAT(expr, MatchesAst(std::cref(expected)));
-}
-
-TEST(Fuzzer, BinaryAssociativityRightLeaning) {
-  // clang-format off
-  Expr expected = BinaryExpr(
-      IntegerConstant(3),
-      BinOp::Minus,
-      ParenthesizedExpr(
-          BinaryExpr(IntegerConstant(4), BinOp::Plus, IntegerConstant(5))));
-  // clang-format on
-
-  auto fake_rng = std::make_unique<FakeGeneratorRng>(
-      std::vector<uint64_t>{3, 4, 5},
-      std::vector<int>{(int)BinOp::Minus, (int)BinOp::Plus},
-      std::vector<double>{2.1, 0.0, 2.1, 0.0, 0.0},
-      std::vector<bool>(5, false));
+  auto fake_rng =
+      std::make_unique<FakeGeneratorRng>(FakeGeneratorRng::from_expr(expected));
 
   ExprGenerator gen(std::move(fake_rng));
   auto expr = gen.generate();

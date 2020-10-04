@@ -102,7 +102,7 @@ VariableExpr ExprGenerator::gen_variable_expr(const WeightsArray&) {
 }
 
 BinaryExpr ExprGenerator::gen_binary_expr(const WeightsArray& weights) {
-  auto op = (BinOp)rng_->gen_int((int)BinOp::EnumFirst, (int)BinOp::EnumLast);
+  auto op = rng_->gen_bin_op();
 
   auto lhs = gen_with_weights(weights);
   auto rhs = gen_with_weights(weights);
@@ -146,7 +146,7 @@ BinaryExpr ExprGenerator::gen_binary_expr(const WeightsArray& weights) {
 
 UnaryExpr ExprGenerator::gen_unary_expr(const WeightsArray& weights) {
   auto expr = gen_with_weights(weights);
-  auto op = (UnOp)rng_->gen_int((int)UnOp::EnumFirst, (int)UnOp::EnumLast);
+  auto op = (UnOp)rng_->gen_un_op();
 
   constexpr int UNARY_PRECEDENCE = 3;
 
@@ -160,25 +160,9 @@ UnaryExpr ExprGenerator::gen_unary_expr(const WeightsArray& weights) {
 Expr ExprGenerator::gen_with_weights(const WeightsArray& weights) {
   WeightsArray new_weights = weights;
 
-  // No need to pull `<numeric>` just for one sum.
-  float sum = 0;
-  for (const auto& e : new_weights) {
-    sum += e;
-  }
-
-  auto val = rng_->gen_double(0, sum);
-
-  float running_sum = 0;
-  // Make sure `kind` is always initialized.
-  ExprKind kind = ExprKind::IntegerConstant;
-  for (size_t i = 0; i < new_weights.size(); i++) {
-    running_sum += new_weights[i];
-    if (val < running_sum) {
-      kind = (ExprKind)i;
-      new_weights[i] *= EXPR_KIND_INFO[i].dampening_factor;
-      break;
-    }
-  }
+  auto kind = rng_->gen_expr_kind(new_weights);
+  auto idx = (size_t)kind;
+  new_weights[idx] *= EXPR_KIND_INFO[idx].dampening_factor;
 
   // Dummy value for initialization
   Expr expr(IntegerConstant(0));
@@ -211,8 +195,7 @@ Expr ExprGenerator::gen_with_weights(const WeightsArray& weights) {
 }
 
 Expr ExprGenerator::maybe_parenthesized(Expr expr) {
-  bool parenthesize = rng_->gen_bernoulli();
-  if (parenthesize) {
+  if (rng_->gen_parenthesize()) {
     return ParenthesizedExpr(std::move(expr));
   }
 
@@ -228,9 +211,16 @@ Expr ExprGenerator::generate() {
   return gen_with_weights(weights);
 }
 
-int DefaultGeneratorRng::gen_int(int min, int max) {
-  std::uniform_int_distribution<int> distr(min, max);
-  return distr(rng_);
+BinOp DefaultGeneratorRng::gen_bin_op() {
+  std::uniform_int_distribution<int> distr((int)BinOp::EnumFirst,
+                                           (int)BinOp::EnumLast);
+  return (BinOp)distr(rng_);
+}
+
+UnOp DefaultGeneratorRng::gen_un_op() {
+  std::uniform_int_distribution<int> distr((int)UnOp::EnumFirst,
+                                           (int)UnOp::EnumLast);
+  return (UnOp)distr(rng_);
 }
 
 uint64_t DefaultGeneratorRng::gen_u64(uint64_t min, uint64_t max) {
@@ -243,9 +233,30 @@ double DefaultGeneratorRng::gen_double(double min, double max) {
   return distr(rng_);
 }
 
-bool DefaultGeneratorRng::gen_bernoulli(float p) {
-  std::bernoulli_distribution distr(p);
+bool DefaultGeneratorRng::gen_parenthesize(float probability) {
+  std::bernoulli_distribution distr(probability);
   return distr(rng_);
+}
+
+ExprKind DefaultGeneratorRng::gen_expr_kind(const WeightsArray& weights) {
+  // No need to pull `<numeric>` just for one sum.
+  float sum = 0;
+  for (const auto& e : weights) {
+    sum += e;
+  }
+
+  std::uniform_real_distribution<double> distr(0, sum);
+  auto val = distr(rng_);
+
+  float running_sum = 0;
+  for (size_t i = 0; i < weights.size(); i++) {
+    running_sum += weights[i];
+    if (val < running_sum) {
+      return (ExprKind)i;
+    }
+  }
+
+  assert(false && "Unreachable");
 }
 
 }  // namespace fuzzer

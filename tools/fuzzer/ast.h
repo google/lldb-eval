@@ -75,9 +75,10 @@ enum class BinOp : unsigned char {
 };
 constexpr size_t NUM_BIN_OPS = (size_t)BinOp::EnumLast + 1;
 
-using Expr = std::variant<IntegerConstant, DoubleConstant, VariableExpr,
-                          UnaryExpr, BinaryExpr, ParenthesizedExpr, AddressOf,
-                          FieldAccess, PtrFieldAccess, ArrayIndex, TernaryExpr>;
+using Expr =
+    std::variant<IntegerConstant, DoubleConstant, VariableExpr, UnaryExpr,
+                 BinaryExpr, AddressOf, FieldAccess, PtrFieldAccess, ArrayIndex,
+                 TernaryExpr, ParenthesizedExpr>;
 constexpr size_t NUM_EXPR_KINDS = std::variant_size_v<Expr>;
 
 class BinaryExpr {
