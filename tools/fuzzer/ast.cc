@@ -218,6 +218,83 @@ std::string stringify_expr(const Expr& expr) {
   return printer.to_string();
 }
 
+std::string stringify_expr(const IntegerConstant& expr) {
+  ExprPrinter printer;
+  printer.visit(expr);
+
+  return printer.to_string();
+}
+
+std::string stringify_expr(const DoubleConstant& expr) {
+  ExprPrinter printer;
+  printer.visit(expr);
+
+  return printer.to_string();
+}
+
+std::string stringify_expr(const ParenthesizedExpr& expr) {
+  ExprPrinter printer;
+  printer.visit(expr);
+
+  return printer.to_string();
+}
+
+std::string stringify_expr(const BinaryExpr& expr) {
+  ExprPrinter printer;
+  printer.visit(expr);
+
+  return printer.to_string();
+}
+
+std::string stringify_expr(const UnaryExpr& expr) {
+  ExprPrinter printer;
+  printer.visit(expr);
+
+  return printer.to_string();
+}
+
+std::string stringify_expr(const VariableExpr& expr) {
+  ExprPrinter printer;
+  printer.visit(expr);
+
+  return printer.to_string();
+}
+
+std::string stringify_expr(const AddressOf& expr) {
+  ExprPrinter printer;
+  printer.visit(expr);
+
+  return printer.to_string();
+}
+
+std::string stringify_expr(const FieldAccess& expr) {
+  ExprPrinter printer;
+  printer.visit(expr);
+
+  return printer.to_string();
+}
+
+std::string stringify_expr(const PtrFieldAccess& expr) {
+  ExprPrinter printer;
+  printer.visit(expr);
+
+  return printer.to_string();
+}
+
+std::string stringify_expr(const ArrayIndex& expr) {
+  ExprPrinter printer;
+  printer.visit(expr);
+
+  return printer.to_string();
+}
+
+std::string stringify_expr(const TernaryExpr& expr) {
+  ExprPrinter printer;
+  printer.visit(expr);
+
+  return printer.to_string();
+}
+
 /**
  * A visitor that dumps an expression to `stdout` for debugging purposes.
  */

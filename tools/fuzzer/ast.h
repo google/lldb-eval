@@ -208,6 +208,18 @@ class TernaryExpr {
 };
 
 std::string stringify_expr(const Expr& expr);
+std::string stringify_expr(const IntegerConstant& expr);
+std::string stringify_expr(const DoubleConstant& expr);
+std::string stringify_expr(const ParenthesizedExpr& expr);
+std::string stringify_expr(const BinaryExpr& expr);
+std::string stringify_expr(const UnaryExpr& expr);
+std::string stringify_expr(const VariableExpr& expr);
+std::string stringify_expr(const AddressOf& expr);
+std::string stringify_expr(const FieldAccess& expr);
+std::string stringify_expr(const PtrFieldAccess& expr);
+std::string stringify_expr(const ArrayIndex& expr);
+std::string stringify_expr(const TernaryExpr& expr);
+
 void dump_expr(const Expr& expr);
 
 int bin_op_precedence(BinOp op);
