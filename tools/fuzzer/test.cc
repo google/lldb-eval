@@ -256,7 +256,7 @@ MATCHER_P(MatchesAst, expected,
 
   const Expr& e = expected;
 
-  std::visit(cmp, arg, e);
+  std::visit(cmp, e, arg);
   const auto& mismatches = cmp.mismatches();
   if (mismatches.empty()) {
     return true;
@@ -264,64 +264,90 @@ MATCHER_P(MatchesAst, expected,
 
   *result_listener << "with mismatches occuring as follows:\n";
   for (const auto& e : mismatches) {
-    *result_listener << "Given: `" << e.lhs << "`, expected: " << e.rhs
-                     << "`\n";
+    *result_listener << "* Expected: `" << e.lhs << "`\n"
+                     << "*   Actual: `" << e.rhs << "`\n";
   }
 
   return false;
 }
 
-class OperatorPrecedence : public ::testing::Test {
- protected:
-  void SetUp() override {
+struct TestParam {
+  std::string str;
+  std::shared_ptr<Expr> expr;
+
+  TestParam(std::string str, Expr expr)
+      : str(std::move(str)), expr(std::make_shared<Expr>(std::move(expr))) {}
+
+  friend std::ostream& operator<<(std::ostream& os, const TestParam& param) {
+    return os << "`" << param.str << "`";
+  }
+};
+
+class OperatorPrecedence : public ::testing::TestWithParam<TestParam> {};
+
+TEST_P(OperatorPrecedence, CorrectAst) {
+  const auto& expected = GetParam();
+
+  auto fake_rng = std::make_unique<FakeGeneratorRng>(
+      FakeGeneratorRng::from_expr(*expected.expr));
+
+  ExprGenerator gen(std::move(fake_rng));
+  auto expr = gen.generate();
+  auto expr_str = stringify_expr(expr);
+
+  EXPECT_THAT(expr, MatchesAst(std::cref(*expected.expr)));
+  EXPECT_THAT(expr_str, Eq(expected.str));
+}
+
+std::vector<TestParam> gen_params() {
+  std::vector<TestParam> params;
+  {
     // clang-format off
-    Expr expected1 = BinaryExpr(
+    Expr expected = BinaryExpr(
         IntegerConstant(3),
         BinOp::Mult,
         ParenthesizedExpr(
             BinaryExpr(IntegerConstant(4), BinOp::Plus, IntegerConstant(5))));
+    std::string str = "3 * (4 + 5)";
+    params.emplace_back(std::move(str), std::move(expected));
     // clang-format on
-
+  }
+  {
     // clang-format off
-    Expr expected2 = BinaryExpr(
+    Expr expected = BinaryExpr(
         BinaryExpr(IntegerConstant(3), BinOp::Mult, IntegerConstant(4)),
         BinOp::Plus,
         IntegerConstant(5));
     // clang-format on
 
+    std::string str = "3 * 4 + 5";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
     // clang-format off
-    Expr expected3 = BinaryExpr(
+    Expr expected = BinaryExpr(
         BinaryExpr(IntegerConstant(3), BinOp::Minus, IntegerConstant(4)),
         BinOp::Plus,
         IntegerConstant(5));
     // clang-format on
 
+    std::string str = "3 - 4 + 5";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
     // clang-format off
-    Expr expected4 = BinaryExpr(
+    Expr expected = BinaryExpr(
         IntegerConstant(3),
         BinOp::Minus,
         ParenthesizedExpr(
             BinaryExpr(IntegerConstant(4), BinOp::Plus, IntegerConstant(5))));
     // clang-format on
 
-    expected_exprs_.emplace_back(std::move(expected4));
-    expected_exprs_.emplace_back(std::move(expected3));
-    expected_exprs_.emplace_back(std::move(expected2));
-    expected_exprs_.emplace_back(std::move(expected1));
+    std::string str = "3 - (4 + 5)";
+    params.emplace_back(std::move(str), std::move(expected));
   }
 
-  std::vector<Expr> expected_exprs_;
-};
-
-TEST_F(OperatorPrecedence, CorrectAst) {
-  Expr expected(std::move(expected_exprs_.back()));
-  expected_exprs_.pop_back();
-
-  auto fake_rng =
-      std::make_unique<FakeGeneratorRng>(FakeGeneratorRng::from_expr(expected));
-
-  ExprGenerator gen(std::move(fake_rng));
-  auto expr = gen.generate();
-
-  EXPECT_THAT(expr, MatchesAst(std::cref(expected)));
+  return params;
 }
+
+INSTANTIATE_TEST_SUITE_P(Fuzzer, OperatorPrecedence, ValuesIn(gen_params()));
