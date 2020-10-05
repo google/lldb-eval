@@ -6,7 +6,7 @@ package(default_visibility = ["//visibility:public"])
 
 string_flag(
     name = "llvm_build",
-    build_setting_default = "static",
+    build_setting_default = "{LLVM_BUILD_DEFAULT}",
     values = [
         "static",
         "dynamic",
