@@ -5,7 +5,7 @@ COPTS = select({
         # Disable warnings only for the LLVM includes.
         "/experimental:external",
         "/external:W0",
-        "/external:I external/llvm_project_local/include",
+        "/external:I external/llvm_project/include",
     ],
     "//conditions:default": [
         "-std=c++17",
@@ -19,9 +19,9 @@ cc_binary(
     srcs = ["lexer.cc"],
     copts = COPTS,
     deps = [
-        "@llvm_project_local//:clang-basic",
-        "@llvm_project_local//:clang-lex",
-        "@llvm_project_local//:llvm-support",
+        "@llvm_project//:clang-basic",
+        "@llvm_project//:clang-lex",
+        "@llvm_project//:llvm-support",
     ],
 )
 
@@ -46,12 +46,12 @@ cc_binary(
     data = [
         "//testdata:fuzzer_binary_gen",
         "//testdata:fuzzer_binary_srcs",
-        "@llvm_project_local//:lldb-server",
+        "@llvm_project//:lldb-server",
     ],
     deps = [
         ":fuzzer_lib",
         "//:lldb-eval",
         "@bazel_tools//tools/cpp/runfiles",
-        "@llvm_project_local//:lldb-api",
+        "@llvm_project//:lldb-api",
     ],
 )

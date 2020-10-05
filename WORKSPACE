@@ -20,4 +20,4 @@ http_archive(
 
 load("//build_defs:repo_rules.bzl", "llvm_project_configure")
 
-llvm_project_configure(name = "llvm_project_local")
+llvm_project_configure(name = "llvm_project")

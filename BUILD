@@ -18,7 +18,7 @@ COPTS = select({
         # Disable warnings only for the LLVM includes.
         "/experimental:external",
         "/external:W0",
-        "/external:I external/llvm_project_local/include",
+        "/external:I external/llvm_project/include",
     ],
     "//conditions:default": [
         "-std=c++17",
@@ -52,10 +52,10 @@ cc_library(
     ],
     copts = COPTS,
     deps = [
-        "@llvm_project_local//:clang-basic",
-        "@llvm_project_local//:clang-lex",
-        "@llvm_project_local//:lldb-api",
-        "@llvm_project_local//:llvm-support",
+        "@llvm_project//:clang-basic",
+        "@llvm_project//:clang-lex",
+        "@llvm_project//:lldb-api",
+        "@llvm_project//:llvm-support",
     ],
 )
 
@@ -74,7 +74,7 @@ cc_test(
         ":runner",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@llvm_project_local//:lldb-api",
+        "@llvm_project//:lldb-api",
     ],
 )
 
@@ -86,7 +86,7 @@ cc_binary(
         ":lldb-eval",
         ":runner",
         "@bazel_tools//tools/cpp/runfiles",
-        "@llvm_project_local//:lldb-api",
+        "@llvm_project//:lldb-api",
     ],
 )
 
@@ -98,7 +98,7 @@ cc_test(
         ":lldb-eval",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@llvm_project_local//:lldb-api",
+        "@llvm_project//:lldb-api",
     ],
 )
 
@@ -110,10 +110,10 @@ cc_library(
     data = [
         "//testdata:test_binary_gen",
         "//testdata:test_binary_srcs",
-        "@llvm_project_local//:lldb-server",
+        "@llvm_project//:lldb-server",
     ],
     deps = [
         "@bazel_tools//tools/cpp/runfiles",
-        "@llvm_project_local//:lldb-api",
+        "@llvm_project//:lldb-api",
     ],
 )

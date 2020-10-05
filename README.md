@@ -74,11 +74,13 @@ You need to set the `LLVM_INSTALL_PATH` environmental variable with a location
 to your LLVM installation:
 
 ```bash
-# If you installed the packages via "apt install".
+# (Linux) If you installed the packages via "apt install".
 export LLVM_INSTALL_PATH=/usr/lib/llvm-10
+```
 
-# If you built it from source using the instructions above.
-export LLVM_INSTALL_PATH=C:\src\llvm-project\build_x64_optdebug\install
+```powershell
+# (Windows) If you built it from source using the instructions above.
+$env:LLVM_INSTALL_PATH = C:\src\llvm-project\build_x64_optdebug\install
 ```
 
 Now you can build and test `lldb-eval`:
@@ -92,13 +94,13 @@ bazel run :main -- "(1 + 2) * 42 / 4"
 ```
 
 Depending on your distribution of LLVM, you may need to provide
-`--@llvm_project_local//:llvm_build={static,dynamic}` flag. For example, if your
+`--@llvm_project//:llvm_build={static,dynamic}` flag. For example, if your
 `liblldb.so` is linked dynamically (this is the case when installing via `apt`),
 then you need to use `llvm_build=dynamic`. The build script [tries to choose the
 correct default value automatically](/build_defs/repo_rules.bzl#L21), but it can
 be wrong in some situations (please, report and contribute 🙂).
 
-> **Hint:** You can add this option to your `user.bazelrc`.
+> **Hint:** You can add this option to your `user.bazelrc`
 
 ## Disclamer
 
