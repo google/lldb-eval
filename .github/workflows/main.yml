@@ -14,19 +14,19 @@ jobs:
         tag: [10, 11]
     env:
       LLVM_INSTALL_PATH: /usr/lib/llvm-${{ matrix.tag }}
-  
+
     steps:
       - uses: actions/checkout@v2
-      
+
       - name: Setup LLVM-${{ matrix.tag }}
         run: |
           wget https://apt.llvm.org/llvm.sh
           chmod +x ./llvm.sh
           sudo ./llvm.sh ${{ matrix.tag }}
           sudo apt install -y llvm-${{ matrix.tag }}-dev libclang-${{ matrix.tag }}-dev liblldb-${{ matrix.tag }}-dev
-      
+
       - name: Build
         run: bazel build :all
-      
+
       - name: Test
         run: bazel test --test_output=errors :all

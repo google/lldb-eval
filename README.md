@@ -91,6 +91,15 @@ bazel test :all
 bazel run :main -- "(1 + 2) * 42 / 4"
 ```
 
+Depending on your distribution of LLVM, you may need to provide
+`--@llvm_project_local//:llvm_build={static,dynamic}` flag. For example, if your
+`liblldb.so` is linked dynamically (this is the case when installing via `apt`),
+then you need to use `llvm_build=dynamic`. The build script [tries to choose the
+correct default value automatically](/build_defs/repo_rules.bzl#L21), but it can
+be wrong in some situations (please, report and contribute 🙂).
+
+> **Hint:** You can add this option to your `user.bazelrc`.
+
 ## Disclamer
 
 This is not an officially supported Google product.
