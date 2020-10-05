@@ -41,7 +41,7 @@ using bazel::tools::cpp::runfiles::Runfiles;
 
 constexpr char VAR[] = "x";
 
-constexpr char LLDB_SERVER_KEY[] = "llvm_project_local/bin/lldb-server";
+constexpr char LLDB_SERVER_KEY[] = "llvm_project/bin/lldb-server";
 constexpr char EXECUTABLE_PATH_KEY[] = "lldb_eval/testdata/fuzzer_binary";
 
 void run_repl(lldb::SBFrame& frame) {

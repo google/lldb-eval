@@ -45,8 +45,7 @@ const uint32_t kWaitForEventTimeout = 5;
 
 void SetupLLDBServerEnv(const Runfiles& runfiles) {
 #ifndef _WIN32
-  std::string lldb_server =
-      runfiles.Rlocation("llvm_project_local/bin/lldb-server");
+  std::string lldb_server = runfiles.Rlocation("llvm_project/bin/lldb-server");
   setenv("LLDB_DEBUGSERVER_PATH", lldb_server.c_str(), 0);
 #endif  // !_WIN32
 }

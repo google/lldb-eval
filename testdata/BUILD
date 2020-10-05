@@ -8,14 +8,14 @@ genrule(
     ],
     outs = ["test_binary"],
     cmd = """
-        ./$(location @llvm_project_local//:clang) \
+        ./$(location @llvm_project//:clang) \
         -x c++ -lstdc++ -std=c++14 -gdwarf -O0 -fuse-ld=lld \
         $(SRCS) -o $@
     """,
     tags = ["no-sandbox"],
     tools = [
-        "@llvm_project_local//:clang",
-        "@llvm_project_local//:lld",
+        "@llvm_project//:clang",
+        "@llvm_project//:lld",
     ],
 )
 
@@ -34,14 +34,14 @@ genrule(
     ],
     outs = ["fuzzer_binary"],
     cmd = """
-        ./$(location @llvm_project_local//:clang) \
+        ./$(location @llvm_project//:clang) \
         -x c++ -lstdc++ -std=c++14 -gdwarf -O0 -fuse-ld=lld \
         $(SRCS) -o $@
     """,
     tags = ["no-sandbox"],
     tools = [
-        "@llvm_project_local//:clang",
-        "@llvm_project_local//:lld",
+        "@llvm_project//:clang",
+        "@llvm_project//:lld",
     ],
 )
 
