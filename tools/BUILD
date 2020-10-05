@@ -65,6 +65,6 @@ cc_test(
         "//tools:fuzzer_lib",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@llvm_project_local//:lldb-api",
+        "@llvm_project//:lldb-api",
     ],
 )
