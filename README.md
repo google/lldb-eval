@@ -114,7 +114,7 @@ for the format. For example:
 # Building on Linux
 build --config=linux
 # Using statically linked liblldb.so
-build ----@llvm_project//:llvm_build=static
+build --@llvm_project//:llvm_build=static
 ```
 
 ## Disclamer
