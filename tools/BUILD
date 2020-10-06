@@ -60,8 +60,8 @@ cc_test(
     srcs = ["fuzzer/fuzzer_test.cc"],
     copts = COPTS,
     deps = [
-        "//:lldb-eval",
         ":fuzzer_lib",
+        "//:lldb-eval",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@llvm_project//:lldb-api",
