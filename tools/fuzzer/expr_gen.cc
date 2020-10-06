@@ -199,15 +199,19 @@ ExprKind DefaultGeneratorRng::gen_expr_kind(const WeightsArray& weights) {
   std::uniform_real_distribution<double> distr(0, sum);
   auto val = distr(rng_);
 
+  // Dummy initialization to avoid uninitialized warnings, the loop below will
+  // always set `kind`.
+  ExprKind kind = ExprKind::IntegerConstant;
   float running_sum = 0;
   for (size_t i = 0; i < weights.size(); i++) {
     running_sum += weights[i];
     if (val < running_sum) {
-      return (ExprKind)i;
+      kind = (ExprKind)i;
+      break;
     }
   }
 
-  assert(false && "Unreachable");
+  return kind;
 }
 
 }  // namespace fuzzer
