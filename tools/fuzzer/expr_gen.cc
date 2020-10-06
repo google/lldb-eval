@@ -30,11 +30,11 @@ struct ExprKindInfo {
 };
 
 static const std::array<ExprKindInfo, NUM_EXPR_KINDS> EXPR_KIND_INFO = {{
-    {1.0, 0.0},  // ExprKind::IntegerConstant
-    {0.0, 0.0},  // ExprKind::DoubleConstant
-    {1.0, 0.0},  // ExprKind::VariableExpr
-    {7.0, 0.4},  // ExprKind::BinaryExpr
-    {3.0, 0.4},  // ExprKind::UnaryExpr
+    {1.0f, 0.0f},  // ExprKind::IntegerConstant
+    {0.0f, 0.0f},  // ExprKind::DoubleConstant
+    {1.0f, 0.0f},  // ExprKind::VariableExpr
+    {7.0f, 0.4f},  // ExprKind::BinaryExpr
+    {3.0f, 0.4f},  // ExprKind::UnaryExpr
 }};
 
 int expr_precedence(const Expr& e) {
@@ -140,6 +140,7 @@ Expr ExprGenerator::gen_with_weights(const WeightsArray& weights) {
 
     default:
       assert(false && "Unreachable");
+      exit(1);
   }
 
   return maybe_parenthesized(std::move(expr));
