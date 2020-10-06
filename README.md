@@ -87,20 +87,35 @@ Now you can build and test `lldb-eval`:
 
 ```bash
 # Build and run all tests
-bazel test :all
+bazel test --config=linux :all
 
 # Evaluate a sample expression
-bazel run :main -- "(1 + 2) * 42 / 4"
+bazel run --config=windows :main -- "(1 + 2) * 42 / 4"
 ```
 
-Depending on your distribution of LLVM, you may need to provide
+> **Hint:** You can add this option to your `user.bazelrc` !
+
+Depending on your distribution of LLVM, you may also need to provide
 `--@llvm_project//:llvm_build={static,dynamic}` flag. For example, if your
 `liblldb.so` is linked dynamically (this is the case when installing via `apt`),
 then you need to use `llvm_build=dynamic`. The build script [tries to choose the
 correct default value automatically](/build_defs/repo_rules.bzl#L21), but it can
 be wrong in some situations (please, report and contribute 🙂).
 
-> **Hint:** You can add this option to your `user.bazelrc`
+> **Hint:** You can add this option to your `user.bazelrc` !
+
+### Local per-repo Bazel config
+
+You can create `user.bazelrc` in the repository root and put there your local
+configuration. Check [Bazel docs](https://docs.bazel.build/versions/master/guide.html#bazelrc)
+for the format. For example:
+
+```bash
+# Building on Linux
+build --config=linux
+# Using statically linked liblldb.so
+build ----@llvm_project//:llvm_build=static
+```
 
 ## Disclamer
 

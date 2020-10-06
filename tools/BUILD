@@ -8,7 +8,6 @@ COPTS = select({
         "/external:I external/llvm_project/include",
     ],
     "//conditions:default": [
-        "-std=c++17",
         "-fno-exceptions",
         "-fno-rtti",
     ],

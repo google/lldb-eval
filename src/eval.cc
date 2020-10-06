@@ -43,7 +43,7 @@ void EvalError::Set(EvalErrorCode code, const std::string& message) {
 void EvalError::Clear() { *this = {}; }
 
 EvalErrorCode EvalError::code() const { return code_; }
-const std::string& EvalError::message() const { return message_; };
+const std::string& EvalError::message() const { return message_; }
 
 EvalError::operator bool() const { return code_ != EvalErrorCode::OK; }
 

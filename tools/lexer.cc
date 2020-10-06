@@ -32,6 +32,8 @@
 #include "llvm/Support/Host.h"
 
 int main(int argc, char** argv) {
+  (void)argc;
+
   // "parse" command line arguments.
   std::string expr = argv[1];
 
