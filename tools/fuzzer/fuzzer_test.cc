@@ -1,11 +1,11 @@
 #include <algorithm>
 #include <cassert>
+#include <sstream>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "ast.h"
-#include "ast_visitor.h"
 #include "expr_gen.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -15,13 +15,11 @@ using namespace testing;
 
 namespace fuzzer {
 
-void PrintTo(const Expr& expr, std::ostream* os) {
-  *os << "`" << stringify_expr(expr) << "`";
-}
+void PrintTo(const Expr& expr, std::ostream* os) { *os << "`" << expr << "`"; }
 
 }  // namespace fuzzer
 
-class FakeGeneratorRng : public GeneratorRng, private Visitor {
+class FakeGeneratorRng : public GeneratorRng {
  public:
   FakeGeneratorRng() {}
 
@@ -69,7 +67,7 @@ class FakeGeneratorRng : public GeneratorRng, private Visitor {
 
   static FakeGeneratorRng from_expr(const Expr& expr) {
     FakeGeneratorRng rng;
-    rng.visit(expr);
+    std::visit(rng, expr);
 
     std::reverse(rng.un_ops_.begin(), rng.un_ops_.end());
     std::reverse(rng.bin_ops_.begin(), rng.bin_ops_.end());
@@ -80,64 +78,61 @@ class FakeGeneratorRng : public GeneratorRng, private Visitor {
     return rng;
   }
 
- private:
-  using Visitor::visit;
-
-  void visit(const UnaryExpr& e) override {
+  void operator()(const UnaryExpr& e) {
     kinds_.push_back(ExprKind::UnaryExpr);
     un_ops_.push_back(e.op());
-    visit(e.expr());
+    std::visit(*this, e.expr());
   }
 
-  void visit(const BinaryExpr& e) override {
+  void operator()(const BinaryExpr& e) {
     kinds_.push_back(ExprKind::BinaryExpr);
     bin_ops_.push_back(e.op());
-    visit(e.lhs());
-    visit(e.rhs());
+    std::visit(*this, e.lhs());
+    std::visit(*this, e.rhs());
   }
 
-  void visit(const VariableExpr&) override {
+  void operator()(const VariableExpr&) {
     kinds_.push_back(ExprKind::VariableExpr);
   }
 
-  void visit(const IntegerConstant& e) override {
+  void operator()(const IntegerConstant& e) {
     kinds_.push_back(ExprKind::IntegerConstant);
     u64_constants_.push_back(e.value());
   }
 
-  void visit(const DoubleConstant& e) override {
+  void operator()(const DoubleConstant& e) {
     kinds_.push_back(ExprKind::DoubleConstant);
     double_constants_.push_back(e.value());
   }
 
-  void visit(const ParenthesizedExpr& e) override { visit(e.expr()); }
+  void operator()(const ParenthesizedExpr& e) { std::visit(*this, e.expr()); }
 
-  void visit(const AddressOf& e) override {
+  void operator()(const AddressOf& e) {
     kinds_.push_back(ExprKind::AddressOf);
-    visit(e.expr());
+    std::visit(*this, e.expr());
   }
 
-  void visit(const FieldAccess& e) override {
-    kinds_.push_back(ExprKind::FieldAccess);
-    visit(e.expr());
+  void operator()(const MemberOf& e) {
+    kinds_.push_back(ExprKind::MemberOf);
+    std::visit(*this, e.expr());
   }
 
-  void visit(const PtrFieldAccess& e) override {
-    kinds_.push_back(ExprKind::PtrFieldAccess);
-    visit(e.expr());
+  void operator()(const MemberOfPtr& e) {
+    kinds_.push_back(ExprKind::MemberOfPtr);
+    std::visit(*this, e.expr());
   }
 
-  void visit(const ArrayIndex& e) override {
+  void operator()(const ArrayIndex& e) {
     kinds_.push_back(ExprKind::ArrayIndex);
-    visit(e.expr());
-    visit(e.idx());
+    std::visit(*this, e.expr());
+    std::visit(*this, e.idx());
   }
 
-  void visit(const TernaryExpr& e) override {
+  void operator()(const TernaryExpr& e) {
     kinds_.push_back(ExprKind::TernaryExpr);
-    visit(e.cond());
-    visit(e.lhs());
-    visit(e.rhs());
+    std::visit(*this, e.cond());
+    std::visit(*this, e.lhs());
+    std::visit(*this, e.rhs());
   }
 
  private:
@@ -202,7 +197,7 @@ class AstComparator {
     std::visit(*this, lhs.expr(), rhs.expr());
   }
 
-  void operator()(const FieldAccess& lhs, const FieldAccess& rhs) {
+  void operator()(const MemberOf& lhs, const MemberOf& rhs) {
     if (lhs.field() != rhs.field()) {
       add_mismatch(lhs, rhs);
       return;
@@ -211,7 +206,7 @@ class AstComparator {
     std::visit(*this, lhs.expr(), rhs.expr());
   }
 
-  void operator()(const PtrFieldAccess& lhs, const PtrFieldAccess& rhs) {
+  void operator()(const MemberOfPtr& lhs, const MemberOfPtr& rhs) {
     if (lhs.field() != rhs.field()) {
       add_mismatch(lhs, rhs);
       return;
@@ -242,7 +237,13 @@ class AstComparator {
  private:
   template <typename T, typename U>
   void add_mismatch(const T& lhs, const U& rhs) {
-    mismatches_.emplace_back(stringify_expr(lhs), stringify_expr(rhs));
+    std::ostringstream lhs_stream;
+    std::ostringstream rhs_stream;
+
+    lhs_stream << lhs;
+    rhs_stream << rhs;
+
+    mismatches_.emplace_back(lhs_stream.str(), rhs_stream.str());
   }
 
  private:
@@ -251,12 +252,10 @@ class AstComparator {
 
 MATCHER_P(MatchesAst, expected,
           (negation ? "does not match AST " : "matches AST ") +
-              PrintToString(expected)) {
+              PrintToString(expected.get())) {
   AstComparator cmp;
 
-  const Expr& e = expected;
-
-  std::visit(cmp, e, arg);
+  std::visit(cmp, expected.get(), arg);
   const auto& mismatches = cmp.mismatches();
   if (mismatches.empty()) {
     return true;
@@ -264,8 +263,8 @@ MATCHER_P(MatchesAst, expected,
 
   *result_listener << "with mismatches occuring as follows:\n";
   for (const auto& e : mismatches) {
-    *result_listener << "* Expected: `" << e.lhs << "`\n"
-                     << "*   Actual: `" << e.rhs << "`\n";
+    *result_listener << "* Expected: " << PrintToString(e.lhs) << "\n"
+                     << "*   Actual: " << PrintToString(e.rhs) << "\n";
   }
 
   return false;
@@ -283,7 +282,7 @@ struct TestParam {
   }
 };
 
-class OperatorPrecedence : public ::testing::TestWithParam<TestParam> {};
+class OperatorPrecedence : public TestWithParam<TestParam> {};
 
 TEST_P(OperatorPrecedence, CorrectAst) {
   const auto& expected = GetParam();
@@ -293,10 +292,11 @@ TEST_P(OperatorPrecedence, CorrectAst) {
 
   ExprGenerator gen(std::move(fake_rng));
   auto expr = gen.generate();
-  auto expr_str = stringify_expr(expr);
+  std::ostringstream os;
+  os << expr;
 
   EXPECT_THAT(expr, MatchesAst(std::cref(*expected.expr)));
-  EXPECT_THAT(expr_str, Eq(expected.str));
+  EXPECT_THAT(os.str(), Eq(expected.str));
 }
 
 std::vector<TestParam> gen_params() {
@@ -308,9 +308,10 @@ std::vector<TestParam> gen_params() {
         BinOp::Mult,
         ParenthesizedExpr(
             BinaryExpr(IntegerConstant(4), BinOp::Plus, IntegerConstant(5))));
+    // clang-format on
+
     std::string str = "3 * (4 + 5)";
     params.emplace_back(std::move(str), std::move(expected));
-    // clang-format on
   }
   {
     // clang-format off

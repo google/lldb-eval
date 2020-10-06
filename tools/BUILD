@@ -33,7 +33,6 @@ cc_library(
     ],
     hdrs = [
         "fuzzer/ast.h",
-        "fuzzer/ast_visitor.h",
         "fuzzer/expr_gen.h",
     ],
     copts = COPTS,
@@ -58,11 +57,11 @@ cc_binary(
 
 cc_test(
     name = "fuzzer_test",
-    srcs = ["fuzzer/test.cc"],
+    srcs = ["fuzzer/fuzzer_test.cc"],
     copts = COPTS,
     deps = [
         "//:lldb-eval",
-        "//tools:fuzzer_lib",
+        ":fuzzer_lib",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@llvm_project//:lldb-api",

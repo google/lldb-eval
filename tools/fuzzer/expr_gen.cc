@@ -21,7 +21,6 @@
 #include <variant>
 
 #include "ast.h"
-#include "ast_visitor.h"
 
 namespace fuzzer {
 
@@ -38,50 +37,8 @@ static const std::array<ExprKindInfo, NUM_EXPR_KINDS> EXPR_KIND_INFO = {{
     {3.0, 0.4},  // ExprKind::UnaryExpr
 }};
 
-class PrecedenceVisitor final : public Visitor {
- public:
-  using Visitor::visit;
-
-  int precedence() const { return precedence_; }
-
-  void visit(const UnaryExpr&) override { precedence_ = 3; }
-
-  void visit(const BinaryExpr& e) override {
-    precedence_ = bin_op_precedence(e.op());
-  }
-
-  // Merely set a precedence higher than the largest one possible
-  void visit(const VariableExpr&) override { precedence_ = 0; }
-
-  // Merely set a precedence higher than the largest one possible
-  void visit(const IntegerConstant&) override { precedence_ = 0; }
-
-  // Merely set a precedence higher than the largest one possible
-  void visit(const DoubleConstant&) override { precedence_ = 0; }
-
-  // Merely set a precedence higher than the largest one possible
-  void visit(const ParenthesizedExpr&) override { precedence_ = 0; }
-
-  void visit(const AddressOf&) override { precedence_ = 3; }
-
-  void visit(const FieldAccess&) override { precedence_ = 2; }
-
-  void visit(const PtrFieldAccess&) override { precedence_ = 2; }
-
-  void visit(const ArrayIndex&) override { precedence_ = 2; }
-
-  void visit(const TernaryExpr&) override { precedence_ = 16; }
-
- private:
-  // Default value, large enough to be lower than
-  int precedence_ = 20;
-};
-
 int expr_precedence(const Expr& e) {
-  PrecedenceVisitor visitor;
-  visitor.visit(e);
-
-  return visitor.precedence();
+  return std::visit([](const auto& e) { return e.precedence(); }, e);
 }
 
 IntegerConstant ExprGenerator::gen_integer_constant(const WeightsArray&) {
@@ -108,12 +65,10 @@ BinaryExpr ExprGenerator::gen_binary_expr(const WeightsArray& weights) {
   auto rhs = gen_with_weights(weights);
 
   // Rules for parenthesising the left hand side:
-  // 1. If the left hand side is not a binary expression, then there is no need
-  //    to do anything (TODO: Revise for ternary operator)
-  // 2. If the left hand side has a strictly lower precedence than ours,
+  // 1. If the left hand side has a strictly lower precedence than ours,
   //    then we will have to emit parens.
   //    Example: We emit `(3 + 4) * 5` instead of `3 + 4 * 5`.
-  // 3. If the left hand side has the same precedence as we do, then we
+  // 2. If the left hand side has the same precedence as we do, then we
   //    don't have to emit any parens. This is because all lldb-eval
   //    binary operators have left-to-right associativity.
   //    Example: We do not have to emit `(3 - 4) + 5`, `3 - 4 + 5` will also
@@ -124,12 +79,10 @@ BinaryExpr ExprGenerator::gen_binary_expr(const WeightsArray& weights) {
   }
 
   // Rules for parenthesising the right hand side:
-  // 1. If the right hand side is not a binary expression, then there is no need
-  //    to do anything (TODO: Revise for ternary operator)
-  // 2. If the right hand side has a strictly lower precedence than ours,
+  // 1. If the right hand side has a strictly lower precedence than ours,
   //    then we will have to emit parens.
   //    Example: We emit `5 * (3 + 4)` instead of `5 * 3 + 4`.
-  // 3. If the right hand side has the same precedence as we do, then we
+  // 2. If the right hand side has the same precedence as we do, then we
   //    should emit parens for good measure. This is because all lldb-eval
   //    binary operators have left-to-right associativity and we do not
   //    want to violate this with respect to the generated AST.
@@ -148,9 +101,7 @@ UnaryExpr ExprGenerator::gen_unary_expr(const WeightsArray& weights) {
   auto expr = gen_with_weights(weights);
   auto op = (UnOp)rng_->gen_un_op();
 
-  constexpr int UNARY_PRECEDENCE = 3;
-
-  if (expr_precedence(expr) > UNARY_PRECEDENCE) {
+  if (expr_precedence(expr) > UnaryExpr::PRECEDENCE) {
     expr = ParenthesizedExpr(std::move(expr));
   }
 

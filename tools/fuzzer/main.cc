@@ -20,6 +20,7 @@
 #include <cstring>
 #include <iostream>
 #include <random>
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -80,7 +81,9 @@ void run_fuzzer(lldb::SBFrame& frame) {
   size_t padding = 0;
   for (int i = 0; i < 20; i++) {
     auto gen_expr = gen.generate();
-    auto str = fuzzer::stringify_expr(gen_expr);
+    std::ostringstream os;
+    os << gen_expr;
+    auto str = os.str();
 
     padding = std::max(padding, str.size());
     exprs.emplace_back(std::move(str));

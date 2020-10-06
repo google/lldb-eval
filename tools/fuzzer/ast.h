@@ -19,6 +19,7 @@
 
 #include <cinttypes>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <variant>
 
@@ -31,8 +32,8 @@ class IntegerConstant;
 class DoubleConstant;
 class ParenthesizedExpr;
 class AddressOf;
-class FieldAccess;
-class PtrFieldAccess;
+class MemberOf;
+class MemberOfPtr;
 class ArrayIndex;
 class TernaryExpr;
 
@@ -77,9 +78,11 @@ constexpr size_t NUM_BIN_OPS = (size_t)BinOp::EnumLast + 1;
 
 using Expr =
     std::variant<IntegerConstant, DoubleConstant, VariableExpr, UnaryExpr,
-                 BinaryExpr, AddressOf, FieldAccess, PtrFieldAccess, ArrayIndex,
+                 BinaryExpr, AddressOf, MemberOf, MemberOfPtr, ArrayIndex,
                  TernaryExpr, ParenthesizedExpr>;
 constexpr size_t NUM_EXPR_KINDS = std::variant_size_v<Expr>;
+
+std::ostream& operator<<(std::ostream& os, const Expr& expr);
 
 class BinaryExpr {
  public:
@@ -90,6 +93,8 @@ class BinaryExpr {
   BinOp op() const;
   int precedence() const;
 
+  friend std::ostream& operator<<(std::ostream& os, const BinaryExpr& expr);
+
  private:
   std::unique_ptr<Expr> lhs_;
   std::unique_ptr<Expr> rhs_;
@@ -98,10 +103,15 @@ class BinaryExpr {
 
 class UnaryExpr {
  public:
+  static constexpr int PRECEDENCE = 3;
+
   UnaryExpr(UnOp op, Expr expr);
 
   UnOp op() const;
   const Expr& expr() const;
+  int precedence() const { return PRECEDENCE; }
+
+  friend std::ostream& operator<<(std::ostream& os, const UnaryExpr& expr);
 
  private:
   std::unique_ptr<Expr> expr_;
@@ -110,9 +120,14 @@ class UnaryExpr {
 
 class VariableExpr {
  public:
+  static constexpr int PRECEDENCE = 0;
+
   explicit VariableExpr(std::string name);
 
   const std::string& name() const;
+  int precedence() const { return PRECEDENCE; }
+
+  friend std::ostream& operator<<(std::ostream& os, const VariableExpr& expr);
 
  private:
   std::string name_;
@@ -120,9 +135,15 @@ class VariableExpr {
 
 class IntegerConstant {
  public:
+  static constexpr int PRECEDENCE = 0;
+
   explicit IntegerConstant(uint64_t value);
 
   uint64_t value() const;
+  int precedence() const { return PRECEDENCE; }
+
+  friend std::ostream& operator<<(std::ostream& os,
+                                  const IntegerConstant& expr);
 
  private:
   uint64_t value_;
@@ -130,9 +151,14 @@ class IntegerConstant {
 
 class DoubleConstant {
  public:
+  static constexpr int PRECEDENCE = 0;
+
   explicit DoubleConstant(double value);
 
   double value() const;
+  int precedence() const { return PRECEDENCE; }
+
+  friend std::ostream& operator<<(std::ostream& os, const DoubleConstant& expr);
 
  private:
   double value_;
@@ -140,9 +166,15 @@ class DoubleConstant {
 
 class ParenthesizedExpr {
  public:
+  static constexpr int PRECEDENCE = 0;
+
   explicit ParenthesizedExpr(Expr expr);
 
   const Expr& expr() const;
+  int precedence() const { return PRECEDENCE; }
+
+  friend std::ostream& operator<<(std::ostream& os,
+                                  const ParenthesizedExpr& expr);
 
  private:
   std::unique_ptr<Expr> expr_;
@@ -150,32 +182,47 @@ class ParenthesizedExpr {
 
 class AddressOf {
  public:
+  static constexpr int PRECEDENCE = 3;
+
   explicit AddressOf(Expr expr);
 
   const Expr& expr() const;
+  int precedence() const { return PRECEDENCE; }
+
+  friend std::ostream& operator<<(std::ostream& os, const AddressOf& expr);
 
  private:
   std::unique_ptr<Expr> expr_;
 };
 
-class FieldAccess {
+class MemberOf {
  public:
-  FieldAccess(Expr expr, std::string field);
+  static constexpr int PRECEDENCE = 2;
+
+  MemberOf(Expr expr, std::string field);
 
   const Expr& expr() const;
   const std::string& field() const;
+  int precedence() const { return PRECEDENCE; }
+
+  friend std::ostream& operator<<(std::ostream& os, const MemberOf& expr);
 
  private:
   std::unique_ptr<Expr> expr_;
   std::string field_;
 };
 
-class PtrFieldAccess {
+class MemberOfPtr {
  public:
-  PtrFieldAccess(Expr expr, std::string field);
+  static constexpr int PRECEDENCE = 2;
+
+  MemberOfPtr(Expr expr, std::string field);
 
   const Expr& expr() const;
   const std::string& field() const;
+  int precedence() const { return PRECEDENCE; }
+
+  friend std::ostream& operator<<(std::ostream& os, const MemberOfPtr& expr);
 
  private:
   std::unique_ptr<Expr> expr_;
@@ -184,10 +231,15 @@ class PtrFieldAccess {
 
 class ArrayIndex {
  public:
+  static constexpr int PRECEDENCE = 2;
+
   ArrayIndex(Expr expr, Expr idx);
 
   const Expr& expr() const;
   const Expr& idx() const;
+  int precedence() const { return PRECEDENCE; }
+
+  friend std::ostream& operator<<(std::ostream& os, const ArrayIndex& expr);
 
  private:
   std::unique_ptr<Expr> expr_;
@@ -196,30 +248,22 @@ class ArrayIndex {
 
 class TernaryExpr {
  public:
+  static constexpr int PRECEDENCE = 16;
+
   TernaryExpr(Expr cond, Expr lhs, Expr rhs);
 
   const Expr& cond() const;
   const Expr& lhs() const;
   const Expr& rhs() const;
+  int precedence() const { return PRECEDENCE; }
+
+  friend std::ostream& operator<<(std::ostream& os, const TernaryExpr& expr);
 
  private:
   std::unique_ptr<Expr> cond_;
   std::unique_ptr<Expr> lhs_;
   std::unique_ptr<Expr> rhs_;
 };
-
-std::string stringify_expr(const Expr& expr);
-std::string stringify_expr(const IntegerConstant& expr);
-std::string stringify_expr(const DoubleConstant& expr);
-std::string stringify_expr(const ParenthesizedExpr& expr);
-std::string stringify_expr(const BinaryExpr& expr);
-std::string stringify_expr(const UnaryExpr& expr);
-std::string stringify_expr(const VariableExpr& expr);
-std::string stringify_expr(const AddressOf& expr);
-std::string stringify_expr(const FieldAccess& expr);
-std::string stringify_expr(const PtrFieldAccess& expr);
-std::string stringify_expr(const ArrayIndex& expr);
-std::string stringify_expr(const TernaryExpr& expr);
 
 void dump_expr(const Expr& expr);
 

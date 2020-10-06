@@ -26,7 +26,7 @@ jobs:
           sudo apt install -y llvm-${{ matrix.tag }}-dev libclang-${{ matrix.tag }}-dev liblldb-${{ matrix.tag }}-dev
 
       - name: Build
-        run: bazel build :all tools:all
+        run: bazel build ...:all
 
       - name: Test
-        run: bazel test --test_output=errors :all tools:all
+        run: bazel test --test_output=errors ...:all
