@@ -118,7 +118,7 @@ std::ostream& operator<<(std::ostream& os, const DoubleConstant& e) {
 
 ParenthesizedExpr::ParenthesizedExpr(Expr expr)
     : expr_(std::make_unique<Expr>(std::move(expr))) {}
-const Expr& ParenthesizedExpr::expr() const { return *expr_; };
+const Expr& ParenthesizedExpr::expr() const { return *expr_; }
 std::ostream& operator<<(std::ostream& os, const ParenthesizedExpr& e) {
   return os << "(" << e.expr() << ")";
 }

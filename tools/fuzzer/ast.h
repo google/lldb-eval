@@ -38,40 +38,43 @@ class ArrayIndex;
 class TernaryExpr;
 
 enum class UnOp : unsigned char {
+  // Used to determine the first enum element.
   EnumFirst,
   Plus = EnumFirst,
   Neg,
   LogicalNot,
   BitNot,
+  // Used to determine the last enum element.
   EnumLast = BitNot,
 };
 constexpr size_t NUM_UN_OPS = (size_t)UnOp::EnumLast + 1;
 
 enum class BinOp : unsigned char {
+  // Used to determine the first enum element.
   EnumFirst,
-  // Arithmetic operators
+  // Arithmetic operators.
   Plus = EnumFirst,
   Minus,
   Mult,
   Div,
   Mod,
-  // Logical operators
+  // Logical operators.
   LogicalAnd,
   LogicalOr,
-  // Bitwise operators
+  // Bitwise operators.
   BitAnd,
   BitOr,
   BitXor,
   Shl,
   Shr,
-  // Comparison operators
+  // Comparison operators.
   Eq,
   Ne,
   Lt,
   Le,
   Gt,
   Ge,
-  // Used to determine the last enum element
+  // Used to determine the last enum element.
   EnumLast = Ge,
 };
 constexpr size_t NUM_BIN_OPS = (size_t)BinOp::EnumLast + 1;
