@@ -8,6 +8,8 @@ on:
 
 jobs:
   build-test:
+    runs-on: {{ matrix.os }}
+    
     strategy:
       matrix:
         include:
@@ -17,8 +19,6 @@ jobs:
             tag: 11
           - os: windows-latest
             llvm_archive: llvm-11.0.0-x86_64-windows-msvc-release-md
-
-    runs-on: {{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v2
