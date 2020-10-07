@@ -1,0 +1,29 @@
+name: Build & Test (Windows)
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: windows-2019
+
+    env:
+      LLVM_ARCHIVE: llvm-11.0.0-x86_64-windows-msvc-release-mt
+      LLVM_INSTALL_PATH: .\llvm-11.0.0-x86_64-windows-msvc-release-mt\
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Setup LLVM
+        run: |
+          C:\msys64\usr\bin\wget.exe https://github.com/google/lldb-eval/releases/download/llvm-11/$env:LLVM_ARCHIVE.7z
+          7z x -y $env:LLVM_ARCHIVE.7z
+
+      - name: Build
+        run: bazel build :all
+
+      - name: Test
+        run: bazel test --test_output=errors :all
