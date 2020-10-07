@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Setup LLVM
+      - name: Setup LLVM (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
           wget https://apt.llvm.org/llvm.sh
@@ -32,7 +32,7 @@ jobs:
           sudo apt install -y llvm-${{ matrix.tag }}-dev libclang-${{ matrix.tag }}-dev liblldb-${{ matrix.tag }}-dev
           echo "LLVM_INSTALL_PATH=/usr/lib/llvm-${{ matrix.tag }}" >> $GITHUB_ENV
           
-      - name: Setup LLVM
+      - name: Setup LLVM (Windows)
         if: matrix.os == 'windows-latest'
         run: |
           C:\msys64\usr\bin\wget.exe -q "https://github.com/google/lldb-eval/releases/download/llvm-11/${{ matrix.llvm_archive }}.7z"
