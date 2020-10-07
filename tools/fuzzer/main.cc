@@ -18,12 +18,12 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <iostream>
 #include <random>
 #include <string>
 #include <utility>
 
 #include "ast.h"
+#include "cpp_linenoise/linenoise.hpp"
 #include "expr_gen.h"
 #include "lldb/API/SBBreakpoint.h"
 #include "lldb/API/SBDebugger.h"
@@ -45,12 +45,11 @@ constexpr char LLDB_SERVER_KEY[] = "llvm_project/bin/lldb-server";
 constexpr char EXECUTABLE_PATH_KEY[] = "lldb_eval/testdata/fuzzer_binary";
 
 void run_repl(lldb::SBFrame& frame) {
+  linenoise::SetMultiLine(true);
   std::string expr;
   for (;;) {
-    printf("> ");
-    fflush(stdout);
-
-    if (!getline(std::cin, expr)) {
+    auto quit = linenoise::Readline("> ", expr);
+    if (quit) {
       break;
     }
 
@@ -62,6 +61,8 @@ void run_repl(lldb::SBFrame& frame) {
         lldb_eval::EvaluateExpression(frame, expr.c_str(), err);
     printf("lldb-eval yields: `%s`\n", lldb_eval_value.GetValue());
     printf("------------------------------------------------------------\n");
+
+    linenoise::AddHistory(expr.c_str());
   }
 }
 

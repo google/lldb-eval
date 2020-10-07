@@ -51,6 +51,7 @@ cc_binary(
         ":fuzzer_lib",
         "//:lldb-eval",
         "@bazel_tools//tools/cpp/runfiles",
+        "@io_github_yhirose_cpplinenoise//:cpp_linenoise",
         "@llvm_project//:lldb-api",
     ],
 )
