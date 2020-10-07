@@ -25,10 +25,6 @@ jobs:
           sudo ./llvm.sh ${{ matrix.tag }}
           sudo apt install -y llvm-${{ matrix.tag }}-dev libclang-${{ matrix.tag }}-dev liblldb-${{ matrix.tag }}-dev
 
-      - name: Setup Bazel
-        run: |
-          echo "build --config=linux" > user.bazelrc
-
       - name: Build
         run: bazel build :all
 
