@@ -87,10 +87,10 @@ Now you can build and test `lldb-eval`:
 
 ```bash
 # Build and run all tests
-bazel test --config=linux :all
+bazel test :all
 
 # Evaluate a sample expression
-bazel run --config=windows :main -- "(1 + 2) * 42 / 4"
+bazel run :main -- "(1 + 2) * 42 / 4"
 ```
 
 > **Hint:** You can add this option to your `user.bazelrc` !
@@ -111,7 +111,7 @@ configuration. Check [Bazel docs](https://docs.bazel.build/versions/master/guide
 for the format. For example:
 
 ```bash
-# Building on Linux
+# Building on Linux (usually don't need this, Bazel detects automatically)
 build --config=linux
 # Using statically linked liblldb.so
 build --@llvm_project//:llvm_build=static
