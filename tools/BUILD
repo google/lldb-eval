@@ -52,5 +52,6 @@ cc_binary(
         "//:lldb-eval",
         "@bazel_tools//tools/cpp/runfiles",
         "@llvm_project//:lldb-api",
+        "@io_github_yhirose_cpplinenoise//:cpp_linenoise",
     ],
 )
