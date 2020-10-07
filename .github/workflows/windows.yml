@@ -17,7 +17,7 @@ jobs:
         run: |
           # liblldb.dll depends on python38.dll
           # TODO(werat): Figure out if we can bundle it with LLVM or just get rid of it.
-          choco install python --version=3.8.0 --allow-downgrade --no-progress
+          choco upgrade python --version=3.8.0 --allow-downgrade --no-progress
           
           $env:LLVM_ARCHIVE = "llvm-11.0.0-x86_64-windows-msvc-release-mt"
           C:\msys64\usr\bin\wget.exe -q "https://github.com/google/lldb-eval/releases/download/llvm-11/$env:LLVM_ARCHIVE.7z"
