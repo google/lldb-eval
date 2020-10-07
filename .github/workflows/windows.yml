@@ -23,7 +23,12 @@ jobs:
           echo "LLVM_INSTALL_PATH=$pwd/$env:LLVM_ARCHIVE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
 
       - name: Build
-        run: bazel build :all
+        run: bazelisk build :all
+
+      - name: Poor man's test
+        run: |
+          bazelisk run :parser_test
+          bazelisk run :eval_test
 
       - name: Test
-        run: bazel test --test_output=errors :all
+        run: bazelisk test --test_output=errors :all
