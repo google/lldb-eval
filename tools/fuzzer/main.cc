@@ -24,7 +24,7 @@
 
 #include "ast.h"
 #include "expr_gen.h"
-#include "linenoise.hpp"
+#include "linenoise/linenoise.hpp"
 #include "lldb/API/SBBreakpoint.h"
 #include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBError.h"

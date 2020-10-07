@@ -1,6 +1,5 @@
 workspace(name = "lldb_eval")
 
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 http_archive(
@@ -19,12 +18,12 @@ http_archive(
     urls = ["https://github.com/google/googletest/archive/release-1.10.0.zip"],
 )
 
-new_git_repository(
+http_archive(
     name = "io_github_yhirose_cpplinenoise",
     build_file = "//build_defs:cpp_linenoise.BUILD",
-    commit = "bc523e4b03a690cebe3b5f80a6396bcc50215a03",
-    remote = "https://github.com/yhirose/cpp-linenoise.git",
-    shallow_since = "1599562483 -0400",
+    sha256 = "9afbfd1da0e7bd48c06a6d08ef2a1c259b2edf3f6488b75a54025ab4e64b523f",
+    strip_prefix = "cpp-linenoise-bc523e4b03a690cebe3b5f80a6396bcc50215a03",
+    urls = ["https://github.com/yhirose/cpp-linenoise/archive/bc523e4b03a690cebe3b5f80a6396bcc50215a03.zip"],
 )
 
 load("//build_defs:repo_rules.bzl", "llvm_project_configure")
