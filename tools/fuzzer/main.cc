@@ -23,8 +23,8 @@
 #include <utility>
 
 #include "ast.h"
+#include "cpp_linenoise/linenoise.hpp"
 #include "expr_gen.h"
-#include "linenoise/linenoise.hpp"
 #include "lldb/API/SBBreakpoint.h"
 #include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBError.h"

@@ -17,5 +17,5 @@ cc_library(
     name = "cpp_linenoise",
     hdrs = ["linenoise.hpp"],
     includes = ["."],
-    include_prefix = "linenoise",
+    include_prefix = "cpp_linenoise",
 )
