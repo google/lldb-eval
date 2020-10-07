@@ -26,7 +26,7 @@ jobs:
         run: bazel build :all
 
       - name: Poor man's test 1
-        run: bazel run :parser_test
+        run: bazel test -s :parser_test
         
       - name: Poor man's test 2
         run: bazel run :eval_test
