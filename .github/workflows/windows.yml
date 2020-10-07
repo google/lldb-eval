@@ -19,8 +19,8 @@ jobs:
 
       - name: Setup LLVM
         run: |
-          C:\msys64\usr\bin\wget.exe https://github.com/google/lldb-eval/releases/download/llvm-11/$env:LLVM_ARCHIVE.7z
-          7z x -y $env:LLVM_ARCHIVE.7z
+          C:\msys64\usr\bin\wget.exe "https://github.com/google/lldb-eval/releases/download/llvm-11/$env:LLVM_ARCHIVE.7z"
+          7z x -y "$env:LLVM_ARCHIVE.7z"
 
       - name: Build
         run: bazel build :all
