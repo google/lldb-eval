@@ -20,8 +20,7 @@ jobs:
         run: |
           C:\msys64\usr\bin\wget.exe -q "https://github.com/google/lldb-eval/releases/download/llvm-11/$env:LLVM_ARCHIVE.7z"
           7z x -y "$env:LLVM_ARCHIVE.7z"
-          echo "LLVM_INSTALL_PATH=$pwd/$env:LLVM_ARCHIVE" >> $GITHUB_ENV
-          echo "::set-env name=LLVM_INSTALL_PATH::$pwd/$env:LLVM_ARCHIVE"
+          echo "LLVM_INSTALL_PATH=$pwd/$env:LLVM_ARCHIVE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
 
       - name: Build
         run: bazel build :all
