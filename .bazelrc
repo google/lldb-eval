@@ -1,5 +1,5 @@
-# Try loading per-user configuration.
-try-import %workspace%/user.bazelrc
+# Make Bazel pickup Linux/Windows configs automatically.
+build --enable_platform_specific_config
 
 # Linux-specific configuration.
 build:linux --cxxopt=-std=c++17
@@ -56,3 +56,6 @@ build:ubsan --copt=-fno-omit-frame-pointer
 build:ubsan --copt=-DNDEBUG
 build:ubsan --copt=-fno-sanitize=function,vptr
 build:ubsan --linkopt=-fsanitize=undefined
+
+# Try loading per-user configuration.
+try-import %workspace%/user.bazelrc
