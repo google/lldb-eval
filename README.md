@@ -41,8 +41,8 @@ Or build them from source, see the instructions in the [LLDB documentation](http
 #### Windows
 
 On Windows we need to build LLDB (and other parts) from source. The steps are
-basically the same as for Linux. You will need: `CMake`, `Python3`, `SWIG`,
-`Ninja` and `Visual Studio` (tested with Visual Studio 2019 16.6.5).
+basically the same as for Linux. You will need: `CMake`, `Ninja` and
+`Visual Studio` (tested with Visual Studio 2019 16.6.5).
 
 > **Hint:** You can install the dependencies via [Chocolatey](https://chocolatey.org/).
 
@@ -57,8 +57,8 @@ cd build_x64_optdebug
 cmake ^
     -DCMAKE_INSTALL_PREFIX='C:\src\llvm-project\build_x64_optdebug\install' ^
     -DLLVM_ENABLE_PROJECTS='lldb;clang;lld' ^
+    -DLLDB_ENABLE_PYTHON=0 ^
     -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
-    -DPYTHON_HOME=C:\Python38 ^
     -GNinja ^
     ../llvm
 
