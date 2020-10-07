@@ -25,6 +25,8 @@ jobs:
       - name: Build
         run: bazel build :all
 
+      - run: bazel run :main -- "1+1"
+
       - name: Poor man's test 0
         run: .\bazel-bin\parser_test.exe
 
