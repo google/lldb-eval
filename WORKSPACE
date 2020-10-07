@@ -21,9 +21,9 @@ http_archive(
 
 new_git_repository(
     name = "io_github_yhirose_cpplinenoise",
+    build_file = "//build_defs:cpp_linenoise.BUILD",
     commit = "bc523e4b03a690cebe3b5f80a6396bcc50215a03",
     remote = "https://github.com/yhirose/cpp-linenoise.git",
-    build_file = "//build_defs:cpp_linenoise.BUILD",
     shallow_since = "1599562483 -0400",
 )
 
