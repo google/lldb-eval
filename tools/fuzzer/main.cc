@@ -39,7 +39,11 @@
 
 #ifdef _WIN32
 #pragma warning(push, 0)
+#endif  // defined _WIN32
+
 #include "linenoise.hpp"
+
+#ifdef _WIN32
 #pragma warning(pop)
 #endif  // defined _WIN32
 

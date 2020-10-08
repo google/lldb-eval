@@ -29,7 +29,6 @@ FUZZER_COPTS = select({
         # Disable warnings only for the LLVM includes.
         "/experimental:external",
         "/external:W0",
-        "/external:I bazel-out/k8-fastbuild/bin/external/io_github_yhirose_cpplinenoise/_virtual_includes/cpp_linenoise/",
         "/external:I external/llvm_project/include",
     ],
     "//conditions:default": [
