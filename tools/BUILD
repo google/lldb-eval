@@ -36,14 +36,12 @@ cc_binary(
     name = "fuzzer",
     srcs = ["fuzzer/main.cc"],
     copts = COPTS + select({
-    "@bazel_tools//src/conditions:windows": [
-        # Mark the linenoise include as external
-        "/external:I external/io_github_yhirose_cpplinenoise",
-    ],
-    "//conditions:default": [],
-})
-
-,
+        "@bazel_tools//src/conditions:windows": [
+            # Mark the linenoise include as external
+            "/external:I external/io_github_yhirose_cpplinenoise",
+        ],
+        "//conditions:default": [],
+    }),
     data = [
         "//testdata:fuzzer_binary_gen",
         "//testdata:fuzzer_binary_srcs",
