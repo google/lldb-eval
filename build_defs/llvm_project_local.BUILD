@@ -39,6 +39,14 @@ selects.config_setting_group(
     ],
 )
 
+LLVM_COPTS = select({
+    "@bazel_tools//src/conditions:windows": [
+        # Mark the LLVM includes as external
+        "/external:I external/llvm_project/include",
+    ],
+    "//conditions:default": [],
+})
+
 LLVM_LINKOPTS = select({
     "@bazel_tools//src/conditions:windows": [],
     "//conditions:default": [
@@ -158,6 +166,7 @@ cc_library(
     includes = ["include"],
     linkopts = LLVM_LINKOPTS,
     linkstatic = 1,
+    copts = LLVM_COPTS,
 )
 
 cc_library(

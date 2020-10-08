@@ -1,17 +1,8 @@
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
-COPTS = select({
-    "@bazel_tools//src/conditions:windows": [
-        # Mark the LLVM includes as external
-        "/external:I external/llvm_project/include",
-    ],
-    "//conditions:default": [],
-})
-
 cc_binary(
     name = "lexer",
     srcs = ["lexer.cc"],
-    copts = COPTS,
     deps = [
         "@llvm_project//:clang-basic",
         "@llvm_project//:clang-lex",
@@ -29,13 +20,11 @@ cc_library(
         "fuzzer/ast.h",
         "fuzzer/expr_gen.h",
     ],
-    copts = COPTS,
 )
 
 cc_binary(
     name = "fuzzer",
     srcs = ["fuzzer/main.cc"],
-    copts = COPTS,
     data = [
         "//testdata:fuzzer_binary_gen",
         "//testdata:fuzzer_binary_srcs",
@@ -53,7 +42,6 @@ cc_binary(
 cc_test(
     name = "fuzzer_test",
     srcs = ["fuzzer/fuzzer_test.cc"],
-    copts = COPTS,
     deps = [
         ":fuzzer_lib",
         "//:lldb-eval",
