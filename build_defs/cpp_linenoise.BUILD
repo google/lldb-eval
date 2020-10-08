@@ -11,7 +11,8 @@ CPP_LINENOISE_COPTS = select({
         # Disable warnings for the cpp-linenoise header
         "/experimental:external",
         "/external:W0",
-        "/external:I .",
+        "/external:I",
+        "external/io_github_yhirose_cpplinenoise",
     ],
     "//conditions:default": [
         "-fno-exceptions",
