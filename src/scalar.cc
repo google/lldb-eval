@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "lldb-eval/scalar.h"
+#include "scalar.h"
 
 #include <string>
 
-#include "lldb-eval/defines.h"
+#include "defines.h"
 #include "lldb/API/SBError.h"
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"

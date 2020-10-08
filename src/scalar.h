@@ -20,7 +20,7 @@
 #include <cstdint>
 #include <string>
 
-#include "lldb-eval/defines.h"
+#include "defines.h"
 #include "lldb/API/SBValue.h"
 
 namespace lldb_eval {

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "lldb-eval/runner.h"
+#include "runner.h"
 
 #include <fstream>
 #include <iostream>

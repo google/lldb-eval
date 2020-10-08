@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "lldb-eval/value.h"
+#include "value.h"
 
-#include "lldb-eval/defines.h"
-#include "lldb-eval/scalar.h"
+#include "defines.h"
 #include "lldb/API/SBTarget.h"
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
 #include "lldb/lldb-enumerations.h"
+#include "scalar.h"
 
 namespace {
 
