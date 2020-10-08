@@ -25,9 +25,54 @@
 
 namespace fuzzer {
 
+enum class ExprKind : unsigned char {
+  IntegerConstant,
+  DoubleConstant,
+  VariableExpr,
+  UnaryExpr,
+  BinaryExpr,
+  AddressOf,
+  MemberOf,
+  MemberOfPtr,
+  ArrayIndex,
+  TernaryExpr,
+  EnumLast = TernaryExpr,
+};
+constexpr size_t NUM_GEN_EXPR_KINDS = (size_t)ExprKind::EnumLast + 1;
+
+using WeightsArray = std::array<float, NUM_GEN_EXPR_KINDS>;
+
+class GeneratorRng {
+ public:
+  virtual ~GeneratorRng() {}
+
+  virtual BinOp gen_bin_op() = 0;
+  virtual UnOp gen_un_op() = 0;
+  virtual ExprKind gen_expr_kind(const WeightsArray& array) = 0;
+  virtual uint64_t gen_u64(uint64_t min, uint64_t max) = 0;
+  virtual double gen_double(double min, double max) = 0;
+  virtual bool gen_parenthesize(float probability = 0.5) = 0;
+};
+
+class DefaultGeneratorRng : public GeneratorRng {
+ public:
+  explicit DefaultGeneratorRng(uint32_t seed) : rng_(seed) {}
+
+  BinOp gen_bin_op() override;
+  UnOp gen_un_op() override;
+  ExprKind gen_expr_kind(const WeightsArray& array) override;
+  uint64_t gen_u64(uint64_t min, uint64_t max) override;
+  double gen_double(double min, double max) override;
+  bool gen_parenthesize(float probability = 0.5) override;
+
+ private:
+  std::mt19937 rng_;
+};
+
 class ExprGenerator {
  public:
-  explicit ExprGenerator(uint32_t seed) : rng_(seed) {}
+  explicit ExprGenerator(std::unique_ptr<GeneratorRng> rng)
+      : rng_(std::move(rng)) {}
 
   Expr generate();
 
@@ -37,17 +82,8 @@ class ExprGenerator {
 
   static constexpr char VAR[] = "x";
 
-  enum class ExprKind : unsigned char {
-    IntegerConstant,
-    DoubleConstant,
-    VariableExpr,
-    BinaryExpr,
-    UnaryExpr,
-  };
+  Expr maybe_parenthesized(Expr expr);
 
-  using WeightsArray = std::array<float, NUM_EXPR_KINDS>;
-
-  bool fifty_fifty();
   IntegerConstant gen_integer_constant(const WeightsArray&);
   DoubleConstant gen_double_constant(const WeightsArray&);
   VariableExpr gen_variable_expr(const WeightsArray&);
@@ -57,7 +93,7 @@ class ExprGenerator {
   Expr gen_with_weights(const WeightsArray&);
 
  private:
-  std::mt19937 rng_;
+  std::unique_ptr<GeneratorRng> rng_;
 };
 
 }  // namespace fuzzer

@@ -37,107 +37,121 @@ static const std::array<ExprKindInfo, NUM_EXPR_KINDS> EXPR_KIND_INFO = {{
     {3.0f, 0.4f},  // ExprKind::UnaryExpr
 }};
 
-bool ExprGenerator::fifty_fifty() {
-  std::bernoulli_distribution fifty_fifty_distr;
-  return fifty_fifty_distr(rng_);
+int expr_precedence(const Expr& e) {
+  return std::visit([](const auto& e) { return e.precedence(); }, e);
 }
 
 IntegerConstant ExprGenerator::gen_integer_constant(const WeightsArray&) {
-  std::uniform_int_distribution<uint64_t> value_distr(0, MAX_INT_VALUE);
-  auto value = value_distr(rng_);
-  auto gen_parens = fifty_fifty();
+  auto value = rng_->gen_u64(0, MAX_INT_VALUE);
 
-  return IntegerConstant(value, gen_parens);
+  return IntegerConstant(value);
 }
 
 DoubleConstant ExprGenerator::gen_double_constant(const WeightsArray&) {
   std::uniform_real_distribution<double> value_distr(0.0, MAX_DOUBLE_VALUE);
-  auto value = value_distr(rng_);
-  auto gen_parens = fifty_fifty();
+  auto value = rng_->gen_double(0.0, MAX_DOUBLE_VALUE);
 
-  return DoubleConstant(value, gen_parens);
+  return DoubleConstant(value);
 }
 
 VariableExpr ExprGenerator::gen_variable_expr(const WeightsArray&) {
-  auto gen_parens = fifty_fifty();
-
-  return VariableExpr(VAR, gen_parens);
+  return VariableExpr(VAR);
 }
 
 BinaryExpr ExprGenerator::gen_binary_expr(const WeightsArray& weights) {
-  WeightsArray new_weights = weights;
+  auto op = rng_->gen_bin_op();
 
-  auto idx = (size_t)ExprKind::BinaryExpr;
-  new_weights[idx] *= EXPR_KIND_INFO[idx].dampening_factor;
+  auto lhs = gen_with_weights(weights);
+  auto rhs = gen_with_weights(weights);
 
-  auto lhs = gen_with_weights(new_weights);
-  auto rhs = gen_with_weights(new_weights);
+  // Rules for parenthesising the left hand side:
+  // 1. If the left hand side has a strictly lower precedence than ours,
+  //    then we will have to emit parens.
+  //    Example: We emit `(3 + 4) * 5` instead of `3 + 4 * 5`.
+  // 2. If the left hand side has the same precedence as we do, then we
+  //    don't have to emit any parens. This is because all lldb-eval
+  //    binary operators have left-to-right associativity.
+  //    Example: We do not have to emit `(3 - 4) + 5`, `3 - 4 + 5` will also
+  //    do.
+  auto lhs_precedence = expr_precedence(lhs);
+  if (lhs_precedence > bin_op_precedence(op)) {
+    lhs = ParenthesizedExpr(std::move(lhs));
+  }
 
-  // The interval of `uniform_int_distribution` is inclusive.
-  std::uniform_int_distribution<size_t> op_distr(0,
-                                                 (size_t)BinOp::EnumLast - 1);
-  auto op = (BinOp)op_distr(rng_);
-  bool gen_parens = fifty_fifty();
+  // Rules for parenthesising the right hand side:
+  // 1. If the right hand side has a strictly lower precedence than ours,
+  //    then we will have to emit parens.
+  //    Example: We emit `5 * (3 + 4)` instead of `5 * 3 + 4`.
+  // 2. If the right hand side has the same precedence as we do, then we
+  //    should emit parens for good measure. This is because all lldb-eval
+  //    binary operators have left-to-right associativity and we do not
+  //    want to violate this with respect to the generated AST.
+  //    Example: We emit `3 - (4 + 5)` instead of `3 - 4 + 5`. We also
+  //    emit `3 + (4 + 5)` instead of `3 + 4 + 5`, even though both
+  //    expressions are equivalent.
+  auto rhs_precedence = expr_precedence(rhs);
+  if (rhs_precedence >= bin_op_precedence(op)) {
+    rhs = ParenthesizedExpr(std::move(rhs));
+  }
 
-  return BinaryExpr(std::move(lhs), op, std::move(rhs), gen_parens);
+  return BinaryExpr(std::move(lhs), op, std::move(rhs));
 }
 
 UnaryExpr ExprGenerator::gen_unary_expr(const WeightsArray& weights) {
-  WeightsArray new_weights = weights;
+  auto expr = gen_with_weights(weights);
+  auto op = (UnOp)rng_->gen_un_op();
 
-  auto idx = (size_t)ExprKind::UnaryExpr;
-  new_weights[idx] *= EXPR_KIND_INFO[idx].dampening_factor;
+  if (expr_precedence(expr) > UnaryExpr::PRECEDENCE) {
+    expr = ParenthesizedExpr(std::move(expr));
+  }
 
-  auto expr = gen_with_weights(new_weights);
-
-  std::uniform_int_distribution<size_t> op_distr(0, (size_t)UnOp::EnumLast - 1);
-  auto op = (UnOp)op_distr(rng_);
-  bool gen_parens = fifty_fifty();
-
-  return UnaryExpr(op, std::move(expr), gen_parens);
+  return UnaryExpr(op, std::move(expr));
 }
 
 Expr ExprGenerator::gen_with_weights(const WeightsArray& weights) {
-  // No need to pull `<numeric>` just for one sum.
-  float sum = 0;
-  for (const auto& e : weights) {
-    sum += e;
-  }
+  WeightsArray new_weights = weights;
 
-  std::uniform_real_distribution<float> distr(0, sum);
-  auto val = distr(rng_);
+  auto kind = rng_->gen_expr_kind(new_weights);
+  auto idx = (size_t)kind;
+  new_weights[idx] *= EXPR_KIND_INFO[idx].dampening_factor;
 
-  // Make sure `kind` is always initialized.
-  float running_sum = 0;
-  ExprKind kind = ExprKind::IntegerConstant;
-  for (size_t i = 0; i < weights.size(); i++) {
-    running_sum += weights[i];
-    if (val < running_sum) {
-      kind = (ExprKind)i;
-      break;
-    }
-  }
-
+  // Dummy value for initialization
+  Expr expr(IntegerConstant(0));
   switch (kind) {
     case ExprKind::IntegerConstant:
-      return gen_integer_constant(weights);
+      expr = gen_integer_constant(new_weights);
+      break;
 
     case ExprKind::DoubleConstant:
-      return gen_double_constant(weights);
+      expr = gen_double_constant(new_weights);
+      break;
 
     case ExprKind::VariableExpr:
-      return gen_variable_expr(weights);
+      expr = gen_variable_expr(new_weights);
+      break;
 
     case ExprKind::BinaryExpr:
-      return gen_binary_expr(weights);
+      expr = gen_binary_expr(new_weights);
+      break;
 
     case ExprKind::UnaryExpr:
-      return gen_unary_expr(weights);
+      expr = gen_unary_expr(new_weights);
+      break;
 
     default:
       assert(false && "Unreachable");
       exit(1);
   }
+
+  return maybe_parenthesized(std::move(expr));
+}
+
+Expr ExprGenerator::maybe_parenthesized(Expr expr) {
+  if (rng_->gen_parenthesize()) {
+    return ParenthesizedExpr(std::move(expr));
+  }
+
+  return expr;
 }
 
 Expr ExprGenerator::generate() {
@@ -147,6 +161,58 @@ Expr ExprGenerator::generate() {
   }
 
   return gen_with_weights(weights);
+}
+
+BinOp DefaultGeneratorRng::gen_bin_op() {
+  std::uniform_int_distribution<int> distr((int)BinOp::EnumFirst,
+                                           (int)BinOp::EnumLast);
+  return (BinOp)distr(rng_);
+}
+
+UnOp DefaultGeneratorRng::gen_un_op() {
+  std::uniform_int_distribution<int> distr((int)UnOp::EnumFirst,
+                                           (int)UnOp::EnumLast);
+  return (UnOp)distr(rng_);
+}
+
+uint64_t DefaultGeneratorRng::gen_u64(uint64_t min, uint64_t max) {
+  std::uniform_int_distribution<uint64_t> distr(min, max);
+  return distr(rng_);
+}
+
+double DefaultGeneratorRng::gen_double(double min, double max) {
+  std::uniform_real_distribution<double> distr(min, max);
+  return distr(rng_);
+}
+
+bool DefaultGeneratorRng::gen_parenthesize(float probability) {
+  std::bernoulli_distribution distr(probability);
+  return distr(rng_);
+}
+
+ExprKind DefaultGeneratorRng::gen_expr_kind(const WeightsArray& weights) {
+  // No need to pull `<numeric>` just for one sum.
+  float sum = 0;
+  for (const auto& e : weights) {
+    sum += e;
+  }
+
+  std::uniform_real_distribution<double> distr(0, sum);
+  auto val = distr(rng_);
+
+  // Dummy initialization to avoid uninitialized warnings, the loop below will
+  // always set `kind`.
+  ExprKind kind = ExprKind::IntegerConstant;
+  float running_sum = 0;
+  for (size_t i = 0; i < weights.size(); i++) {
+    running_sum += weights[i];
+    if (val < running_sum) {
+      kind = (ExprKind)i;
+      break;
+    }
+  }
+
+  return kind;
 }
 
 }  // namespace fuzzer

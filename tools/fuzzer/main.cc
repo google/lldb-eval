@@ -19,11 +19,11 @@
 #include <cstdio>
 #include <cstring>
 #include <random>
+#include <sstream>
 #include <string>
 #include <utility>
 
 #include "ast.h"
-#include "cpp_linenoise/linenoise.hpp"
 #include "expr_gen.h"
 #include "lldb/API/SBBreakpoint.h"
 #include "lldb/API/SBDebugger.h"
@@ -36,6 +36,16 @@
 #include "lldb/API/SBValue.h"
 #include "src/api.h"
 #include "tools/cpp/runfiles/runfiles.h"
+
+#ifdef _WIN32
+#pragma warning(push, 0)
+#endif  // defined _WIN32
+
+#include "linenoise.hpp"
+
+#ifdef _WIN32
+#pragma warning(pop)
+#endif  // defined _WIN32
 
 using bazel::tools::cpp::runfiles::Runfiles;
 
@@ -74,17 +84,21 @@ void run_fuzzer(lldb::SBFrame& frame) {
   auto var_value = frame.GetValueForVariablePath(VAR);
   printf("Value of variable `%s` is: %s\n", VAR, var_value.GetValue());
 
-  fuzzer::ExprGenerator gen(seed);
+  auto rng = std::make_unique<fuzzer::DefaultGeneratorRng>(seed);
+  fuzzer::ExprGenerator gen(std::move(rng));
   std::vector<std::string> exprs;
 
   size_t padding = 0;
   for (int i = 0; i < 20; i++) {
     auto gen_expr = gen.generate();
-    auto str = fuzzer::stringify_expr(gen_expr);
+    std::ostringstream os;
+    os << gen_expr;
+    auto str = os.str();
 
     padding = std::max(padding, str.size());
     exprs.emplace_back(std::move(str));
   }
+
   for (const auto& e : exprs) {
     auto lldb_value = frame.EvaluateExpression(e.c_str());
     printf("lldb:      `%-*s` yields: `%s`\n", (int)padding, e.c_str(),
