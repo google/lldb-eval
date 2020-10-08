@@ -24,7 +24,6 @@
 #include <utility>
 
 #include "ast.h"
-#include "cpp_linenoise/linenoise.hpp"
 #include "expr_gen.h"
 #include "lldb/API/SBBreakpoint.h"
 #include "lldb/API/SBDebugger.h"
@@ -37,6 +36,12 @@
 #include "lldb/API/SBValue.h"
 #include "src/api.h"
 #include "tools/cpp/runfiles/runfiles.h"
+
+#ifdef _WIN32
+#pragma warning(push, 0)
+#include "linenoise.hpp"
+#pragma warning(pop)
+#endif  // defined _WIN32
 
 using bazel::tools::cpp::runfiles::Runfiles;
 
