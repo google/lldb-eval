@@ -23,8 +23,8 @@
 #include <string>
 #include <utility>
 
-#include "fuzzer/ast.h"
-#include "fuzzer/expr_gen.h"
+#include "ast.h"
+#include "expr_gen.h"
 #include "linenoise.hpp"
 #include "lldb/API/SBBreakpoint.h"
 #include "lldb/API/SBDebugger.h"

@@ -29,8 +29,7 @@ cc_library(
         "fuzzer/ast.h",
         "fuzzer/expr_gen.h",
     ],
-    strip_include_prefix = "fuzzer",
-    include_prefix = "fuzzer",
+    copts = COPTS,
 )
 
 cc_binary(
