@@ -2,15 +2,10 @@ load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
 COPTS = select({
     "@bazel_tools//src/conditions:windows": [
-        # Disable warnings only for the LLVM includes.
-        "/experimental:external",
-        "/external:W0",
+        # Mark the LLVM includes as external
         "/external:I external/llvm_project/include",
     ],
-    "//conditions:default": [
-        "-fno-exceptions",
-        "-fno-rtti",
-    ],
+    "//conditions:default": [],
 })
 
 cc_binary(
@@ -24,19 +19,6 @@ cc_binary(
     ],
 )
 
-FUZZER_COPTS = select({
-    "@bazel_tools//src/conditions:windows": [
-        # Disable warnings only for the LLVM includes.
-        "/experimental:external",
-        "/external:W0",
-        "/external:I external/llvm_project/include",
-    ],
-    "//conditions:default": [
-        "-fno-exceptions",
-        "-fno-rtti",
-    ],
-})
-
 cc_library(
     name = "fuzzer_lib",
     srcs = [
@@ -47,13 +29,13 @@ cc_library(
         "fuzzer/ast.h",
         "fuzzer/expr_gen.h",
     ],
-    copts = FUZZER_COPTS,
+    copts = COPTS,
 )
 
 cc_binary(
     name = "fuzzer",
     srcs = ["fuzzer/main.cc"],
-    copts = FUZZER_COPTS,
+    copts = COPTS,
     data = [
         "//testdata:fuzzer_binary_gen",
         "//testdata:fuzzer_binary_srcs",
@@ -71,7 +53,7 @@ cc_binary(
 cc_test(
     name = "fuzzer_test",
     srcs = ["fuzzer/fuzzer_test.cc"],
-    copts = FUZZER_COPTS,
+    copts = COPTS,
     deps = [
         ":fuzzer_lib",
         "//:lldb-eval",
