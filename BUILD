@@ -51,6 +51,8 @@ cc_library(
         "@llvm_project//:lldb-api",
         "@llvm_project//:llvm-support",
     ],
+    strip_include_prefix = "src",
+    include_prefix = "lldb-eval",
 )
 
 cc_test(
@@ -110,4 +112,6 @@ cc_library(
         "@bazel_tools//tools/cpp/runfiles",
         "@llvm_project//:lldb-api",
     ],
+    strip_include_prefix = "src",
+    include_prefix = "lldb-eval",
 )

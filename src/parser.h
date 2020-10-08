@@ -20,7 +20,6 @@
 #include <memory>
 #include <string>
 
-#include "ast.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/SourceLocation.h"
@@ -29,7 +28,8 @@
 #include "clang/Lex/LiteralSupport.h"
 #include "clang/Lex/ModuleLoader.h"
 #include "clang/Lex/Preprocessor.h"
-#include "expression_context.h"
+#include "lldb-eval/ast.h"
+#include "lldb-eval/expression_context.h"
 
 namespace lldb_eval {
 
