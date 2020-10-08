@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "pointer.h"
+#include "lldb-eval/pointer.h"
 
+#include "lldb-eval/scalar.h"
 #include "lldb/API/SBValue.h"
 #include "lldb/lldb-enumerations.h"
-#include "scalar.h"
 
 namespace lldb_eval {
 

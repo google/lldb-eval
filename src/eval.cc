@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "eval.h"
+#include "lldb-eval/eval.h"
 
 #include <limits>
 #include <memory>
 
-#include "ast.h"
 #include "clang/Basic/TokenKinds.h"
+#include "lldb-eval/ast.h"
+#include "lldb-eval/value.h"
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "value.h"
 
 namespace {
 

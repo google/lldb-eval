@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "expression_context.h"
+#include "lldb-eval/expression_context.h"
 
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/FileManager.h"
