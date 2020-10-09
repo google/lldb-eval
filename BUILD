@@ -15,15 +15,10 @@ exports_files(["LICENSE"])
 
 COPTS = select({
     "@bazel_tools//src/conditions:windows": [
-        # Disable warnings only for the LLVM includes.
-        "/experimental:external",
-        "/external:W0",
+        # Mark the LLVM includes as external
         "/external:I external/llvm_project/include",
     ],
-    "//conditions:default": [
-        "-fno-exceptions",
-        "-fno-rtti",
-    ],
+    "//conditions:default": [],
 })
 
 cc_library(
