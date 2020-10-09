@@ -8,10 +8,19 @@ build:linux --copt=-Wextra
 build:linux --copt=-Wpedantic
 build:linux --copt=-Werror
 
+# We're not using exceptions or RTTI.
+build:linux --cxxopt=-fno-exceptions
+build:linux --cxxopt=-fno-rtti
+
 # Windows-specific configuration.
 build:windows --cxxopt=/std:c++17
 build:windows --copt=/W4
 build:windows --copt=/WX
+
+# Don't emit warnings for headers defined as external (similar to gcc's
+# `-isystem` counterpart).
+build:windows --copt=/experimental:external
+build:windows --copt=/external:W0
 
 # On Windows clang.exe tries to find the MSVC toolchain by looking at environmental variables,
 # querying Visual Studio instances via COM (>=2017) and reading Registry keys (<=2015).
