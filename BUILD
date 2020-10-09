@@ -50,14 +50,14 @@ cc_library(
         "src/value.h",
     ],
     copts = COPTS,
+    include_prefix = "lldb-eval",
+    strip_include_prefix = "src",
     deps = [
         "@llvm_project//:clang-basic",
         "@llvm_project//:clang-lex",
         "@llvm_project//:lldb-api",
         "@llvm_project//:llvm-support",
     ],
-    strip_include_prefix = "src",
-    include_prefix = "lldb-eval",
 )
 
 cc_test(
@@ -113,10 +113,10 @@ cc_library(
         "//testdata:test_binary_srcs",
         "@llvm_project//:lldb-server",
     ],
+    include_prefix = "lldb-eval",
+    strip_include_prefix = "src",
     deps = [
         "@bazel_tools//tools/cpp/runfiles",
         "@llvm_project//:lldb-api",
     ],
-    strip_include_prefix = "src",
-    include_prefix = "lldb-eval",
 )

@@ -24,17 +24,12 @@ cc_binary(
     ],
 )
 
-FUZZER_COPTS = select({
+FUZZER_COPTS = COPTS + select({
     "@bazel_tools//src/conditions:windows": [
-        # Disable warnings only for the LLVM includes.
-        "/experimental:external",
-        "/external:W0",
-        "/external:I external/llvm_project/include",
+        # Disable warnings only for cpp-linenoise
+        "/external:I $(BINDIR)/external/io_github_yhirose_cpplinenoise/_virtual_includes",
     ],
-    "//conditions:default": [
-        "-fno-exceptions",
-        "-fno-rtti",
-    ],
+    "//conditions:default": [],
 })
 
 cc_library(
@@ -47,8 +42,8 @@ cc_library(
         "fuzzer/ast.h",
         "fuzzer/expr_gen.h",
     ],
-    strip_include_prefix = "fuzzer",
     include_prefix = "fuzzer",
+    strip_include_prefix = "fuzzer",
 )
 
 cc_binary(
@@ -72,7 +67,7 @@ cc_binary(
 cc_test(
     name = "fuzzer_test",
     srcs = ["fuzzer/fuzzer_test.cc"],
-    copts = FUZZER_COPTS,
+    copts = COPTS,
     deps = [
         ":fuzzer_lib",
         "//:lldb-eval",
