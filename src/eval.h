@@ -17,16 +17,16 @@
 #ifndef LLDB_EVAL_EVAL_H_
 #define LLDB_EVAL_EVAL_H_
 
-#include "ast.h"
 #include "clang/Basic/TokenKinds.h"
-#include "defines.h"
 #include "expression_context.h"
+#include "lldb-eval/ast.h"
+#include "lldb-eval/defines.h"
+#include "lldb-eval/value.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBProcess.h"
 #include "lldb/API/SBTarget.h"
 #include "lldb/API/SBThread.h"
 #include "lldb/API/SBValue.h"
-#include "value.h"
 
 namespace lldb_eval {
 

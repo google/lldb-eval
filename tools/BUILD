@@ -29,7 +29,8 @@ cc_library(
         "fuzzer/ast.h",
         "fuzzer/expr_gen.h",
     ],
-    copts = COPTS,
+    include_prefix = "fuzzer",
+    strip_include_prefix = "fuzzer",
 )
 
 cc_binary(
@@ -37,8 +38,8 @@ cc_binary(
     srcs = ["fuzzer/main.cc"],
     copts = COPTS + select({
         "@bazel_tools//src/conditions:windows": [
-            # Mark the linenoise include as external
-            "/external:I external/io_github_yhirose_cpplinenoise",
+            # Disable warnings only for cpp-linenoise
+            "/external:I $(BINDIR)/external/io_github_yhirose_cpplinenoise/_virtual_includes",
         ],
         "//conditions:default": [],
     }),

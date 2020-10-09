@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "parser.h"
+#include "lldb-eval/parser.h"
 
 #include <memory>
 #include <string>
 
-#include "expression_context.h"
+#include "lldb-eval/expression_context.h"
 #include "lldb/API/SBExecutionContext.h"
 
 // DISALLOW_COPY_AND_ASSIGN is also defined in

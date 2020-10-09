@@ -21,10 +21,10 @@
 #include <iostream>
 #include <string>
 
+#include "lldb-eval/pointer.h"
+#include "lldb-eval/scalar.h"
 #include "lldb/API/SBTarget.h"
 #include "lldb/API/SBValue.h"
-#include "pointer.h"
-#include "scalar.h"
 
 namespace lldb_eval {
 

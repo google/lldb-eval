@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "ast.h"
+#include "fuzzer/ast.h"
 
 #include <cstdint>
 #include <cstdio>

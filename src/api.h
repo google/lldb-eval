@@ -17,7 +17,7 @@
 #ifndef LLDB_EVAL_API_H_
 #define LLDB_EVAL_API_H_
 
-#include "defines.h"
+#include "lldb-eval/defines.h"
 #include "lldb/API/SBError.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBValue.h"

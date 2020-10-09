@@ -45,6 +45,8 @@ cc_library(
         "src/value.h",
     ],
     copts = COPTS,
+    include_prefix = "lldb-eval",
+    strip_include_prefix = "src",
     deps = [
         "@llvm_project//:clang-basic",
         "@llvm_project//:clang-lex",
@@ -106,6 +108,8 @@ cc_library(
         "//testdata:test_binary_srcs",
         "@llvm_project//:lldb-server",
     ],
+    include_prefix = "lldb-eval",
+    strip_include_prefix = "src",
     deps = [
         "@bazel_tools//tools/cpp/runfiles",
         "@llvm_project//:lldb-api",

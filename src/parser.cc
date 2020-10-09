@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "parser.h"
+#include "lldb-eval/parser.h"
 
 #include <stdlib.h>
 
@@ -20,7 +20,6 @@
 #include <memory>
 #include <string>
 
-#include "ast.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/SourceManager.h"
@@ -34,13 +33,14 @@
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Lex/PreprocessorOptions.h"
 #include "clang/Lex/Token.h"
-#include "defines.h"
+#include "lldb-eval/ast.h"
+#include "lldb-eval/defines.h"
+#include "lldb-eval/scalar.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/Support/FormatAdapters.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Host.h"
-#include "scalar.h"
 
 #define TYPE_WIDTH(type) static_cast<unsigned>(sizeof(type)) * 8
 

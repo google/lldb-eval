@@ -17,15 +17,15 @@
 #include <memory>
 #include <string>
 
-#include "eval.h"
+#include "lldb-eval/eval.h"
+#include "lldb-eval/parser.h"
+#include "lldb-eval/runner.h"
+#include "lldb-eval/value.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBProcess.h"
 #include "lldb/API/SBTarget.h"
 #include "lldb/API/SBThread.h"
-#include "parser.h"
-#include "runner.h"
 #include "tools/cpp/runfiles/runfiles.h"
-#include "value.h"
 
 using bazel::tools::cpp::runfiles::Runfiles;
 

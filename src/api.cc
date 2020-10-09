@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "api.h"
+#include "lldb-eval/api.h"
 
 #include <string>
 
-#include "eval.h"
-#include "expression_context.h"
+#include "lldb-eval/eval.h"
+#include "lldb-eval/expression_context.h"
+#include "lldb-eval/parser.h"
+#include "lldb-eval/value.h"
 #include "lldb/API/SBError.h"
 #include "lldb/API/SBExecutionContext.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBTarget.h"
 #include "lldb/API/SBValue.h"
-#include "parser.h"
-#include "value.h"
 
 namespace lldb_eval {
 

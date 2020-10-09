@@ -18,9 +18,9 @@
 #define LLDB_EVAL_EXPRESSION_CONTEXT_H_
 
 #include "clang/Basic/SourceManager.h"
+#include "lldb-eval/scalar.h"
 #include "lldb/API/SBExecutionContext.h"
 #include "lldb/API/SBType.h"
-#include "scalar.h"
 
 namespace lldb_eval {
 

@@ -9,4 +9,5 @@ exports_files(["LICENSE"])
 cc_library(
     name = "cpp_linenoise",
     hdrs = ["linenoise.hpp"],
+    include_prefix = "cpp-linenoise",
 )

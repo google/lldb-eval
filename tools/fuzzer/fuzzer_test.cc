@@ -5,8 +5,8 @@
 #include <utility>
 #include <vector>
 
-#include "ast.h"
-#include "expr_gen.h"
+#include "fuzzer/ast.h"
+#include "fuzzer/expr_gen.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
