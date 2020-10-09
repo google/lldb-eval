@@ -30,6 +30,7 @@ FUZZER_COPTS = select({
         "/experimental:external",
         "/external:W0",
         "/external:I external/llvm_project/include",
+        "/external:I external/io_github_yhirose_cpplinenoise/_virtual_includes/",
     ],
     "//conditions:default": [
         "-fno-exceptions",
@@ -72,7 +73,7 @@ cc_binary(
 cc_test(
     name = "fuzzer_test",
     srcs = ["fuzzer/fuzzer_test.cc"],
-    copts = FUZZER_COPTS,
+    copts = COPTS,
     deps = [
         ":fuzzer_lib",
         "//:lldb-eval",
