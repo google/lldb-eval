@@ -30,7 +30,7 @@ FUZZER_COPTS = select({
         "/experimental:external",
         "/external:W0",
         "/external:I external/llvm_project/include",
-        "/external:I external/io_github_yhirose_cpplinenoise/_virtual_includes/",
+        "/external:I bazel-out/x64_windows-fastbuild/bin/external/io_github_yhirose_cpplinenoise/_virtual_includes",
     ],
     "//conditions:default": [
         "-fno-exceptions",
