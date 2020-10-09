@@ -246,9 +246,9 @@ cc_library(
         "@bazel_tools//src/conditions:windows": [
             "lib/clangLex.lib",
         ],
-        ":linux_dynamic": glob([
-            "lib/libclang-cpp*.so*",
-        ]),
+        ":linux_dynamic": [
+            ":libclang-cpp-so",
+        ],
         ":linux_static": [
             "lib/libclangLex.a",
         ],

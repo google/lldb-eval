@@ -21,7 +21,7 @@
 #include <cstdint>
 #include <random>
 
-#include "fuzzer/ast.h"
+#include "tools/fuzzer/ast.h"
 
 namespace fuzzer {
 

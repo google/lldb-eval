@@ -5,10 +5,10 @@
 #include <utility>
 #include <vector>
 
-#include "fuzzer/ast.h"
-#include "fuzzer/expr_gen.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "tools/fuzzer/ast.h"
+#include "tools/fuzzer/expr_gen.h"
 
 using namespace fuzzer;
 using namespace testing;
