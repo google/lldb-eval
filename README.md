@@ -87,10 +87,10 @@ Now you can build and test `lldb-eval`:
 
 ```bash
 # Build and run all tests
-bazel test :all
+bazel test ...:all
 
 # Evaluate a sample expression
-bazel run :main -- "(1 + 2) * 42 / 4"
+bazel run tools:exec -- "(1 + 2) * 42 / 4"
 ```
 
 > **Hint:** You can add this option to your `user.bazelrc` !

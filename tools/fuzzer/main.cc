@@ -24,8 +24,6 @@
 #include <utility>
 
 #include "cpp-linenoise/linenoise.hpp"
-#include "fuzzer/ast.h"
-#include "fuzzer/expr_gen.h"
 #include "lldb-eval/api.h"
 #include "lldb/API/SBBreakpoint.h"
 #include "lldb/API/SBDebugger.h"
@@ -37,6 +35,8 @@
 #include "lldb/API/SBThread.h"
 #include "lldb/API/SBValue.h"
 #include "tools/cpp/runfiles/runfiles.h"
+#include "tools/fuzzer/ast.h"
+#include "tools/fuzzer/expr_gen.h"
 
 using bazel::tools::cpp::runfiles::Runfiles;
 

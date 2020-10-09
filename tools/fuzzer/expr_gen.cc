@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-#include "fuzzer/expr_gen.h"
+#include "tools/fuzzer/expr_gen.h"
 
 #include <cassert>
 #include <random>
 #include <variant>
 
-#include "fuzzer/ast.h"
+#include "tools/fuzzer/ast.h"
 
 namespace fuzzer {
 

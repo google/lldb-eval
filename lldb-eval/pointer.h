@@ -17,9 +17,9 @@
 #ifndef LLDB_EVAL_POINTER_H_
 #define LLDB_EVAL_POINTER_H_
 
+#include "lldb-eval/scalar.h"
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
-#include "scalar.h"
 
 namespace lldb_eval {
 

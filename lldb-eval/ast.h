@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "clang/Basic/TokenKinds.h"
-#include "scalar.h"
+#include "lldb-eval/scalar.h"
 
 namespace lldb_eval {
 
