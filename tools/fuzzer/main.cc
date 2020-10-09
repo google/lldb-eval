@@ -63,7 +63,7 @@ void run_repl(lldb::SBFrame& frame) {
     printf("lldb-eval yields: `%s`\n", lldb_eval_value.GetValue());
     printf("------------------------------------------------------------\n");
 
-    linenoise::AddHistory(expr.c_str());  //
+    linenoise::AddHistory(expr.c_str());
   }
 }
 
