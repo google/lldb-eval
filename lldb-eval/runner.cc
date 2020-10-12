@@ -77,7 +77,7 @@ std::string filename_of_source_path(const std::string& source_path) {
     idx++;
   }
 
-  return std::string(source_path, idx);
+  return source_path.substr(idx);
 }
 
 lldb::SBProcess LaunchTestProgram(lldb::SBDebugger debugger,
