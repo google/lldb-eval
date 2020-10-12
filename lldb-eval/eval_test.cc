@@ -226,6 +226,15 @@ TEST_F(InterpreterTest, TestBitwiseOperators) {
   TestExpr("~~0", "0");
   TestExpr("~0", "-1");
   TestExpr("~1", "-2");
+  TestExpr("~0LL", "-1");
+  TestExpr("~1LL", "-2");
+  TestExpr("~true", "-2");
+  TestExpr("~false", "-1");
+  TestExpr("~ull_max", "0");
+  TestExpr("~ull_zero", "18446744073709551615");
+
+  TestExprErr("~s", "invalid argument type 'S' to unary expression");
+  TestExprErr("~p", "invalid argument type 'const char *' to unary expression");
 
   TestExpr("(1 << 5)", "32");
   TestExpr("(32 >> 2)", "8");
@@ -233,6 +242,8 @@ TEST_F(InterpreterTest, TestBitwiseOperators) {
   TestExpr("0b1011 & 0xFF", "11");
   TestExpr("0b1011 & 0b0111", "3");
   TestExpr("0b1011 | 0b0111", "15");
+  TestExpr("-0b1011 | 0xFF", "-1");
+  TestExpr("-0b1011 | 0xFFu", "4294967295");
   TestExpr("0b1011 ^ 0b0111", "12");
   TestExpr("~0b1011", "-12");
 }
