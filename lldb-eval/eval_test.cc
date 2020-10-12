@@ -59,8 +59,13 @@ class InterpreterTest : public ::testing::Test {
         ::testing::UnitTest::GetInstance()->current_test_info()->name();
     std::string break_line = "// BREAK(" + test_name + ")";
 
+    auto binary_path = runfiles_->Rlocation("lldb_eval/testdata/test_binary");
+    auto source_path =
+        runfiles_->Rlocation("lldb_eval/testdata/test_binary.cc");
+
     debugger_ = lldb::SBDebugger::Create(false);
-    process_ = lldb_eval::LaunchTestProgram(*runfiles_, debugger_, break_line);
+    process_ = lldb_eval::LaunchTestProgram(debugger_, source_path, binary_path,
+                                            break_line);
     frame_ = process_.GetSelectedThread().GetSelectedFrame();
 
     // Evaluate expressions with both lldb-eval and LLDB by default.

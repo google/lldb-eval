@@ -25,6 +25,7 @@
 
 #include "cpp-linenoise/linenoise.hpp"
 #include "lldb-eval/api.h"
+#include "lldb-eval/runner.h"
 #include "lldb/API/SBBreakpoint.h"
 #include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBError.h"
@@ -42,8 +43,8 @@ using bazel::tools::cpp::runfiles::Runfiles;
 
 constexpr char VAR[] = "x";
 
-constexpr char LLDB_SERVER_KEY[] = "llvm_project/bin/lldb-server";
-constexpr char EXECUTABLE_PATH_KEY[] = "lldb_eval/testdata/fuzzer_binary";
+constexpr char SOURCE_PATH_KEY[] = "lldb_eval/testdata/fuzzer_binary.cc";
+constexpr char BINARY_PATH_KEY[] = "lldb_eval/testdata/fuzzer_binary";
 
 void run_repl(lldb::SBFrame& frame) {
   linenoise::SetMultiLine(true);
@@ -113,29 +114,18 @@ int main(int argc, char** argv) {
 
   bool repl_mode = argc >= 2 && strcmp(argv[1], "--repl") == 0;
 
-#ifndef _WIN32
-  std::string lldb_server = runfiles->Rlocation(LLDB_SERVER_KEY);
-  setenv("LLDB_DEBUGSERVER_PATH", lldb_server.c_str(), 0);
-#endif  // !_WIN32
+  lldb_eval::SetupLLDBServerEnv(*runfiles);
 
-  std::string exe_path = runfiles->Rlocation(EXECUTABLE_PATH_KEY);
-  std::string dirname_buf = exe_path;
-
-  const char* ARGV[] = {exe_path.c_str(), nullptr};
+  auto source_path = runfiles->Rlocation(SOURCE_PATH_KEY);
+  auto binary_path = runfiles->Rlocation(BINARY_PATH_KEY);
 
   lldb::SBDebugger::Initialize();
   {
     auto debugger = lldb::SBDebugger::Create();
-    debugger.SetAsync(false);
-
-    auto target = debugger.CreateTarget(exe_path.c_str());
-    auto bp = target.BreakpointCreateByName("break_here", exe_path.c_str());
-    // Test program does not perform any I/O, so current directory doesn't
-    // matter.
-    auto proc = target.LaunchSimple(ARGV, nullptr, ".");
+    auto proc = lldb_eval::LaunchTestProgram(debugger, source_path, binary_path,
+                                             "// BREAK HERE");
     auto thread = proc.GetSelectedThread();
-
-    auto frame = thread.SetSelectedFrame(1);
+    auto frame = thread.GetSelectedFrame();
 
     if (repl_mode) {
       run_repl(frame);

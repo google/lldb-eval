@@ -52,10 +52,10 @@ void SetupLLDBServerEnv(const Runfiles& runfiles) {
 #endif  // !_WIN32
 }
 
-int FindBreakpointLine(const Runfiles& runfiles,
+int FindBreakpointLine(const std::string& file_path,
                        const std::string& break_line) {
   // Read the source file to find the breakpoint location.
-  std::ifstream infile(runfiles.Rlocation("lldb_eval/testdata/test_binary.cc"));
+  std::ifstream infile(file_path);
   std::string line;
   int line_num = 1;
   while (std::getline(infile, line)) {
@@ -69,65 +69,80 @@ int FindBreakpointLine(const Runfiles& runfiles,
   exit(1);
 }
 
-lldb::SBProcess LaunchTestProgram(const Runfiles& runfiles,
-                                  lldb::SBDebugger debugger,
+std::string filename_of_source_path(const std::string& source_path) {
+  auto idx = source_path.find_last_of("/\\");
+  if (idx == std::string::npos) {
+    idx = 0;
+  } else {
+    idx++;
+  }
+
+  return source_path.substr(idx);
+}
+
+lldb::SBProcess LaunchTestProgram(lldb::SBDebugger debugger,
+                                  const std::string& source_path,
+                                  const std::string& binary_path,
                                   const std::string& break_line) {
-  std::string binary = runfiles.Rlocation("lldb_eval/testdata/test_binary");
-  lldb::SBTarget target = debugger.CreateTarget(binary.c_str());
+  auto target = debugger.CreateTarget(binary_path.c_str());
 
-  lldb::SBBreakpoint bp = target.BreakpointCreateByLocation(
-      "test_binary.cc", FindBreakpointLine(runfiles, break_line));
-  lldb::SBProcess process = target.LaunchSimple(nullptr, nullptr, ".");
+  auto source_file = filename_of_source_path(source_path);
 
-  bool running = true;
+  const char* argv[] = {binary_path.c_str(), nullptr};
+
+  auto bp = target.BreakpointCreateByLocation(
+      source_file.c_str(), FindBreakpointLine(source_path.c_str(), break_line));
+  // Test programs don't perform any I/O, so current directory doesn't
+  // matter.
+  auto process = target.LaunchSimple(argv, nullptr, ".");
+
   lldb::SBEvent event;
-  lldb::SBListener listener = debugger.GetListener();
+  auto listener = debugger.GetListener();
 
-  while (running) {
-    if (listener.WaitForEvent(kWaitForEventTimeout, event)) {
-      if (!lldb::SBProcess::EventIsProcessEvent(event)) {
-        std::cerr << "Got some random event: "
-                  << lldb::SBEvent::GetCStringFromEvent(event) << std::endl;
-        continue;
-      }
-
-      lldb::StateType state = lldb::SBProcess::GetStateFromEvent(event);
-      if (state == lldb::eStateInvalid) {
-        std::cerr << "process event: "
-                  << lldb::SBEvent::GetCStringFromEvent(event) << std::endl;
-        continue;
-      }
-
-      switch (state) {
-        case lldb::eStateStopped: {
-          auto thread = process.GetSelectedThread();
-          auto stopReason = thread.GetStopReason();
-          if (stopReason == lldb::eStopReasonBreakpoint) {
-            lldb::break_id_t bpId = static_cast<lldb::break_id_t>(
-                thread.GetStopReasonDataAtIndex(0));
-            if (bpId == bp.GetID()) {
-              running = false;
-            } else {
-              std::cerr << "Stopped at unknown breakpoint: " << bpId
-                        << std::endl;
-            }
-          }
-          break;
-        }
-        default:
-          break;
-      }
-
-    } else {
+  while (true) {
+    if (!listener.WaitForEvent(kWaitForEventTimeout, event)) {
       std::cerr
           << "Timeout while waiting for the event, kill the process and exit."
           << std::endl;
       process.Destroy();
       exit(1);
     }
-  }
 
-  return process;
+    if (!lldb::SBProcess::EventIsProcessEvent(event)) {
+      std::cerr << "Got some random event: "
+                << lldb::SBEvent::GetCStringFromEvent(event) << std::endl;
+      continue;
+    }
+
+    auto state = lldb::SBProcess::GetStateFromEvent(event);
+    if (state == lldb::eStateInvalid) {
+      std::cerr << "process event: "
+                << lldb::SBEvent::GetCStringFromEvent(event) << std::endl;
+      continue;
+    }
+
+    if (state != lldb::eStateStopped) {
+      continue;
+    }
+
+    auto thread = process.GetSelectedThread();
+    auto stopReason = thread.GetStopReason();
+
+    if (stopReason != lldb::eStopReasonBreakpoint) {
+      continue;
+    }
+
+    auto bpId =
+        static_cast<lldb::break_id_t>(thread.GetStopReasonDataAtIndex(0));
+    if (bpId != bp.GetID()) {
+      std::cerr << "Stopped at unknown breakpoint: " << bpId << std::endl
+                << "Now killing process and exiting" << std::endl;
+      process.Destroy();
+      exit(1);
+    }
+
+    return process;
+  }
 }
 
 }  // namespace lldb_eval

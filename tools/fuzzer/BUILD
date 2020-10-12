@@ -38,6 +38,7 @@ cc_binary(
     deps = [
         ":fuzzer_lib",
         "//lldb-eval",
+        "//lldb-eval:runner",
         "@bazel_tools//tools/cpp/runfiles",
         "@io_github_yhirose_cpplinenoise//:cpp_linenoise",
         "@llvm_project//:lldb-api",
@@ -50,9 +51,7 @@ cc_test(
     copts = COPTS,
     deps = [
         ":fuzzer_lib",
-        "//lldb-eval",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@llvm_project//:lldb-api",
     ],
 )
