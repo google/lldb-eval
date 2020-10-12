@@ -221,6 +221,22 @@ TEST_F(InterpreterTest, TestArithmetic) {
   TestExpr("-20LL / 1ULL", "18446744073709551596");
 }
 
+TEST_F(InterpreterTest, TestBitwiseOperators) {
+  TestExpr("~(-1)", "0");
+  TestExpr("~~0", "0");
+  TestExpr("~0", "-1");
+  TestExpr("~1", "-2");
+
+  TestExpr("(1 << 5)", "32");
+  TestExpr("(32 >> 2)", "8");
+
+  TestExpr("0b1011 & 0xFF", "11");
+  TestExpr("0b1011 & 0b0111", "3");
+  TestExpr("0b1011 | 0b0111", "15");
+  TestExpr("0b1011 ^ 0b0111", "12");
+  TestExpr("~0b1011", "-12");
+}
+
 TEST_F(InterpreterTest, TestPointerArithmetic) {
   TestExprOnlyCompare("p_char1");
   TestExprOnlyCompare("p_char1 + 1");
@@ -291,6 +307,14 @@ TEST_F(InterpreterTest, TestLogicalOperators) {
   TestExpr("0 || 1", "true");
   TestExpr("0 || 0", "false");
 
+  TestExpr("!1", "false");
+  TestExpr("!!1", "true");
+
+  TestExpr("!trueVar", "false");
+  TestExpr("!!trueVar", "true");
+  TestExpr("!falseVar", "true");
+  TestExpr("!!falseVar", "false");
+
   TestExpr("trueVar && true", "true");
   TestExpr("trueVar && (2 > 1)", "true");
   TestExpr("trueVar && (2 < 1)", "false");
@@ -309,11 +333,17 @@ TEST_F(InterpreterTest, TestLogicalOperators) {
     TestExpr("false && __doesnt_exist", "false");
   }
 
+  TestExpr("!p_ptr", "false");
+  TestExpr("!!p_ptr", "true");
   TestExpr("p_ptr && true", "true");
   TestExpr("p_ptr && false", "false");
+  TestExpr("!p_nullptr", "true");
+  TestExpr("!!p_nullptr", "false");
   TestExpr("p_nullptr || true", "true");
   TestExpr("p_nullptr || false", "false");
 
+  TestExprErr("!s || false",
+              "value of type 'S' is not contextually convertible to 'bool'");
   TestExprErr("s || false",
               "value of type 'S' is not contextually convertible to 'bool'");
   TestExprErr("s ? 1 : 2",

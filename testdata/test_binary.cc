@@ -29,6 +29,12 @@ static void TestArithmetic() {
   // BREAK(TestArithmetic)
 }
 
+static void TestBitwiseOperators() {
+  uint32_t mask_ff = 0xFF;
+
+  // BREAK(TestBitwiseOperators)
+}
+
 static void TestPointerArithmetic() {
   const char* p_char1 = "hello";
 
@@ -324,6 +330,7 @@ void main() {
   TestMethods tm;
 
   TestArithmetic();
+  TestBitwiseOperators();
   TestPointerArithmetic();
   TestLogicalOperators();
   TestLocalVariables();

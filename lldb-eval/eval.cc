@@ -488,6 +488,25 @@ void Interpreter::Visit(const UnaryOpNode* node) {
     }
   }
 
+  // Unary negation (!).
+  if (node->op() == clang::tok::exclaim) {
+    if (!BoolConvertible(rhs)) {
+      return;
+    }
+    result_ = Value(!rhs.AsBool());
+    return;
+  }
+
+  // Bitwise NOT (~).
+  if (node->op() == clang::tok::tilde) {
+    if (rhs.IsScalar()) {
+      result_ = Value(~rhs.AsScalar());
+      return;
+    }
+    ReportTypeError("invalid argument type '{0}' to unary expression", rhs);
+    return;
+  }
+
   // Unsupported/invalid operation.
   std::string msg = "Unexpected op: " + node->op_name();
   error_.Set(EvalErrorCode::UNKNOWN, msg);
