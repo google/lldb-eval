@@ -74,8 +74,8 @@ void EvalExpr(lldb::SBFrame frame, const std::string& expr) {
   auto elapsed_eval = std::chrono::duration_cast<std::chrono::microseconds>(
       time_eval - time_parse);
 
-  std::cerr << "----------" << std::endl;
-  std::cerr << "elapsed = " << total.count()
+  std::cerr << "----------" << std::endl
+            << "elapsed = " << total.count()
             << "us (parse = " << elapsed_parse.count()
             << "us, eval = " << elapsed_eval.count() << "us)" << std::endl;
 }
@@ -120,7 +120,7 @@ int main(int argc, char** argv) {
   lldb_eval::SetupLLDBServerEnv(*runfiles);
   lldb::SBDebugger::Initialize();
   lldb::SBDebugger debugger = lldb::SBDebugger::Create(false);
-  
+
   auto binary_path = runfiles->Rlocation("lldb_eval/testdata/test_binary");
   auto source_path = runfiles->Rlocation("lldb_eval/testdata/test_binary.cc");
 
