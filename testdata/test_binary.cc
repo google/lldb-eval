@@ -318,7 +318,9 @@ static void TestTemplateTypes() {
   // BREAK(TestTemplateTypes)
 }
 
-int main() {
+namespace test_binary {
+
+void main() {
   TestMethods tm;
 
   TestArithmetic();
@@ -335,3 +337,7 @@ int main() {
 
   // break here
 }
+
+}  // namespace test_binary
+
+int main() { test_binary::main(); }

@@ -11,11 +11,18 @@ COPTS = select({
 cc_binary(
     name = "exec",
     srcs = ["exec.cc"],
-    copts = COPTS,
+    copts = COPTS + select({
+        "@bazel_tools//src/conditions:windows": [
+            # Disable warnings only for cpp-linenoise
+            "/external:I $(BINDIR)/external/io_github_yhirose_cpplinenoise",
+        ],
+        "//conditions:default": [],
+    }),
     deps = [
         "//lldb-eval",
         "//lldb-eval:runner",
         "@bazel_tools//tools/cpp/runfiles",
+        "@io_github_yhirose_cpplinenoise//:cpp_linenoise",
         "@llvm_project//:lldb-api",
     ],
 )
