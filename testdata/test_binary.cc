@@ -32,6 +32,14 @@ static void TestArithmetic() {
 static void TestBitwiseOperators() {
   uint32_t mask_ff = 0xFF;
 
+  unsigned long long ull_max = std::numeric_limits<unsigned long long>::max();
+  unsigned long long ull_zero = 0;
+
+  struct S {
+  } s;
+
+  const char* p = nullptr;
+
   // BREAK(TestBitwiseOperators)
 }
 
