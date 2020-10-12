@@ -16,13 +16,12 @@
 
 // This file _must not_ access the file system, since the current directory
 // is specified in the fuzzer as just `./`.
-void break_here() {}
 
 int main() {
   int x = 42;
   (void)x;
 
-  break_here();
+  // BREAK HERE
 
   return 0;
 }
