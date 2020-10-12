@@ -26,10 +26,11 @@
 namespace lldb_eval {
 
 void SetupLLDBServerEnv(const bazel::tools::cpp::runfiles::Runfiles& runfiles);
-lldb::SBProcess LaunchTestProgram(
-    const bazel::tools::cpp::runfiles::Runfiles& runfiles,
-    lldb::SBDebugger debugger, const std::string& break_line);
 
+lldb::SBProcess LaunchTestProgram(lldb::SBDebugger debugger,
+                                  const std::string& source_path,
+                                  const std::string& binary_path,
+                                  const std::string& break_line);
 }  // namespace lldb_eval
 
 #endif  // LLDB_EVAL_RUNNER_H_

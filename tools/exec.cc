@@ -46,8 +46,12 @@ int main(int argc, char** argv) {
   lldb_eval::SetupLLDBServerEnv(*runfiles);
   lldb::SBDebugger::Initialize();
   lldb::SBDebugger debugger = lldb::SBDebugger::Create(false);
-  lldb::SBProcess process =
-      lldb_eval::LaunchTestProgram(*runfiles, debugger, break_line);
+
+  auto binary_path = runfiles->Rlocation("lldb_eval/testdata/test_binary");
+  auto source_path = runfiles->Rlocation("lldb_eval/testdata/test_binary.cc");
+
+  lldb::SBProcess process = lldb_eval::LaunchTestProgram(
+      debugger, source_path, binary_path, break_line);
 
   lldb::SBFrame frame = process.GetSelectedThread().GetSelectedFrame();
   lldb_eval::ExpressionContext expr_ctx(expr, lldb::SBExecutionContext(frame));
