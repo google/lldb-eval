@@ -99,7 +99,7 @@ lldb::SBProcess LaunchTestProgram(lldb::SBDebugger debugger,
   lldb::SBEvent event;
   auto listener = debugger.GetListener();
 
-  for (;;) {
+  while (true) {
     if (!listener.WaitForEvent(kWaitForEventTimeout, event)) {
       std::cerr
           << "Timeout while waiting for the event, kill the process and exit."
@@ -135,8 +135,10 @@ lldb::SBProcess LaunchTestProgram(lldb::SBDebugger debugger,
     auto bpId =
         static_cast<lldb::break_id_t>(thread.GetStopReasonDataAtIndex(0));
     if (bpId != bp.GetID()) {
-      std::cerr << "Stopped at unknown breakpoint: " << bpId << std::endl;
-      continue;
+      std::cerr << "Stopped at unknown breakpoint: " << bpId << std::endl
+                << "Now killing process and exiting" << std::endl;
+      process.Destroy();
+      exit(1);
     }
 
     return process;
