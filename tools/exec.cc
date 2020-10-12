@@ -90,7 +90,7 @@ void RunRepl(lldb::SBFrame frame) {
             << frame.GetLineEntry().GetColumn() << std::endl;
 
   while (true) {
-    auto quit = linenoise::Readline("> ", expr);
+    bool quit = linenoise::Readline("> ", expr);
     if (quit) {
       break;
     }
