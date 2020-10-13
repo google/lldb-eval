@@ -149,7 +149,7 @@ lldb::SBValue Value::AsSbValue(lldb::SBTarget target) const {
                                lldb::eBasicTypeDouble);
         }
       }
-      unreachable("Scalar::Type wasn't exhausted in the switch statement.");
+      break;
     }
     case Type::POINTER: {
       return CreateSbValue(target, pointer_.addr(), pointer_.type());
