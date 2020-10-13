@@ -309,6 +309,32 @@ Scalar Scalar::FromSbValue(lldb::SBValue value) {
   return Scalar();
 }
 
+const Scalar operator~(const Scalar& rhs) {
+  Scalar ret;
+
+  switch (rhs.type_) {
+    case Scalar::Type::INVALID:
+      break;
+    case Scalar::Type::INT32:
+      ret.SetValueInt32(~rhs.value_.int32_);
+      break;
+    case Scalar::Type::UINT32:
+      ret.SetValueUInt32(~rhs.value_.uint32_);
+      break;
+    case Scalar::Type::INT64:
+      ret.SetValueInt64(~rhs.value_.int64_);
+      break;
+    case Scalar::Type::UINT64:
+      ret.SetValueUInt64(~rhs.value_.uint64_);
+      break;
+    case Scalar::Type::FLOAT:
+    case Scalar::Type::DOUBLE:
+      // Can't do & on float/double.
+      break;
+  }
+  return ret;
+}
+
 const Scalar operator+(const Scalar& lhs, const Scalar& rhs) {
   Scalar a, b, ret;
 
