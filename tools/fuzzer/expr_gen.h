@@ -60,11 +60,11 @@ struct GenConfig {
 
   float parenthesize_prob = 0.5f;
 
-  BinOpMask bin_op_mask = -1ull ^ ((1ull << (unsigned long long)BinOp::Shl) |
+  BinOpMask bin_op_mask = ~0ull ^ ((1ull << (unsigned long long)BinOp::Shl) |
                                    (1ull << (unsigned long long)BinOp::Shr) |
                                    (1ull << (unsigned long long)BinOp::Div) |
                                    (1ull << (unsigned long long)BinOp::Mod));
-  UnOpMask un_op_mask = -1ull;
+  UnOpMask un_op_mask = ~0ull;
 
   std::array<ExprKindWeightInfo, NUM_EXPR_KINDS> expr_kind_weights = {{
       {1.0f, 0.0f},  // ExprKind::IntegerConstant
