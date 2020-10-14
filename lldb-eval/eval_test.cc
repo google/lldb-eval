@@ -186,6 +186,11 @@ void InterpreterTest::TestExprErr(const std::string& expr,
   EXPECT_THAT(error.message(), ::testing::HasSubstr(msg));
 }
 
+TEST_F(InterpreterTest, TestSymbols) {
+  // No symbols might indicate that the test binary was built incorrectly.
+  EXPECT_GT(frame_.GetModule().GetNumSymbols(), 0);
+}
+
 TEST_F(InterpreterTest, TestArithmetic) {
   TestExpr("1 + 2", "3");
   TestExpr("1 + 2*3", "7");
@@ -568,14 +573,8 @@ TEST_F(InterpreterTest, TestQualifiedId) {
   TestExpr("::ns::ns::i", "2");
   TestExpr("ns::ns::i", "2");
 
-  {
-#ifdef _WIN32
-    ExpectErrorLLDB _(this);
-#endif
-
-    TestExpr("::Foo::y", "42");
-    TestExpr("Foo::y", "42");
-  }
+  TestExpr("::Foo::y", "42");
+  TestExpr("Foo::y", "42");
 
   // Static consts with no definition can't be looked up by name.
   TestExprErr("::Foo::x", "use of undeclared identifier '::Foo::x'");
