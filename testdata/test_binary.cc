@@ -335,6 +335,8 @@ static void TestTemplateTypes() {
 namespace test_binary {
 
 void main() {
+  // BREAK(TestSymbols)
+
   TestMethods tm;
 
   TestArithmetic();
