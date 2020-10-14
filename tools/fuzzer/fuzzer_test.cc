@@ -23,7 +23,7 @@ class FakeGeneratorRng : public GeneratorRng {
  public:
   FakeGeneratorRng() {}
 
-  BinOp gen_bin_op() override {
+  BinOp gen_bin_op(const BinOpMask&) override {
     assert(!bin_ops_.empty());
     BinOp op = bin_ops_.back();
     bin_ops_.pop_back();
@@ -31,7 +31,7 @@ class FakeGeneratorRng : public GeneratorRng {
     return op;
   }
 
-  UnOp gen_un_op() override {
+  UnOp gen_un_op(const UnOpMask&) override {
     assert(!un_ops_.empty());
     UnOp op = un_ops_.back();
     un_ops_.pop_back();

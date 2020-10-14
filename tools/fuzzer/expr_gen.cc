@@ -24,32 +24,19 @@
 
 namespace fuzzer {
 
-struct ExprKindInfo {
-  float initial_weight;
-  float dampening_factor;
-};
-
-static const std::array<ExprKindInfo, NUM_EXPR_KINDS> EXPR_KIND_INFO = {{
-    {1.0f, 0.0f},  // ExprKind::IntegerConstant
-    {0.0f, 0.0f},  // ExprKind::DoubleConstant
-    {1.0f, 0.0f},  // ExprKind::VariableExpr
-    {7.0f, 0.4f},  // ExprKind::BinaryExpr
-    {3.0f, 0.4f},  // ExprKind::UnaryExpr
-}};
-
 int expr_precedence(const Expr& e) {
   return std::visit([](const auto& e) { return e.precedence(); }, e);
 }
 
 IntegerConstant ExprGenerator::gen_integer_constant(const WeightsArray&) {
-  auto value = rng_->gen_u64(0, MAX_INT_VALUE);
+  auto value = rng_->gen_u64(cfg_.int_const_min, cfg_.int_const_max);
 
   return IntegerConstant(value);
 }
 
 DoubleConstant ExprGenerator::gen_double_constant(const WeightsArray&) {
-  std::uniform_real_distribution<double> value_distr(0.0, MAX_DOUBLE_VALUE);
-  auto value = rng_->gen_double(0.0, MAX_DOUBLE_VALUE);
+  auto value =
+      rng_->gen_double(cfg_.double_constant_min, cfg_.double_constant_max);
 
   return DoubleConstant(value);
 }
@@ -59,7 +46,7 @@ VariableExpr ExprGenerator::gen_variable_expr(const WeightsArray&) {
 }
 
 BinaryExpr ExprGenerator::gen_binary_expr(const WeightsArray& weights) {
-  auto op = rng_->gen_bin_op();
+  auto op = rng_->gen_bin_op(cfg_.bin_op_mask);
 
   auto lhs = gen_with_weights(weights);
   auto rhs = gen_with_weights(weights);
@@ -99,7 +86,7 @@ BinaryExpr ExprGenerator::gen_binary_expr(const WeightsArray& weights) {
 
 UnaryExpr ExprGenerator::gen_unary_expr(const WeightsArray& weights) {
   auto expr = gen_with_weights(weights);
-  auto op = (UnOp)rng_->gen_un_op();
+  auto op = (UnOp)rng_->gen_un_op(cfg_.un_op_mask);
 
   if (expr_precedence(expr) > UnaryExpr::PRECEDENCE) {
     expr = ParenthesizedExpr(std::move(expr));
@@ -113,7 +100,7 @@ Expr ExprGenerator::gen_with_weights(const WeightsArray& weights) {
 
   auto kind = rng_->gen_expr_kind(new_weights);
   auto idx = (size_t)kind;
-  new_weights[idx] *= EXPR_KIND_INFO[idx].dampening_factor;
+  new_weights[idx] *= cfg_.expr_kind_weights[idx].dampening_factor;
 
   // Dummy value for initialization
   Expr expr(IntegerConstant(0));
@@ -147,7 +134,7 @@ Expr ExprGenerator::gen_with_weights(const WeightsArray& weights) {
 }
 
 Expr ExprGenerator::maybe_parenthesized(Expr expr) {
-  if (rng_->gen_parenthesize()) {
+  if (rng_->gen_parenthesize(cfg_.parenthesize_prob)) {
     return ParenthesizedExpr(std::move(expr));
   }
 
@@ -157,22 +144,52 @@ Expr ExprGenerator::maybe_parenthesized(Expr expr) {
 Expr ExprGenerator::generate() {
   WeightsArray weights;
   for (size_t i = 0; i < weights.size(); i++) {
-    weights[i] = EXPR_KIND_INFO[i].initial_weight;
+    weights[i] = cfg_.expr_kind_weights[i].initial_weight;
   }
 
   return gen_with_weights(weights);
 }
 
-BinOp DefaultGeneratorRng::gen_bin_op() {
-  std::uniform_int_distribution<int> distr((int)BinOp::EnumFirst,
-                                           (int)BinOp::EnumLast);
-  return (BinOp)distr(rng_);
+BinOp DefaultGeneratorRng::gen_bin_op(const BinOpMask& mask) {
+  assert(mask.any());
+
+  std::uniform_int_distribution<size_t> distr(0, mask.count() - 1);
+  size_t choice = distr(rng_);
+
+  size_t running_ones = 0;
+  for (size_t i = 0; i < mask.size(); i++) {
+    if (running_ones == choice && mask[i]) {
+      return (BinOp)i;
+    }
+    if (mask[i]) {
+      running_ones++;
+    }
+  }
+
+  // Fallback, should never be reached
+  assert(false);
+  return BinOp::LogicalAnd;
 }
 
-UnOp DefaultGeneratorRng::gen_un_op() {
-  std::uniform_int_distribution<int> distr((int)UnOp::EnumFirst,
-                                           (int)UnOp::EnumLast);
-  return (UnOp)distr(rng_);
+UnOp DefaultGeneratorRng::gen_un_op(const UnOpMask& mask) {
+  assert(mask.any());
+
+  std::uniform_int_distribution<size_t> distr(0, mask.count() - 1);
+  size_t choice = distr(rng_);
+
+  size_t running_ones = 0;
+  for (size_t i = 0; i < mask.size(); i++) {
+    if (running_ones == choice && mask[i]) {
+      return (UnOp)i;
+    }
+    if (mask[i]) {
+      running_ones++;
+    }
+  }
+
+  // Fallback, should never be reached
+  assert(false);
+  return UnOp::LogicalNot;
 }
 
 uint64_t DefaultGeneratorRng::gen_u64(uint64_t min, uint64_t max) {
