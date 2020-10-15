@@ -93,36 +93,30 @@ IntegerType PickIntegerType(const clang::NumericLiteralParser& literal,
   bool unsigned_is_allowed = literal.isUnsigned || literal.getRadix() != 10;
 
   // Try int/unsigned int.
-  if (!literal.isLong && !literal.isLongLong) {
-    if (value.isIntN(int_size)) {
-      if (!literal.isUnsigned && value.isIntN(int_size - 1)) {
-        return {int_size, false};
-      }
-      if (unsigned_is_allowed) {
-        return {int_size, true};
-      }
+  if (!literal.isLong && !literal.isLongLong && value.isIntN(int_size)) {
+    if (!literal.isUnsigned && value.isIntN(int_size - 1)) {
+      return {int_size, false};
+    }
+    if (unsigned_is_allowed) {
+      return {int_size, true};
     }
   }
   // Try long/unsigned long.
-  if (!literal.isLongLong) {
-    if (value.isIntN(long_size)) {
-      if (!literal.isUnsigned && value.isIntN(long_size - 1)) {
-        return {long_size, false};
-      }
-      if (unsigned_is_allowed) {
-        return {long_size, true};
-      }
+  if (!literal.isLongLong && value.isIntN(long_size)) {
+    if (!literal.isUnsigned && value.isIntN(long_size - 1)) {
+      return {long_size, false};
+    }
+    if (unsigned_is_allowed) {
+      return {long_size, true};
     }
   }
   // Try long long/unsigned long long.
   if (value.isIntN(long_long_size)) {
-    if (value.isIntN(long_long_size)) {
-      if (!literal.isUnsigned && value.isIntN(long_long_size - 1)) {
-        return {long_long_size, false};
-      }
-      if (unsigned_is_allowed) {
-        return {long_long_size, true};
-      }
+    if (!literal.isUnsigned && value.isIntN(long_long_size - 1)) {
+      return {long_long_size, false};
+    }
+    if (unsigned_is_allowed) {
+      return {long_long_size, true};
     }
   }
 
