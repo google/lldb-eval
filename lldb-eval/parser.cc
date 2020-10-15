@@ -127,9 +127,13 @@ IntegerType PickIntegerType(const clang::NumericLiteralParser& literal,
   }
 
   // If we still couldn't decide a type, we probably have something that does
-  // not fit in a signed long long, but has no U suffix.
+  // not fit in a signed long long, but has no U suffix. Also known as:
+  //
+  //  warning: integer literal is too large to be represented in a signed
+  //  integer type, interpreting as unsigned [-Wimplicitly-unsigned-literal]
+  //
   // TODO(werat): Make this an error?
-  return {long_long_size, false};
+  return {long_long_size, true};
 }
 
 }  // namespace
