@@ -35,7 +35,7 @@ def binary_gen(name, srcs):
         outs = [name],
         cmd = select({
             "@bazel_tools//src/conditions:windows": build_cmd.format(
-                platform_opts = "-x c++ -std=c++14 -O0 -gdwarf -fuse-ld=lld",
+                platform_opts = "--for-linker -debug:dwarf",
             ),
             "//conditions:default": build_cmd.format(
                 platform_opts = "-lstdc++",
