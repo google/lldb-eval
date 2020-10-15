@@ -16,7 +16,7 @@
 Rules for building test binaries.
 """
 
-def binary_gen(name, srcs, **kwargs):
+def binary_gen(name, srcs):
     native.filegroup(
         name = name + "_srcs",
         srcs = srcs,
@@ -25,12 +25,19 @@ def binary_gen(name, srcs, **kwargs):
         name = name + "_gen",
         srcs = srcs,
         outs = [name],
-        cmd = """
-            ./$(location @llvm_project//:clang) \
-            -x c++ -lstdc++ -std=c++14 -O0 \
-            -fuse-ld=lld --for-linker -debug:dwarf -gdwarf \
-            $(SRCS) -o $@
-        """,
+        cmd = select({
+            "@bazel_tools//src/conditions:windows": """
+                ./$(location @llvm_project//:clang) \
+                -x c++ -std=c++14 -O0 -fuse-ld=lld \
+                --for-linker -debug:dwarf -gdwarf \
+                $(SRCS) -o $@
+            """,
+            "//conditions:default": """
+                $(location @llvm_project//:clang) \
+                -x c++ -lstdc++ -std=c++14 -O0 -fuse-ld=lld \
+                $(SRCS) -o $@
+            """,
+        }),
         tags = ["no-sandbox"],
         tools = [
             "@llvm_project//:clang",
