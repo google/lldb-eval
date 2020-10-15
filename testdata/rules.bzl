@@ -21,23 +21,25 @@ def binary_gen(name, srcs):
         name = name + "_srcs",
         srcs = srcs,
     )
+
+    build_cmd = """
+        $(location @llvm_project//:clang) \
+        -x c++ -std=c++14 -O0 -gdwarf -fuse-ld=lld \
+        {platform_opts} \
+        $(SRCS) -o $@
+    """
+
     native.genrule(
         name = name + "_gen",
         srcs = srcs,
         outs = [name],
         cmd = select({
-            "@bazel_tools//src/conditions:windows": """
-                ./$(location @llvm_project//:clang) \
-                -x c++ -std=c++14 -O0 -gdwarf -fuse-ld=lld \
-                --for-linker -debug:dwarf \
-                $(SRCS) -o $@
-            """,
-            "//conditions:default": """
-                $(location @llvm_project//:clang) \
-                -x c++ -std=c++14 -O0 -gdwarf -fuse-ld=lld \
-                -lstdc++ \
-                $(SRCS) -o $@
-            """,
+            "@bazel_tools//src/conditions:windows": build_cmd.format(
+                platform_opts = "-x c++ -std=c++14 -O0 -gdwarf -fuse-ld=lld",
+            ),
+            "//conditions:default": build_cmd.format(
+                platform_opts = "-lstdc++",
+            ),
         }),
         tags = ["no-sandbox"],
         tools = [
