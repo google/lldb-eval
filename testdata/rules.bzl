@@ -28,13 +28,14 @@ def binary_gen(name, srcs):
         cmd = select({
             "@bazel_tools//src/conditions:windows": """
                 ./$(location @llvm_project//:clang) \
-                -x c++ -std=c++14 -O0 -fuse-ld=lld \
-                --for-linker -debug:dwarf -gdwarf \
+                -x c++ -std=c++14 -O0 -gdwarf -fuse-ld=lld \
+                --for-linker -debug:dwarf \
                 $(SRCS) -o $@
             """,
             "//conditions:default": """
                 $(location @llvm_project//:clang) \
-                -x c++ -lstdc++ -std=c++14 -O0 -fuse-ld=lld \
+                -x c++ -std=c++14 -O0 -gdwarf -fuse-ld=lld \
+                -lstdc++ \
                 $(SRCS) -o $@
             """,
         }),
