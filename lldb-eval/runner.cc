@@ -40,8 +40,13 @@ namespace lldb_eval {
 
 using bazel::tools::cpp::runfiles::Runfiles;
 
+#ifdef CONFIG_VALGRIND
+// Running a process under Valgrind can be extremely slow.
+const uint32_t kWaitForEventTimeout = 30;
+#else
 // Running a process can be slow when built with sanitizers.
 const uint32_t kWaitForEventTimeout = 5;
+#endif
 
 void SetupLLDBServerEnv(const Runfiles& runfiles) {
 #ifndef _WIN32
