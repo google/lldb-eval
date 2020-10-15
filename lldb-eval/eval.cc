@@ -395,6 +395,7 @@ void Interpreter::Visit(const BinaryOpNode* node) {
   auto lhs_scalar = lhs.AsScalar();
   auto rhs_scalar = rhs.AsScalar();
 
+  // TODO(werat): Handle incorrect type combinations and zero division.
   switch (node->op()) {
     case clang::tok::slash:
       result_ = Value(lhs_scalar / rhs_scalar);

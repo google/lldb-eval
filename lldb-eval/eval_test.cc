@@ -216,9 +216,22 @@ TEST_F(InterpreterTest, TestArithmetic) {
   TestExpr("9223372036854775807LL + 1", "-9223372036854775808");
   TestExpr("18446744073709551615ULL + 1", "0");
 
+  // Integer literal is too large to be represented in a signed integer type,
+  // interpreting as unsigned.
+  TestExpr("-9223372036854775808", "9223372036854775808");
+  TestExpr("-9223372036854775808 - 1", "9223372036854775807");
+  TestExpr("-9223372036854775808 + 1", "9223372036854775809");
+  TestExpr("-9223372036854775808LL / -1", "0");
+  TestExpr("-9223372036854775808LL % -1", "9223372036854775808");
+
   TestExpr("-20 / 1U", "4294967276");
   TestExpr("-20LL / 1U", "-20");
   TestExpr("-20LL / 1ULL", "18446744073709551596");
+
+  // Floating tricks.
+  TestExpr("+0.0 / +0.0  != +0.0 / +0.0", "true");
+  TestExpr("-1.f * 0", "-0");
+  TestExpr("0x0.123p-1", "0.0355224609375");
 }
 
 TEST_F(InterpreterTest, TestBitwiseOperators) {
