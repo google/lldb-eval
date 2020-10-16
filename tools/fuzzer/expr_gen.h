@@ -27,7 +27,8 @@
 namespace fuzzer {
 
 enum class ExprKind : unsigned char {
-  IntegerConstant,
+  EnumFirst,
+  IntegerConstant = EnumFirst,
   DoubleConstant,
   VariableExpr,
   UnaryExpr,
@@ -60,10 +61,7 @@ struct GenConfig {
 
   float parenthesize_prob = 0.5f;
 
-  BinOpMask bin_op_mask = ~0ull ^ ((1ull << (unsigned long long)BinOp::Shl) |
-                                   (1ull << (unsigned long long)BinOp::Shr) |
-                                   (1ull << (unsigned long long)BinOp::Div) |
-                                   (1ull << (unsigned long long)BinOp::Mod));
+  BinOpMask bin_op_mask = ~0ull;
   UnOpMask un_op_mask = ~0ull;
 
   std::array<ExprKindWeightInfo, NUM_EXPR_KINDS> expr_kind_weights = {{
@@ -86,8 +84,8 @@ class GeneratorRng {
  public:
   virtual ~GeneratorRng() {}
 
-  virtual BinOp gen_bin_op(const BinOpMask& mask) = 0;
-  virtual UnOp gen_un_op(const UnOpMask& mask) = 0;
+  virtual BinOp gen_bin_op(BinOpMask mask) = 0;
+  virtual UnOp gen_un_op(UnOpMask mask) = 0;
   virtual ExprKind gen_expr_kind(const WeightsArray& array) = 0;
   virtual uint64_t gen_u64(uint64_t min, uint64_t max) = 0;
   virtual double gen_double(double min, double max) = 0;
@@ -98,8 +96,8 @@ class DefaultGeneratorRng : public GeneratorRng {
  public:
   explicit DefaultGeneratorRng(uint32_t seed) : rng_(seed) {}
 
-  BinOp gen_bin_op(const BinOpMask& mask) override;
-  UnOp gen_un_op(const UnOpMask& mask) override;
+  BinOp gen_bin_op(BinOpMask mask) override;
+  UnOp gen_un_op(UnOpMask mask) override;
   ExprKind gen_expr_kind(const WeightsArray& array) override;
   uint64_t gen_u64(uint64_t min, uint64_t max) override;
   double gen_double(double min, double max) override;
@@ -111,8 +109,7 @@ class DefaultGeneratorRng : public GeneratorRng {
 
 class ExprGenerator {
  public:
-  explicit ExprGenerator(std::unique_ptr<GeneratorRng> rng,
-                         const GenConfig& cfg = GenConfig())
+  ExprGenerator(std::unique_ptr<GeneratorRng> rng, const GenConfig& cfg)
       : rng_(std::move(rng)), cfg_(cfg) {}
 
   Expr generate();

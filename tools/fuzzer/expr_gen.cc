@@ -150,46 +150,42 @@ Expr ExprGenerator::generate() {
   return gen_with_weights(weights);
 }
 
-BinOp DefaultGeneratorRng::gen_bin_op(const BinOpMask& mask) {
-  assert(mask.any());
+template <size_t N, typename Rng>
+size_t pick_nth_set_bit(std::bitset<N> mask, Rng& rng) {
+  // At least one bit needs to be set
+  assert(mask.any() && "Mask must not be empty");
 
-  std::uniform_int_distribution<size_t> distr(0, mask.count() - 1);
-  size_t choice = distr(rng_);
+  std::uniform_int_distribution<size_t> distr(1, mask.count());
+  size_t choice = distr(rng);
 
   size_t running_ones = 0;
   for (size_t i = 0; i < mask.size(); i++) {
-    if (running_ones == choice && mask[i]) {
-      return (BinOp)i;
-    }
     if (mask[i]) {
       running_ones++;
     }
+
+    if (running_ones == choice) {
+      return i;
+    }
   }
 
-  // Fallback, should never be reached
-  assert(false);
-  return BinOp::LogicalAnd;
+  // `choice` lies in the range `[1, mask.count()]`, `running_ones` will
+  // always lie in the range `[0, mask.count()]` and is incremented at most once
+  // per loop iteration.
+  // The only way for this assertion to fire is for `mask` to be empty (which
+  // we have asserted beforehand).
+  assert(false && "Unreachable");
+  // Fallback return statement with invalid bit index to silence warnings when
+  // running in `opt` mode (hence `-DNDEBUG` is set).
+  return N;
 }
 
-UnOp DefaultGeneratorRng::gen_un_op(const UnOpMask& mask) {
-  assert(mask.any());
+BinOp DefaultGeneratorRng::gen_bin_op(BinOpMask mask) {
+  return (BinOp)pick_nth_set_bit(mask, rng_);
+}
 
-  std::uniform_int_distribution<size_t> distr(0, mask.count() - 1);
-  size_t choice = distr(rng_);
-
-  size_t running_ones = 0;
-  for (size_t i = 0; i < mask.size(); i++) {
-    if (running_ones == choice && mask[i]) {
-      return (UnOp)i;
-    }
-    if (mask[i]) {
-      running_ones++;
-    }
-  }
-
-  // Fallback, should never be reached
-  assert(false);
-  return UnOp::LogicalNot;
+UnOp DefaultGeneratorRng::gen_un_op(UnOpMask mask) {
+  return (UnOp)pick_nth_set_bit(mask, rng_);
 }
 
 uint64_t DefaultGeneratorRng::gen_u64(uint64_t min, uint64_t max) {

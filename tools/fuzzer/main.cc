@@ -78,6 +78,12 @@ void run_fuzzer(lldb::SBFrame& frame) {
 
   auto rng = std::make_unique<fuzzer::DefaultGeneratorRng>(seed);
   auto cfg = fuzzer::GenConfig();
+  // Disable shift and division for now
+  cfg.bin_op_mask.flip((size_t)fuzzer::BinOp::Shl);
+  cfg.bin_op_mask.flip((size_t)fuzzer::BinOp::Shr);
+  cfg.bin_op_mask.flip((size_t)fuzzer::BinOp::Div);
+  cfg.bin_op_mask.flip((size_t)fuzzer::BinOp::Mod);
+
   fuzzer::ExprGenerator gen(std::move(rng), cfg);
   std::vector<std::string> exprs;
 
