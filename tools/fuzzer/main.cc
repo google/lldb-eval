@@ -77,11 +77,18 @@ void run_fuzzer(lldb::SBFrame& frame) {
   printf("Value of variable `%s` is: %s\n", VAR, var_value.GetValue());
 
   auto rng = std::make_unique<fuzzer::DefaultGeneratorRng>(seed);
-  fuzzer::ExprGenerator gen(std::move(rng));
+  auto cfg = fuzzer::GenConfig();
+  // Disable shift and division for now
+  cfg.bin_op_mask.flip((size_t)fuzzer::BinOp::Shl);
+  cfg.bin_op_mask.flip((size_t)fuzzer::BinOp::Shr);
+  cfg.bin_op_mask.flip((size_t)fuzzer::BinOp::Div);
+  cfg.bin_op_mask.flip((size_t)fuzzer::BinOp::Mod);
+
+  fuzzer::ExprGenerator gen(std::move(rng), cfg);
   std::vector<std::string> exprs;
 
   size_t padding = 0;
-  for (int i = 0; i < 20; i++) {
+  for (int i = 0; i < cfg.num_exprs_to_generate; i++) {
     auto gen_expr = gen.generate();
     std::ostringstream os;
     os << gen_expr;
