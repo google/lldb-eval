@@ -395,6 +395,7 @@ void Interpreter::Visit(const BinaryOpNode* node) {
   auto lhs_scalar = lhs.AsScalar();
   auto rhs_scalar = rhs.AsScalar();
 
+  // TODO(werat): Handle incorrect type combinations and zero division.
   switch (node->op()) {
     case clang::tok::slash:
       result_ = Value(lhs_scalar / rhs_scalar);
@@ -486,6 +487,25 @@ void Interpreter::Visit(const UnaryOpNode* node) {
       result_ = Value(rhs.AsScalar() * Scalar(-1));
       return;
     }
+  }
+
+  // Unary negation (!).
+  if (node->op() == clang::tok::exclaim) {
+    if (!BoolConvertible(rhs)) {
+      return;
+    }
+    result_ = Value(!rhs.AsBool());
+    return;
+  }
+
+  // Bitwise NOT (~).
+  if (node->op() == clang::tok::tilde) {
+    if (rhs.IsScalar()) {
+      result_ = Value(~rhs.AsScalar());
+      return;
+    }
+    ReportTypeError("invalid argument type '{0}' to unary expression", rhs);
+    return;
   }
 
   // Unsupported/invalid operation.

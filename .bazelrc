@@ -66,5 +66,8 @@ build:ubsan --copt=-DNDEBUG
 build:ubsan --copt=-fno-sanitize=function,vptr
 build:ubsan --linkopt=-fsanitize=undefined
 
+# Config for running under Valgrind
+build:valgrind --copt=-DCONFIG_VALGRIND
+
 # Try loading per-user configuration.
 try-import %workspace%/user.bazelrc

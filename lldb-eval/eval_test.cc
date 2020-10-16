@@ -186,6 +186,11 @@ void InterpreterTest::TestExprErr(const std::string& expr,
   EXPECT_THAT(error.message(), ::testing::HasSubstr(msg));
 }
 
+TEST_F(InterpreterTest, TestSymbols) {
+  // No symbols might indicate that the test binary was built incorrectly.
+  EXPECT_GT(frame_.GetModule().GetNumSymbols(), 0);
+}
+
 TEST_F(InterpreterTest, TestArithmetic) {
   TestExpr("1 + 2", "3");
   TestExpr("1 + 2*3", "7");
@@ -216,9 +221,49 @@ TEST_F(InterpreterTest, TestArithmetic) {
   TestExpr("9223372036854775807LL + 1", "-9223372036854775808");
   TestExpr("18446744073709551615ULL + 1", "0");
 
+  // Integer literal is too large to be represented in a signed integer type,
+  // interpreting as unsigned.
+  TestExpr("-9223372036854775808", "9223372036854775808");
+  TestExpr("-9223372036854775808 - 1", "9223372036854775807");
+  TestExpr("-9223372036854775808 + 1", "9223372036854775809");
+  TestExpr("-9223372036854775808LL / -1", "0");
+  TestExpr("-9223372036854775808LL % -1", "9223372036854775808");
+
   TestExpr("-20 / 1U", "4294967276");
   TestExpr("-20LL / 1U", "-20");
   TestExpr("-20LL / 1ULL", "18446744073709551596");
+
+  // Floating tricks.
+  TestExpr("+0.0 / +0.0  != +0.0 / +0.0", "true");
+  TestExpr("-1.f * 0", "-0");
+  TestExpr("0x0.123p-1", "0.0355224609375");
+}
+
+TEST_F(InterpreterTest, TestBitwiseOperators) {
+  TestExpr("~(-1)", "0");
+  TestExpr("~~0", "0");
+  TestExpr("~0", "-1");
+  TestExpr("~1", "-2");
+  TestExpr("~0LL", "-1");
+  TestExpr("~1LL", "-2");
+  TestExpr("~true", "-2");
+  TestExpr("~false", "-1");
+  TestExpr("~ull_max", "0");
+  TestExpr("~ull_zero", "18446744073709551615");
+
+  TestExprErr("~s", "invalid argument type 'S' to unary expression");
+  TestExprErr("~p", "invalid argument type 'const char *' to unary expression");
+
+  TestExpr("(1 << 5)", "32");
+  TestExpr("(32 >> 2)", "8");
+
+  TestExpr("0b1011 & 0xFF", "11");
+  TestExpr("0b1011 & 0b0111", "3");
+  TestExpr("0b1011 | 0b0111", "15");
+  TestExpr("-0b1011 | 0xFF", "-1");
+  TestExpr("-0b1011 | 0xFFu", "4294967295");
+  TestExpr("0b1011 ^ 0b0111", "12");
+  TestExpr("~0b1011", "-12");
 }
 
 TEST_F(InterpreterTest, TestPointerArithmetic) {
@@ -291,6 +336,14 @@ TEST_F(InterpreterTest, TestLogicalOperators) {
   TestExpr("0 || 1", "true");
   TestExpr("0 || 0", "false");
 
+  TestExpr("!1", "false");
+  TestExpr("!!1", "true");
+
+  TestExpr("!trueVar", "false");
+  TestExpr("!!trueVar", "true");
+  TestExpr("!falseVar", "true");
+  TestExpr("!!falseVar", "false");
+
   TestExpr("trueVar && true", "true");
   TestExpr("trueVar && (2 > 1)", "true");
   TestExpr("trueVar && (2 < 1)", "false");
@@ -309,11 +362,17 @@ TEST_F(InterpreterTest, TestLogicalOperators) {
     TestExpr("false && __doesnt_exist", "false");
   }
 
+  TestExpr("!p_ptr", "false");
+  TestExpr("!!p_ptr", "true");
   TestExpr("p_ptr && true", "true");
   TestExpr("p_ptr && false", "false");
+  TestExpr("!p_nullptr", "true");
+  TestExpr("!!p_nullptr", "false");
   TestExpr("p_nullptr || true", "true");
   TestExpr("p_nullptr || false", "false");
 
+  TestExprErr("!s || false",
+              "value of type 'S' is not contextually convertible to 'bool'");
   TestExprErr("s || false",
               "value of type 'S' is not contextually convertible to 'bool'");
   TestExprErr("s ? 1 : 2",
@@ -514,14 +573,8 @@ TEST_F(InterpreterTest, TestQualifiedId) {
   TestExpr("::ns::ns::i", "2");
   TestExpr("ns::ns::i", "2");
 
-  {
-#ifdef _WIN32
-    ExpectErrorLLDB _(this);
-#endif
-
-    TestExpr("::Foo::y", "42");
-    TestExpr("Foo::y", "42");
-  }
+  TestExpr("::Foo::y", "42");
+  TestExpr("Foo::y", "42");
 
   // Static consts with no definition can't be looked up by name.
   TestExprErr("::Foo::x", "use of undeclared identifier '::Foo::x'");

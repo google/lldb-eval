@@ -93,43 +93,41 @@ IntegerType PickIntegerType(const clang::NumericLiteralParser& literal,
   bool unsigned_is_allowed = literal.isUnsigned || literal.getRadix() != 10;
 
   // Try int/unsigned int.
-  if (!literal.isLong && !literal.isLongLong) {
-    if (value.isIntN(int_size)) {
-      if (!literal.isUnsigned && value.isIntN(int_size - 1)) {
-        return {int_size, false};
-      }
-      if (unsigned_is_allowed) {
-        return {int_size, true};
-      }
+  if (!literal.isLong && !literal.isLongLong && value.isIntN(int_size)) {
+    if (!literal.isUnsigned && value.isIntN(int_size - 1)) {
+      return {int_size, false};
+    }
+    if (unsigned_is_allowed) {
+      return {int_size, true};
     }
   }
   // Try long/unsigned long.
-  if (!literal.isLongLong) {
-    if (value.isIntN(long_size)) {
-      if (!literal.isUnsigned && value.isIntN(long_size - 1)) {
-        return {long_size, false};
-      }
-      if (unsigned_is_allowed) {
-        return {long_size, true};
-      }
+  if (!literal.isLongLong && value.isIntN(long_size)) {
+    if (!literal.isUnsigned && value.isIntN(long_size - 1)) {
+      return {long_size, false};
+    }
+    if (unsigned_is_allowed) {
+      return {long_size, true};
     }
   }
   // Try long long/unsigned long long.
   if (value.isIntN(long_long_size)) {
-    if (value.isIntN(long_long_size)) {
-      if (!literal.isUnsigned && value.isIntN(long_long_size - 1)) {
-        return {long_long_size, false};
-      }
-      if (unsigned_is_allowed) {
-        return {long_long_size, true};
-      }
+    if (!literal.isUnsigned && value.isIntN(long_long_size - 1)) {
+      return {long_long_size, false};
+    }
+    if (unsigned_is_allowed) {
+      return {long_long_size, true};
     }
   }
 
   // If we still couldn't decide a type, we probably have something that does
-  // not fit in a signed long long, but has no U suffix.
+  // not fit in a signed long long, but has no U suffix. Also known as:
+  //
+  //  warning: integer literal is too large to be represented in a signed
+  //  integer type, interpreting as unsigned [-Wimplicitly-unsigned-literal]
+  //
   // TODO(werat): Make this an error?
-  return {long_long_size, false};
+  return {long_long_size, true};
 }
 
 }  // namespace

@@ -116,6 +116,7 @@ class Scalar {
 
   static Scalar FromSbValue(lldb::SBValue value);
 
+  friend const Scalar operator~(const Scalar& rhs);
   friend const Scalar operator+(const Scalar& lhs, const Scalar& rhs);
   friend const Scalar operator-(const Scalar& lhs, const Scalar& rhs);
   friend const Scalar operator/(const Scalar& lhs, const Scalar& rhs);
@@ -139,6 +140,7 @@ class Scalar {
   Data value_;
 };
 
+const Scalar operator~(const Scalar& rhs);
 const Scalar operator+(const Scalar& lhs, const Scalar& rhs);
 const Scalar operator-(const Scalar& lhs, const Scalar& rhs);
 const Scalar operator/(const Scalar& lhs, const Scalar& rhs);
