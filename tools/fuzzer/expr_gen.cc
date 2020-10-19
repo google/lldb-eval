@@ -207,7 +207,7 @@ size_t weighted_pick(const std::array<RealType, N>& array, Rng& rng) {
   for (size_t i = 0; i < array.size(); i++) {
     running_sum += array[i];
     if (choice < running_sum) {
-      return running_sum;
+      return i;
     }
   }
 
