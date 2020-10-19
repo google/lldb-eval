@@ -26,6 +26,12 @@ static void TestArithmetic() {
   unsigned long long ull_max = std::numeric_limits<unsigned long long>::max();
   unsigned long long ull_zero = 0;
 
+  int x = 2;
+  int& r = x;
+
+  typedef int& myr;
+  myr my_r = x;
+
   // BREAK(TestArithmetic)
 }
 
@@ -45,6 +51,9 @@ static void TestBitwiseOperators() {
 
 static void TestPointerArithmetic() {
   const char* p_char1 = "hello";
+
+  typedef const char* my_char_ptr;
+  my_char_ptr my_p_char1 = p_char1;
 
   int offset = 5;
   int array[10];
@@ -88,9 +97,28 @@ static void TestLocalVariables() {
   // BREAK(TestLocalVariables)
 }
 
+static void TestMemberOf() {
+  int x = 2;
+  struct S {
+    int x;
+    int& r;
+  } s{1, x};
+
+  S& sr = s;
+  S* sp = &s;
+
+  // BREAK(TestMemberOf)
+}
+
 static void TestIndirection() {
   int val = 1;
   int* p = &val;
+
+  typedef int* myp;
+  myp my_p = &val;
+
+  typedef int*& mypr;
+  mypr my_pr = p;
 
   // BREAK(TestIndirection)
 }
@@ -118,6 +146,14 @@ class TestMethods {
   }
 
   void TestAddressOf(int param) {
+    int x = 42;
+    int& r = x;
+    int* p = &x;
+    int*& pr = p;
+
+    typedef int*& mypr;
+    mypr my_pr = p;
+
     std::string s = "hello";
     const char* s_str = s.c_str();
 
@@ -344,6 +380,7 @@ void main() {
   TestPointerArithmetic();
   TestLogicalOperators();
   TestLocalVariables();
+  TestMemberOf();
   tm.TestInstanceVariables();
   TestIndirection();
   tm.TestAddressOf(42);
