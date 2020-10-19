@@ -55,6 +55,14 @@ class FakeGeneratorRng : public GeneratorRng {
     return kind;
   }
 
+  bool gen_boolean() override {
+    assert(!bools_.empty());
+    bool constant = bools_.back();
+    bools_.pop_back();
+
+    return constant;
+  }
+
   uint64_t gen_u64(uint64_t, uint64_t) override {
     assert(!u64_constants_.empty());
     uint64_t constant = u64_constants_.back();
@@ -87,11 +95,11 @@ class FakeGeneratorRng : public GeneratorRng {
 
     std::reverse(rng.un_ops_.begin(), rng.un_ops_.end());
     std::reverse(rng.bin_ops_.begin(), rng.bin_ops_.end());
+    std::reverse(rng.bools_.begin(), rng.bools_.end());
     std::reverse(rng.u64_constants_.begin(), rng.u64_constants_.end());
     std::reverse(rng.double_constants_.begin(), rng.double_constants_.end());
     std::reverse(rng.expr_kinds_.begin(), rng.expr_kinds_.end());
     std::reverse(rng.cv_qualifiers_.begin(), rng.cv_qualifiers_.end());
-    std::reverse(rng.bools_.begin(), rng.bools_.end());
 
     return rng;
   }
@@ -185,7 +193,7 @@ class FakeGeneratorRng : public GeneratorRng {
 
   void operator()(BooleanConstant e) {
     expr_kinds_.push_back(ExprKind::BooleanConstant);
-    bools_.push_back(e);
+    bools_.push_back(e.value());
   }
 
  private:
@@ -193,7 +201,7 @@ class FakeGeneratorRng : public GeneratorRng {
   std::vector<BinOp> bin_ops_;
   std::vector<uint64_t> u64_constants_;
   std::vector<double> double_constants_;
-  std::vector<BooleanConstant> bools_;
+  std::vector<bool> bools_;
   std::vector<ExprKind> expr_kinds_;
   std::vector<TypeKind> type_kinds_;
   std::vector<CvQualifiers> cv_qualifiers_;
