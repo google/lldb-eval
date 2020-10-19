@@ -399,7 +399,7 @@ class CastExpr {
  private:
   Type type_;
   std::unique_ptr<Expr> expr_;
-}
+};
 
 class BooleanConstant {
  public:
