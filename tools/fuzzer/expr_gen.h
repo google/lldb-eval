@@ -38,6 +38,7 @@ enum class ExprKind : unsigned char {
   MemberOfPtr,
   ArrayIndex,
   TernaryExpr,
+  BooleanConstant,
   EnumLast = TernaryExpr,
 };
 constexpr size_t NUM_GEN_EXPR_KINDS = (size_t)ExprKind::EnumLast + 1;

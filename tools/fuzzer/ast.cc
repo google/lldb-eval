@@ -268,6 +268,10 @@ std::ostream& operator<<(std::ostream& os, const CastExpr& e) {
   return os << "(" << e.type() << ") " << e.expr();
 }
 
+std::ostream& operator<<(std::ostream& os, const BooleanConstant& expr) {
+  return os << expr.value();
+}
+
 std::ostream& operator<<(std::ostream& os, const Expr& e) {
   std::visit([&os](const auto& expr) { os << expr; }, e);
   return os;
@@ -381,6 +385,13 @@ class ExprDumper {
     printf("Cast expression into type: `%s`\n", os.str().c_str());
 
     indented_visit(e.expr());
+  }
+
+  void operator()(const BooleanConstant& e) {
+    emit_marked_indentation();
+
+    const char* to_print = e.value() ? "true" : "false";
+    printf("Boolean constant of value `%s`\n", to_print);
   }
 
  private:

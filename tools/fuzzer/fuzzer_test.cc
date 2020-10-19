@@ -91,6 +91,7 @@ class FakeGeneratorRng : public GeneratorRng {
     std::reverse(rng.double_constants_.begin(), rng.double_constants_.end());
     std::reverse(rng.expr_kinds_.begin(), rng.expr_kinds_.end());
     std::reverse(rng.cv_qualifiers_.begin(), rng.cv_qualifiers_.end());
+    std::reverse(rng.bools_.begin(), rng.bools_.end());
 
     return rng;
   }
@@ -182,11 +183,17 @@ class FakeGeneratorRng : public GeneratorRng {
     scalar_types_.push_back(e);
   }
 
+  void operator()(BooleanConstant e) {
+    expr_kinds_.push_back(ExprKind::BooleanConstant);
+    bools_.push_back(e);
+  }
+
  private:
   std::vector<UnOp> un_ops_;
   std::vector<BinOp> bin_ops_;
   std::vector<uint64_t> u64_constants_;
   std::vector<double> double_constants_;
+  std::vector<BooleanConstant> bools_;
   std::vector<ExprKind> expr_kinds_;
   std::vector<TypeKind> type_kinds_;
   std::vector<CvQualifiers> cv_qualifiers_;
@@ -306,6 +313,12 @@ class AstComparator {
   void operator()(ScalarType lhs, ScalarType rhs) {
     if (lhs != rhs) {
       add_mismatch(lhs, rhs);
+    }
+  }
+
+  void operator()(BooleanConstant lhs, BooleanConstant rhs) {
+    if (lhs.value() != rhs.value()) {
+      add_mismatch(lhs.value(), rhs.value());
     }
   }
 
