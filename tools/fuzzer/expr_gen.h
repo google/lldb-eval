@@ -52,28 +52,15 @@ enum class TypeKind : unsigned char {
 constexpr size_t NUM_GEN_TYPE_KINDS = (size_t)TypeKind::EnumLast + 1;
 
 class Weights {
- private:
-  std::array<float, NUM_GEN_EXPR_KINDS> expr_weights_;
-  std::array<float, NUM_GEN_TYPE_KINDS> type_weights_;
-
-  using expr_iterator = decltype(expr_weights_)::iterator;
-  using expr_const_iterator = decltype(expr_weights_)::const_iterator;
-
-  using type_iterator = decltype(type_weights_)::iterator;
-  using type_const_iterator = decltype(type_weights_)::const_iterator;
-
  public:
-  expr_iterator expr_begin() { return expr_weights_.begin(); }
-  expr_iterator expr_end() { return expr_weights_.end(); }
+  using ExprWeightsArray = std::array<float, NUM_GEN_EXPR_KINDS>;
+  using TypeWeightsArray = std::array<float, NUM_GEN_TYPE_KINDS>;
 
-  expr_const_iterator expr_begin() const { return expr_weights_.begin(); }
-  expr_const_iterator expr_end() const { return expr_weights_.end(); }
+  ExprWeightsArray& expr_weights() { return expr_weights_; }
+  const ExprWeightsArray& expr_weights() const { return expr_weights_; }
 
-  type_iterator type_begin() { return type_weights_.begin(); }
-  type_iterator type_end() { return type_weights_.end(); }
-
-  type_const_iterator type_begin() const { return type_weights_.begin(); }
-  type_const_iterator type_end() const { return type_weights_.end(); }
+  TypeWeightsArray& type_weights() { return type_weights_; }
+  const TypeWeightsArray& type_weights() const { return type_weights_; }
 
   float& operator[](ExprKind kind) { return expr_weights_[(size_t)kind]; }
   float& operator[](TypeKind kind) { return type_weights_[(size_t)kind]; }
@@ -84,6 +71,10 @@ class Weights {
   const float& operator[](TypeKind kind) const {
     return type_weights_[(size_t)kind];
   }
+
+ private:
+  std::array<float, NUM_GEN_EXPR_KINDS> expr_weights_;
+  std::array<float, NUM_GEN_TYPE_KINDS> type_weights_;
 };
 
 struct ExprKindWeightInfo {
@@ -103,7 +94,7 @@ struct GenConfig {
   double double_constant_min = 0;
   double double_constant_max = 10;
 
-  float parenthesize_prob = 0.5f;
+  float parenthesize_prob = 0.2f;
 
   float const_prob = 0.3f;
   float volatile_prob = 0.05f;

@@ -145,9 +145,11 @@ Expr ExprGenerator::maybe_parenthesized(Expr expr) {
 
 Expr ExprGenerator::generate() {
   Weights weights;
-  std::transform(cfg_.expr_kind_weights.begin(), cfg_.expr_kind_weights.end(),
-                 weights.expr_begin(),
-                 [](const ExprKindWeightInfo& e) { return e.initial_weight; });
+  auto& expr_weights = weights.expr_weights();
+
+  for (size_t i = 0; i < expr_weights.size(); i++) {
+    expr_weights[i] = cfg_.expr_kind_weights[i].initial_weight;
+  }
 
   return gen_with_weights(weights);
 }
@@ -222,7 +224,8 @@ bool DefaultGeneratorRng::gen_parenthesize(float probability) {
 }
 
 ExprKind DefaultGeneratorRng::gen_expr_kind(const Weights& weights) {
-  float sum = std::accumulate(weights.expr_begin(), weights.expr_end(), 0.0f);
+  const auto& expr_weights = weights.expr_weights();
+  float sum = std::accumulate(expr_weights.begin(), expr_weights.end(), 0.0f);
 
   std::uniform_real_distribution<float> distr(0, sum);
   auto val = distr(rng_);
@@ -231,10 +234,10 @@ ExprKind DefaultGeneratorRng::gen_expr_kind(const Weights& weights) {
   // always set `kind`.
   ExprKind kind = ExprKind::IntegerConstant;
   float running_sum = 0;
-  for (auto it = weights.expr_begin(); it != weights.expr_end(); it++) {
-    running_sum += *it;
+  for (size_t i = 0; i < expr_weights.size(); i++) {
+    running_sum += expr_weights[i];
     if (val < running_sum) {
-      kind = (ExprKind)(it - weights.expr_begin());
+      kind = (ExprKind)i;
       break;
     }
   }
@@ -243,7 +246,8 @@ ExprKind DefaultGeneratorRng::gen_expr_kind(const Weights& weights) {
 }
 
 TypeKind DefaultGeneratorRng::gen_type_kind(const Weights& weights) {
-  float sum = std::accumulate(weights.type_begin(), weights.type_end(), 0.0f);
+  const auto& type_weights = weights.type_weights();
+  float sum = std::accumulate(type_weights.begin(), type_weights.end(), 0.0f);
 
   std::uniform_real_distribution<float> distr(0, sum);
   auto val = distr(rng_);
@@ -252,10 +256,10 @@ TypeKind DefaultGeneratorRng::gen_type_kind(const Weights& weights) {
   // always set `kind`.
   TypeKind kind = TypeKind::ScalarType;
   float running_sum = 0;
-  for (auto it = weights.type_begin(); it != weights.type_end(); it++) {
-    running_sum += *it;
+  for (size_t i = 0; i < type_weights.size(); i++) {
+    running_sum += type_weights[i];
     if (val < running_sum) {
-      kind = (TypeKind)(it - weights.type_begin());
+      kind = (TypeKind)i;
       break;
     }
   }

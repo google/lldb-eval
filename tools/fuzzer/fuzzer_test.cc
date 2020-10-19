@@ -441,7 +441,7 @@ struct TypePrintTestParam {
   std::string str;
   std::shared_ptr<Type> type;
 
-  explicit TypePrintTestParam(std::string str, Type type)
+  TypePrintTestParam(std::string str, Type type)
       : str(std::move(str)), type(std::make_shared<Type>(std::move(type))) {}
 };
 
