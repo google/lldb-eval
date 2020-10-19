@@ -138,6 +138,12 @@ void Interpreter::Visit(const IdentifierNode* node) {
     return;
   }
 
+  // If value is a reference, dereference it to get to the underlying type. All
+  // operations on a reference should be actually operations on the referent.
+  if (value.GetType().IsReferenceType()) {
+    value = value.Dereference();
+  }
+
   // Special case for "this" pointer. As per C++ standard, it's a prvalue.
   bool is_rvalue = node->name() == "this";
 
@@ -294,7 +300,7 @@ void Interpreter::Visit(const MemberOfNode* node) {
   }
 
   // Check if LHS is a record type, i.e. class/struct or union.
-  if (!(lhs_val.GetType().GetDereferencedType().GetTypeClass() &
+  if (!(lhs_val.GetType().GetTypeClass() &
         (lldb::eTypeClassClass | lldb::eTypeClassStruct |
          lldb::eTypeClassUnion))) {
     ReportTypeError(
@@ -536,10 +542,8 @@ Value Interpreter::EvaluateSubscript(Value& lhs, Value& rhs) {
 
   lldb::SBValue base, index;
 
-  // Both lhs and rhs can be references, but that's acceptable. Look at
-  // underlying types.
-  lldb::SBType lhs_type = lhs_val.GetType().GetDereferencedType();
-  lldb::SBType rhs_type = rhs_val.GetType().GetDereferencedType();
+  lldb::SBType lhs_type = lhs_val.GetType();
+  lldb::SBType rhs_type = rhs_val.GetType();
 
   if (lhs_type.IsArrayType() || lhs_type.IsPointerType()) {
     base = lhs_val;
@@ -550,16 +554,6 @@ Value Interpreter::EvaluateSubscript(Value& lhs, Value& rhs) {
   } else {
     ReportTypeError("subscripted value is not an array or pointer");
     return Value();
-  }
-
-  // Base can be a reference type (e.g. "int (&)[]"). In this case we need to
-  // dereference it, so we can get the underlying value.
-  if (base.GetType().IsReferenceType()) {
-    base = base.Dereference();
-  }
-  // Index can be a reference type too (e.g. "int&").
-  if (index.GetType().IsReferenceType()) {
-    index = index.Dereference();
   }
 
   // Index can be a typedef of a typedef of a typedef of a typedef...
