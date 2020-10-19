@@ -410,6 +410,21 @@ TEST_F(InterpreterTest, TestLocalVariables) {
               "use of undeclared identifier '__test_non_variable'");
 }
 
+TEST_F(InterpreterTest, TestMemberOf) {
+  TestExpr("s.x", "1");
+  TestExpr("s.r", "2");
+  TestExpr("s.r + 1", "3");
+  TestExpr("sr.x", "1");
+  TestExpr("sr.r", "2");
+  TestExpr("sr.r + 1", "3");
+  TestExpr("sp->x", "1");
+  TestExpr("sp->r", "2");
+  TestExpr("sp->r + 1", "3");
+
+  TestExprErr("sp->r / (void*)0",
+              "invalid operands to binary expression ('int' and 'void *')");
+}
+
 TEST_F(InterpreterTest, TestInstanceVariables) {
   TestExpr("this->field_", "1");
   TestExprErr("this.field_",

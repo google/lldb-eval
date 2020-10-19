@@ -97,6 +97,19 @@ static void TestLocalVariables() {
   // BREAK(TestLocalVariables)
 }
 
+static void TestMemberOf() {
+  int x = 2;
+  struct S {
+    int x;
+    int& r;
+  } s{1, x};
+
+  S& sr = s;
+  S* sp = &s;
+
+  // BREAK(TestMemberOf)
+}
+
 static void TestIndirection() {
   int val = 1;
   int* p = &val;
@@ -367,6 +380,7 @@ void main() {
   TestPointerArithmetic();
   TestLogicalOperators();
   TestLocalVariables();
+  TestMemberOf();
   tm.TestInstanceVariables();
   TestIndirection();
   tm.TestAddressOf(42);

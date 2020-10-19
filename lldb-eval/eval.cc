@@ -300,9 +300,10 @@ void Interpreter::Visit(const MemberOfNode* node) {
   }
 
   // Check if LHS is a record type, i.e. class/struct or union.
-  if (!(lhs_val.GetType().GetTypeClass() &
-        (lldb::eTypeClassClass | lldb::eTypeClassStruct |
-         lldb::eTypeClassUnion))) {
+  lldb::TypeClass class_specifier =
+      (lldb::eTypeClassClass | lldb::eTypeClassStruct | lldb::eTypeClassUnion);
+
+  if (!(lhs_val.GetType().GetTypeClass() & class_specifier)) {
     ReportTypeError(
         "member reference base type '{0}' is not a structure or union", lhs);
     return;
@@ -317,6 +318,12 @@ void Interpreter::Visit(const MemberOfNode* node) {
                              lhs_val.GetType().GetUnqualifiedType().GetName());
     error_.Set(EvalErrorCode::INVALID_OPERAND_TYPE, msg);
     return;
+  }
+
+  // If value is a reference, dereference it to get to the underlying type. All
+  // operations on a reference should be actually operations on the referent.
+  if (member_val.GetType().IsReferenceType()) {
+    member_val = member_val.Dereference();
   }
 
   result_ = Value(member_val);
