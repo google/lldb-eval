@@ -83,6 +83,11 @@ struct ExprKindWeightInfo {
   float dampening_factor;
 };
 
+struct TypeKindWeightInfo {
+  float initial_weight;
+  float dampening_factor;
+};
+
 using BinOpMask = std::bitset<NUM_BIN_OPS>;
 using UnOpMask = std::bitset<NUM_UN_OPS>;
 
@@ -114,6 +119,13 @@ struct GenConfig {
       {0.0f, 0.0f},  // ExprKind::MemberOfPtr
       {0.0f, 0.0f},  // ExprKind::ArrayIndex
       {0.0f, 0.0f},  // ExprKind::TernaryExpr
+  }};
+
+  std::array<TypeKindWeightInfo, NUM_GEN_TYPE_KINDS> type_kind_weights = {{
+      {2.0f, 0.0f},  // TypeKind::ScalarType
+      {0.0f, 0.0f},  // TypeKind::TaggedType
+      {1.0f, 0.1f},  // TypeKind::PointerType
+      {0.0f, 0.0f},  // TypeKind::ReferenceType
   }};
 };
 

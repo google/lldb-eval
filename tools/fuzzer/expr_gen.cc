@@ -18,8 +18,8 @@
 
 #include <algorithm>
 #include <cassert>
-#include <numeric>
 #include <random>
+#include <type_traits>
 #include <variant>
 
 #include "tools/fuzzer/ast.h"
@@ -145,10 +145,15 @@ Expr ExprGenerator::maybe_parenthesized(Expr expr) {
 
 Expr ExprGenerator::generate() {
   Weights weights;
-  auto& expr_weights = weights.expr_weights();
 
+  auto& expr_weights = weights.expr_weights();
   for (size_t i = 0; i < expr_weights.size(); i++) {
     expr_weights[i] = cfg_.expr_kind_weights[i].initial_weight;
+  }
+
+  auto& type_weights = weights.type_weights();
+  for (size_t i = 0; i < type_weights.size(); i++) {
+    type_weights[i] = cfg_.type_kind_weights[i].initial_weight;
   }
 
   return gen_with_weights(weights);
@@ -182,6 +187,32 @@ size_t pick_nth_set_bit(std::bitset<N> mask, Rng& rng) {
   // Fallback return statement with invalid bit index to silence warnings when
   // running in `opt` mode (hence `-DNDEBUG` is set).
   return N;
+}
+
+template <size_t N, typename Rng, typename RealType = float>
+size_t weighted_pick(const std::array<RealType, N>& array, Rng& rng) {
+  static_assert(N != 0, "Array must have at least 1 element");
+  static_assert(std::is_floating_point_v<RealType>,
+                "Must be a floating point type");
+
+  RealType sum = 0;
+  for (const auto& e : array) {
+    sum += e;
+  }
+
+  std::uniform_real_distribution<RealType> distr(0, sum);
+  RealType choice = distr(rng);
+
+  RealType running_sum = 0;
+  for (size_t i = 0; i < array.size(); i++) {
+    running_sum += array[i];
+    if (choice < running_sum) {
+      return running_sum;
+    }
+  }
+
+  // Just in case we get here due to e.g. floating point inaccuracies, etc.
+  return array.size() - 1;
 }
 
 BinOp DefaultGeneratorRng::gen_bin_op(BinOpMask mask) {
@@ -224,47 +255,11 @@ bool DefaultGeneratorRng::gen_parenthesize(float probability) {
 }
 
 ExprKind DefaultGeneratorRng::gen_expr_kind(const Weights& weights) {
-  const auto& expr_weights = weights.expr_weights();
-  float sum = std::accumulate(expr_weights.begin(), expr_weights.end(), 0.0f);
-
-  std::uniform_real_distribution<float> distr(0, sum);
-  auto val = distr(rng_);
-
-  // Dummy initialization to avoid uninitialized warnings, the loop below will
-  // always set `kind`.
-  ExprKind kind = ExprKind::IntegerConstant;
-  float running_sum = 0;
-  for (size_t i = 0; i < expr_weights.size(); i++) {
-    running_sum += expr_weights[i];
-    if (val < running_sum) {
-      kind = (ExprKind)i;
-      break;
-    }
-  }
-
-  return kind;
+  return (ExprKind)weighted_pick(weights.expr_weights(), rng_);
 }
 
 TypeKind DefaultGeneratorRng::gen_type_kind(const Weights& weights) {
-  const auto& type_weights = weights.type_weights();
-  float sum = std::accumulate(type_weights.begin(), type_weights.end(), 0.0f);
-
-  std::uniform_real_distribution<float> distr(0, sum);
-  auto val = distr(rng_);
-
-  // Dummy initialization to avoid uninitialized warnings, the loop below will
-  // always set `kind`.
-  TypeKind kind = TypeKind::ScalarType;
-  float running_sum = 0;
-  for (size_t i = 0; i < type_weights.size(); i++) {
-    running_sum += type_weights[i];
-    if (val < running_sum) {
-      kind = (TypeKind)i;
-      break;
-    }
-  }
-
-  return kind;
+  return (TypeKind)weighted_pick(weights.type_weights(), rng_);
 }
 
 }  // namespace fuzzer
