@@ -173,11 +173,6 @@ std::ostream& operator<<(std::ostream& os, const TernaryExpr& e) {
   return os << e.cond() << " ? " << e.lhs() << e.rhs();
 }
 
-std::ostream& operator<<(std::ostream& os, BooleanConstant::Value expr) {
-  const char* to_print = (expr == BooleanConstant::True) ? "true" : "false";
-  return os << to_print;
-}
-
 std::ostream& operator<<(std::ostream& os, const BooleanConstant& expr) {
   return os << expr.value();
 }
@@ -288,12 +283,11 @@ class ExprDumper {
     indented_visit(e.rhs());
   }
 
-  void operator()(BooleanConstant e) {
+  void operator()(const BooleanConstant& e) {
     emit_marked_indentation();
 
-    const char* to_print =
-        (e.value() == BooleanConstant::True) ? "true" : "false";
-    printf("BooleanConstant of value %s\n", to_print);
+    const char* to_print = e.value() ? "true" : "false";
+    printf("Boolean constant of value `%s`\n", to_print);
   }
 
  private:

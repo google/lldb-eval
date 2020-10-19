@@ -271,26 +271,19 @@ class TernaryExpr {
 
 class BooleanConstant {
  public:
-  enum class Value : bool { False, True };
-
   static constexpr int PRECEDENCE = 0;
 
-  static constexpr Value True = Value::True;
-  static constexpr Value False = Value::False;
-
-  BooleanConstant(Value value) : value_(value) {}
+  explicit BooleanConstant(bool value) : value_(value) {}
 
   friend std::ostream& operator<<(std::ostream& os,
                                   const BooleanConstant& expr);
 
-  Value value() const { return value_; }
+  bool value() const { return value_; }
   int precedence() const { return PRECEDENCE; }
 
  private:
-  Value value_;
+  bool value_;
 };
-
-std::ostream& operator<<(std::ostream& os, BooleanConstant::Value value);
 
 void dump_expr(const Expr& expr);
 
