@@ -36,6 +36,7 @@ class MemberOf;
 class MemberOfPtr;
 class ArrayIndex;
 class TernaryExpr;
+class BooleanConstant;
 
 enum class UnOp : unsigned char {
   // Used to determine the first enum element.
@@ -82,7 +83,7 @@ constexpr size_t NUM_BIN_OPS = (size_t)BinOp::EnumLast + 1;
 using Expr =
     std::variant<IntegerConstant, DoubleConstant, VariableExpr, UnaryExpr,
                  BinaryExpr, AddressOf, MemberOf, MemberOfPtr, ArrayIndex,
-                 TernaryExpr, ParenthesizedExpr>;
+                 TernaryExpr, BooleanConstant, ParenthesizedExpr>;
 constexpr size_t NUM_EXPR_KINDS = std::variant_size_v<Expr>;
 
 std::ostream& operator<<(std::ostream& os, const Expr& expr);
@@ -266,6 +267,22 @@ class TernaryExpr {
   std::unique_ptr<Expr> cond_;
   std::unique_ptr<Expr> lhs_;
   std::unique_ptr<Expr> rhs_;
+};
+
+class BooleanConstant {
+ public:
+  static constexpr int PRECEDENCE = 0;
+
+  explicit BooleanConstant(bool value) : value_(value) {}
+
+  friend std::ostream& operator<<(std::ostream& os,
+                                  const BooleanConstant& expr);
+
+  bool value() const { return value_; }
+  int precedence() const { return PRECEDENCE; }
+
+ private:
+  bool value_;
 };
 
 void dump_expr(const Expr& expr);

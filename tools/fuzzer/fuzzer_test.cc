@@ -74,6 +74,7 @@ class FakeGeneratorRng : public GeneratorRng {
     std::reverse(rng.u64_constants_.begin(), rng.u64_constants_.end());
     std::reverse(rng.double_constants_.begin(), rng.double_constants_.end());
     std::reverse(rng.kinds_.begin(), rng.kinds_.end());
+    std::reverse(rng.bools_.begin(), rng.bools_.end());
 
     return rng;
   }
@@ -135,12 +136,18 @@ class FakeGeneratorRng : public GeneratorRng {
     std::visit(*this, e.rhs());
   }
 
+  void operator()(BooleanConstant e) {
+    kinds_.push_back(ExprKind::BooleanConstant);
+    bools_.push_back(e);
+  }
+
  private:
   std::vector<UnOp> un_ops_;
   std::vector<BinOp> bin_ops_;
   std::vector<uint64_t> u64_constants_;
   std::vector<double> double_constants_;
   std::vector<ExprKind> kinds_;
+  std::vector<BooleanConstant> bools_;
 };
 
 struct Mismatch {
@@ -224,6 +231,12 @@ class AstComparator {
     std::visit(*this, lhs.cond(), rhs.cond());
     std::visit(*this, lhs.lhs(), rhs.lhs());
     std::visit(*this, lhs.rhs(), rhs.rhs());
+  }
+
+  void operator()(BooleanConstant lhs, BooleanConstant rhs) {
+    if (lhs.value() != rhs.value()) {
+      add_mismatch(lhs.value(), rhs.value());
+    }
   }
 
   template <typename T, typename U,
