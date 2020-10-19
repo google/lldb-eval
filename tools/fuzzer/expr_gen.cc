@@ -30,22 +30,24 @@ int expr_precedence(const Expr& e) {
   return std::visit([](const auto& e) { return e.precedence(); }, e);
 }
 
-IntegerConstant ExprGenerator::gen_integer_constant(const Weights&) {
+BooleanConstant ExprGenerator::gen_boolean_constant() {
+  return BooleanConstant(rng_->gen_boolean());
+}
+
+IntegerConstant ExprGenerator::gen_integer_constant() {
   auto value = rng_->gen_u64(cfg_.int_const_min, cfg_.int_const_max);
 
   return IntegerConstant(value);
 }
 
-DoubleConstant ExprGenerator::gen_double_constant(const Weights&) {
+DoubleConstant ExprGenerator::gen_double_constant() {
   auto value =
       rng_->gen_double(cfg_.double_constant_min, cfg_.double_constant_max);
 
   return DoubleConstant(value);
 }
 
-VariableExpr ExprGenerator::gen_variable_expr(const Weights&) {
-  return VariableExpr(VAR);
-}
+VariableExpr ExprGenerator::gen_variable_expr() { return VariableExpr(VAR); }
 
 BinaryExpr ExprGenerator::gen_binary_expr(const Weights& weights) {
   auto op = rng_->gen_bin_op(cfg_.bin_op_mask);
@@ -97,6 +99,14 @@ UnaryExpr ExprGenerator::gen_unary_expr(const Weights& weights) {
   return UnaryExpr(op, std::move(expr));
 }
 
+TernaryExpr ExprGenerator::gen_ternary_expr(const Weights& weights) {
+  auto cond = gen_with_weights(weights);
+  auto lhs = gen_with_weights(weights);
+  auto rhs = gen_with_weights(weights);
+
+  return TernaryExpr(std::move(cond), std::move(lhs), std::move(rhs));
+}
+
 Expr ExprGenerator::gen_with_weights(const Weights& weights) {
   Weights new_weights = weights;
 
@@ -108,15 +118,15 @@ Expr ExprGenerator::gen_with_weights(const Weights& weights) {
   Expr expr(IntegerConstant(0));
   switch (kind) {
     case ExprKind::IntegerConstant:
-      expr = gen_integer_constant(new_weights);
+      expr = gen_integer_constant();
       break;
 
     case ExprKind::DoubleConstant:
-      expr = gen_double_constant(new_weights);
+      expr = gen_double_constant();
       break;
 
     case ExprKind::VariableExpr:
-      expr = gen_variable_expr(new_weights);
+      expr = gen_variable_expr();
       break;
 
     case ExprKind::BinaryExpr:
@@ -125,6 +135,14 @@ Expr ExprGenerator::gen_with_weights(const Weights& weights) {
 
     case ExprKind::UnaryExpr:
       expr = gen_unary_expr(new_weights);
+      break;
+
+    case ExprKind::TernaryExpr:
+      expr = gen_ternary_expr(new_weights);
+      break;
+
+    case ExprKind::BooleanConstant:
+      expr = gen_boolean_constant();
       break;
 
     default:
@@ -251,6 +269,11 @@ CvQualifiers DefaultGeneratorRng::gen_cv_qualifiers(float const_prob,
 
 bool DefaultGeneratorRng::gen_parenthesize(float probability) {
   std::bernoulli_distribution distr(probability);
+  return distr(rng_);
+}
+
+bool DefaultGeneratorRng::gen_boolean() {
+  std::bernoulli_distribution distr;
   return distr(rng_);
 }
 

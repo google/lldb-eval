@@ -256,7 +256,7 @@ const Expr& TernaryExpr::cond() const { return *cond_; }
 const Expr& TernaryExpr::lhs() const { return *lhs_; }
 const Expr& TernaryExpr::rhs() const { return *rhs_; }
 std::ostream& operator<<(std::ostream& os, const TernaryExpr& e) {
-  return os << e.cond() << " ? " << e.lhs() << e.rhs();
+  return os << e.cond() << " ? " << e.lhs() << " : " << e.rhs();
 }
 
 CastExpr::CastExpr(Type type, Expr expr)
@@ -269,7 +269,8 @@ std::ostream& operator<<(std::ostream& os, const CastExpr& e) {
 }
 
 std::ostream& operator<<(std::ostream& os, const BooleanConstant& expr) {
-  return os << expr.value();
+  const char* to_print = expr.value() ? "true" : "false";
+  return os << to_print;
 }
 
 std::ostream& operator<<(std::ostream& os, const Expr& e) {
