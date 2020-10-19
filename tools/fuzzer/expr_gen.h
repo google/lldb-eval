@@ -43,6 +43,41 @@ enum class ExprKind : unsigned char {
 };
 constexpr size_t NUM_GEN_EXPR_KINDS = (size_t)ExprKind::EnumLast + 1;
 
+enum class TypeKind : unsigned char {
+  ScalarType,
+  TaggedType,
+  PointerType,
+  ReferenceType,
+  EnumLast = ReferenceType,
+};
+constexpr size_t NUM_GEN_TYPE_KINDS = (size_t)TypeKind::EnumLast + 1;
+
+class Weights {
+ public:
+  using ExprWeightsArray = std::array<float, NUM_GEN_EXPR_KINDS>;
+  using TypeWeightsArray = std::array<float, NUM_GEN_TYPE_KINDS>;
+
+  ExprWeightsArray& expr_weights() { return expr_weights_; }
+  const ExprWeightsArray& expr_weights() const { return expr_weights_; }
+
+  TypeWeightsArray& type_weights() { return type_weights_; }
+  const TypeWeightsArray& type_weights() const { return type_weights_; }
+
+  float& operator[](ExprKind kind) { return expr_weights_[(size_t)kind]; }
+  float& operator[](TypeKind kind) { return type_weights_[(size_t)kind]; }
+
+  const float& operator[](ExprKind kind) const {
+    return expr_weights_[(size_t)kind];
+  }
+  const float& operator[](TypeKind kind) const {
+    return type_weights_[(size_t)kind];
+  }
+
+ private:
+  std::array<float, NUM_GEN_EXPR_KINDS> expr_weights_;
+  std::array<float, NUM_GEN_TYPE_KINDS> type_weights_;
+};
+
 struct ExprKindWeightInfo {
   float initial_weight;
   float dampening_factor;
@@ -60,7 +95,10 @@ struct GenConfig {
   double double_constant_min = 0;
   double double_constant_max = 10;
 
-  float parenthesize_prob = 0.5f;
+  float parenthesize_prob = 0.2f;
+
+  float const_prob = 0.3f;
+  float volatile_prob = 0.05f;
 
   BinOpMask bin_op_mask = ~0ull;
   UnOpMask un_op_mask = ~0ull;
@@ -79,18 +117,19 @@ struct GenConfig {
   }};
 };
 
-using WeightsArray = std::array<float, NUM_GEN_EXPR_KINDS>;
-
 class GeneratorRng {
  public:
   virtual ~GeneratorRng() {}
 
   virtual BinOp gen_bin_op(BinOpMask mask) = 0;
   virtual UnOp gen_un_op(UnOpMask mask) = 0;
-  virtual ExprKind gen_expr_kind(const WeightsArray& array) = 0;
+  virtual ExprKind gen_expr_kind(const Weights& array) = 0;
+  virtual TypeKind gen_type_kind(const Weights& array) = 0;
   virtual uint64_t gen_u64(uint64_t min, uint64_t max) = 0;
   virtual double gen_double(double min, double max) = 0;
   virtual bool gen_parenthesize(float probability) = 0;
+  virtual CvQualifiers gen_cv_qualifiers(float const_prob,
+                                         float volatile_prob) = 0;
 };
 
 class DefaultGeneratorRng : public GeneratorRng {
@@ -99,10 +138,13 @@ class DefaultGeneratorRng : public GeneratorRng {
 
   BinOp gen_bin_op(BinOpMask mask) override;
   UnOp gen_un_op(UnOpMask mask) override;
-  ExprKind gen_expr_kind(const WeightsArray& array) override;
+  ExprKind gen_expr_kind(const Weights& array) override;
+  TypeKind gen_type_kind(const Weights& array) override;
   uint64_t gen_u64(uint64_t min, uint64_t max) override;
   double gen_double(double min, double max) override;
-  bool gen_parenthesize(float probability = 0.5) override;
+  bool gen_parenthesize(float probability) override;
+  CvQualifiers gen_cv_qualifiers(float const_prob,
+                                 float volatile_prob) override;
 
  private:
   std::mt19937 rng_;
@@ -120,13 +162,13 @@ class ExprGenerator {
 
   Expr maybe_parenthesized(Expr expr);
 
-  IntegerConstant gen_integer_constant(const WeightsArray&);
-  DoubleConstant gen_double_constant(const WeightsArray&);
-  VariableExpr gen_variable_expr(const WeightsArray&);
-  BinaryExpr gen_binary_expr(const WeightsArray&);
-  UnaryExpr gen_unary_expr(const WeightsArray&);
+  IntegerConstant gen_integer_constant(const Weights&);
+  DoubleConstant gen_double_constant(const Weights&);
+  VariableExpr gen_variable_expr(const Weights&);
+  BinaryExpr gen_binary_expr(const Weights&);
+  UnaryExpr gen_unary_expr(const Weights&);
 
-  Expr gen_with_weights(const WeightsArray&);
+  Expr gen_with_weights(const Weights&);
 
  private:
   std::unique_ptr<GeneratorRng> rng_;

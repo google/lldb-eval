@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <memory>
+#include <sstream>
 #include <utility>
 #include <variant>
 
@@ -62,6 +63,91 @@ static const char* UN_OP_TABLE[NUM_UN_OPS] = {
     "!",  // UnOp::LogicalNot
     "~",  // UnOp::BitNot
 };
+
+static const char* SCALAR_TYPES_STRINGS[NUM_SCALAR_TYPES] = {
+    "void",                // ScalarType::Void
+    "bool",                // ScalarType::Bool
+    "char",                // ScalarType::Char
+    "signed char",         // ScalarType::SignedChar
+    "unsigned char",       // ScalarType::UnsignedChar
+    "short",               // ScalarType::SignedShort
+    "unsigned short",      // ScalarType::UnsignedShort
+    "int",                 // ScalarType::SignedInt
+    "unsigned int",        // ScalarType::UnsignedInt
+    "long",                // ScalarType::SignedLong
+    "unsigned long",       // ScalarType::UnsignedLong
+    "long long",           // ScalarType::SignedLongLong
+    "unsigned long long",  // ScalarType::UnsignedLongLong
+};
+
+std::ostream& operator<<(std::ostream& os, CvQualifiers qualifiers) {
+  const char* to_print;
+  if (qualifiers == (CvQualifiers::Const | CvQualifiers::Volatile)) {
+    to_print = "const volatile";
+  } else if (qualifiers == CvQualifiers::Const) {
+    to_print = "const";
+  } else if (qualifiers == CvQualifiers::Volatile) {
+    to_print = "volatile";
+  } else {
+    return os;
+  }
+
+  return os << to_print;
+}
+
+std::ostream& operator<<(std::ostream& os, ScalarType type) {
+  return os << SCALAR_TYPES_STRINGS[(size_t)type];
+}
+
+TaggedType::TaggedType(std::string name) : name_(std::move(name)) {}
+const std::string& TaggedType::name() const { return name_; }
+std::ostream& operator<<(std::ostream& os, const TaggedType& type) {
+  return os << type.name();
+}
+
+PointerType::PointerType(QualifiedType type) : type_(std::move(type)) {}
+const QualifiedType& PointerType::type() const { return type_; }
+std::ostream& operator<<(std::ostream& os, const PointerType& type) {
+  return os << type.type() << "*";
+}
+
+ReferenceType::ReferenceType(QualifiedType type) : type_(std::move(type)) {}
+const QualifiedType& ReferenceType::type() const { return type_; }
+std::ostream& operator<<(std::ostream& os, const ReferenceType& type) {
+  return os << type.type() << "&";
+}
+
+QualifiedType::QualifiedType(QualifiableType type, CvQualifiers cv_qualifiers)
+    : type_(std::make_unique<QualifiableType>(std::move(type))),
+      cv_qualifiers_(cv_qualifiers) {}
+const QualifiableType& QualifiedType::type() const { return *type_; }
+CvQualifiers QualifiedType::cv_qualifiers() const { return cv_qualifiers_; }
+
+std::ostream& operator<<(std::ostream& os, const QualifiedType& type) {
+  const auto& inner_type = type.type();
+  if (std::holds_alternative<PointerType>(inner_type)) {
+    os << inner_type;
+    if (type.cv_qualifiers() != CvQualifiers::None) {
+      os << " " << type.cv_qualifiers();
+    }
+  } else {
+    if (type.cv_qualifiers() != CvQualifiers::None) {
+      os << type.cv_qualifiers() << " ";
+    }
+    os << inner_type;
+  }
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const QualifiableType& type) {
+  std::visit([&os](const auto& type) { os << type; }, type);
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const Type& type) {
+  std::visit([&os](const auto& type) { os << type; }, type);
+  return os;
+}
 
 BinaryExpr::BinaryExpr(Expr lhs, BinOp op, Expr rhs)
     : lhs_(std::make_unique<Expr>(std::move(lhs))),
@@ -173,6 +259,15 @@ std::ostream& operator<<(std::ostream& os, const TernaryExpr& e) {
   return os << e.cond() << " ? " << e.lhs() << e.rhs();
 }
 
+CastExpr::CastExpr(Type type, Expr expr)
+    : type_(std::move(type)), expr_(std::make_unique<Expr>(std::move(expr))) {}
+
+const Type& CastExpr::type() const { return type_; }
+const Expr& CastExpr::expr() const { return *expr_; }
+std::ostream& operator<<(std::ostream& os, const CastExpr& e) {
+  return os << "(" << e.type() << ") " << e.expr();
+}
+
 std::ostream& operator<<(std::ostream& os, const BooleanConstant& expr) {
   return os << expr.value();
 }
@@ -281,6 +376,15 @@ class ExprDumper {
     emit_indentation();
     printf("Right-hand side:\n");
     indented_visit(e.rhs());
+  }
+
+  void operator()(const CastExpr& e) {
+    emit_marked_indentation();
+    std::ostringstream os;
+    os << e.type();
+    printf("Cast expression into type: `%s`\n", os.str().c_str());
+
+    indented_visit(e.expr());
   }
 
   void operator()(const BooleanConstant& e) {

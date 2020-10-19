@@ -39,10 +39,18 @@ class FakeGeneratorRng : public GeneratorRng {
     return op;
   }
 
-  ExprKind gen_expr_kind(const WeightsArray&) override {
-    assert(!kinds_.empty());
-    ExprKind kind = kinds_.back();
-    kinds_.pop_back();
+  ExprKind gen_expr_kind(const Weights&) override {
+    assert(!expr_kinds_.empty());
+    ExprKind kind = expr_kinds_.back();
+    expr_kinds_.pop_back();
+
+    return kind;
+  }
+
+  TypeKind gen_type_kind(const Weights&) override {
+    assert(!type_kinds_.empty());
+    TypeKind kind = type_kinds_.back();
+    type_kinds_.pop_back();
 
     return kind;
   }
@@ -63,6 +71,14 @@ class FakeGeneratorRng : public GeneratorRng {
     return constant;
   }
 
+  CvQualifiers gen_cv_qualifiers(float, float) override {
+    assert(!cv_qualifiers_.empty());
+    CvQualifiers cv = cv_qualifiers_.back();
+    cv_qualifiers_.pop_back();
+
+    return cv;
+  }
+
   bool gen_parenthesize(float) override { return false; }
 
   static FakeGeneratorRng from_expr(const Expr& expr) {
@@ -73,71 +89,102 @@ class FakeGeneratorRng : public GeneratorRng {
     std::reverse(rng.bin_ops_.begin(), rng.bin_ops_.end());
     std::reverse(rng.u64_constants_.begin(), rng.u64_constants_.end());
     std::reverse(rng.double_constants_.begin(), rng.double_constants_.end());
-    std::reverse(rng.kinds_.begin(), rng.kinds_.end());
+    std::reverse(rng.expr_kinds_.begin(), rng.expr_kinds_.end());
+    std::reverse(rng.cv_qualifiers_.begin(), rng.cv_qualifiers_.end());
     std::reverse(rng.bools_.begin(), rng.bools_.end());
 
     return rng;
   }
 
   void operator()(const UnaryExpr& e) {
-    kinds_.push_back(ExprKind::UnaryExpr);
+    expr_kinds_.push_back(ExprKind::UnaryExpr);
     un_ops_.push_back(e.op());
     std::visit(*this, e.expr());
   }
 
   void operator()(const BinaryExpr& e) {
-    kinds_.push_back(ExprKind::BinaryExpr);
+    expr_kinds_.push_back(ExprKind::BinaryExpr);
     bin_ops_.push_back(e.op());
     std::visit(*this, e.lhs());
     std::visit(*this, e.rhs());
   }
 
   void operator()(const VariableExpr&) {
-    kinds_.push_back(ExprKind::VariableExpr);
+    expr_kinds_.push_back(ExprKind::VariableExpr);
   }
 
   void operator()(const IntegerConstant& e) {
-    kinds_.push_back(ExprKind::IntegerConstant);
+    expr_kinds_.push_back(ExprKind::IntegerConstant);
     u64_constants_.push_back(e.value());
   }
 
   void operator()(const DoubleConstant& e) {
-    kinds_.push_back(ExprKind::DoubleConstant);
+    expr_kinds_.push_back(ExprKind::DoubleConstant);
     double_constants_.push_back(e.value());
   }
 
   void operator()(const ParenthesizedExpr& e) { std::visit(*this, e.expr()); }
 
   void operator()(const AddressOf& e) {
-    kinds_.push_back(ExprKind::AddressOf);
+    expr_kinds_.push_back(ExprKind::AddressOf);
     std::visit(*this, e.expr());
   }
 
   void operator()(const MemberOf& e) {
-    kinds_.push_back(ExprKind::MemberOf);
+    expr_kinds_.push_back(ExprKind::MemberOf);
     std::visit(*this, e.expr());
   }
 
   void operator()(const MemberOfPtr& e) {
-    kinds_.push_back(ExprKind::MemberOfPtr);
+    expr_kinds_.push_back(ExprKind::MemberOfPtr);
     std::visit(*this, e.expr());
   }
 
   void operator()(const ArrayIndex& e) {
-    kinds_.push_back(ExprKind::ArrayIndex);
+    expr_kinds_.push_back(ExprKind::ArrayIndex);
     std::visit(*this, e.expr());
     std::visit(*this, e.idx());
   }
 
   void operator()(const TernaryExpr& e) {
-    kinds_.push_back(ExprKind::TernaryExpr);
+    expr_kinds_.push_back(ExprKind::TernaryExpr);
     std::visit(*this, e.cond());
     std::visit(*this, e.lhs());
     std::visit(*this, e.rhs());
   }
 
+  void operator()(const CastExpr& e) {
+    std::visit(*this, e.type());
+    std::visit(*this, e.expr());
+  }
+
+  void operator()(const QualifiedType& e) {
+    cv_qualifiers_.push_back(e.cv_qualifiers());
+    std::visit(*this, e.type());
+  }
+
+  void operator()(const PointerType& e) {
+    type_kinds_.push_back(TypeKind::PointerType);
+    (*this)(e.type());
+  }
+
+  void operator()(const ReferenceType& e) {
+    type_kinds_.push_back(TypeKind::ReferenceType);
+    (*this)(e.type());
+  }
+
+  void operator()(const TaggedType& e) {
+    type_kinds_.push_back(TypeKind::TaggedType);
+    tagged_types_.push_back(e.name());
+  }
+
+  void operator()(const ScalarType& e) {
+    type_kinds_.push_back(TypeKind::ScalarType);
+    scalar_types_.push_back(e);
+  }
+
   void operator()(BooleanConstant e) {
-    kinds_.push_back(ExprKind::BooleanConstant);
+    expr_kinds_.push_back(ExprKind::BooleanConstant);
     bools_.push_back(e);
   }
 
@@ -146,8 +193,12 @@ class FakeGeneratorRng : public GeneratorRng {
   std::vector<BinOp> bin_ops_;
   std::vector<uint64_t> u64_constants_;
   std::vector<double> double_constants_;
-  std::vector<ExprKind> kinds_;
   std::vector<BooleanConstant> bools_;
+  std::vector<ExprKind> expr_kinds_;
+  std::vector<TypeKind> type_kinds_;
+  std::vector<CvQualifiers> cv_qualifiers_;
+  std::vector<ScalarType> scalar_types_;
+  std::vector<std::string> tagged_types_;
 };
 
 struct Mismatch {
@@ -233,6 +284,38 @@ class AstComparator {
     std::visit(*this, lhs.rhs(), rhs.rhs());
   }
 
+  void operator()(const CastExpr& lhs, const CastExpr& rhs) {
+    std::visit(*this, lhs.type(), rhs.type());
+    std::visit(*this, lhs.expr(), rhs.expr());
+  }
+
+  void operator()(const QualifiedType& lhs, const QualifiedType& rhs) {
+    std::visit(*this, lhs.type(), rhs.type());
+    if (lhs.cv_qualifiers() != rhs.cv_qualifiers()) {
+      add_mismatch(lhs.cv_qualifiers(), rhs.cv_qualifiers());
+    }
+  }
+
+  void operator()(const ReferenceType& lhs, const ReferenceType& rhs) {
+    (*this)(lhs.type(), rhs.type());
+  }
+
+  void operator()(const PointerType& lhs, const PointerType& rhs) {
+    (*this)(lhs.type(), rhs.type());
+  }
+
+  void operator()(const TaggedType& lhs, const TaggedType& rhs) {
+    if (lhs.name() != rhs.name()) {
+      add_mismatch(lhs.name(), rhs.name());
+    }
+  }
+
+  void operator()(ScalarType lhs, ScalarType rhs) {
+    if (lhs != rhs) {
+      add_mismatch(lhs, rhs);
+    }
+  }
+
   void operator()(BooleanConstant lhs, BooleanConstant rhs) {
     if (lhs.value() != rhs.value()) {
       add_mismatch(lhs.value(), rhs.value());
@@ -283,37 +366,37 @@ MATCHER_P(MatchesAst, expected,
   return false;
 }
 
-struct TestParam {
+struct PrecedenceTestParam {
   std::string str;
   std::shared_ptr<Expr> expr;
 
-  TestParam(std::string str, Expr expr)
+  PrecedenceTestParam(std::string str, Expr expr)
       : str(std::move(str)), expr(std::make_shared<Expr>(std::move(expr))) {}
-
-  friend std::ostream& operator<<(std::ostream& os, const TestParam& param) {
-    return os << "`" << param.str << "`";
-  }
 };
 
-class OperatorPrecedence : public TestWithParam<TestParam> {};
+std::ostream& operator<<(std::ostream& os, const PrecedenceTestParam& param) {
+  return os << "`" << param.str << "`";
+}
+
+class OperatorPrecedence : public TestWithParam<PrecedenceTestParam> {};
 
 TEST_P(OperatorPrecedence, CorrectAst) {
-  const auto& expected = GetParam();
+  const auto& param = GetParam();
 
   auto fake_rng = std::make_unique<FakeGeneratorRng>(
-      FakeGeneratorRng::from_expr(*expected.expr));
+      FakeGeneratorRng::from_expr(*param.expr));
 
   ExprGenerator gen(std::move(fake_rng), GenConfig());
   auto expr = gen.generate();
   std::ostringstream os;
   os << expr;
 
-  EXPECT_THAT(expr, MatchesAst(std::cref(*expected.expr)));
-  EXPECT_THAT(os.str(), Eq(expected.str));
+  EXPECT_THAT(expr, MatchesAst(std::cref(*param.expr)));
+  EXPECT_THAT(os.str(), StrEq(param.str));
 }
 
-std::vector<TestParam> gen_params() {
-  std::vector<TestParam> params;
+std::vector<PrecedenceTestParam> gen_precedence_params() {
+  std::vector<PrecedenceTestParam> params;
   {
     // clang-format off
     Expr expected = BinaryExpr(
@@ -364,4 +447,83 @@ std::vector<TestParam> gen_params() {
   return params;
 }
 
-INSTANTIATE_TEST_SUITE_P(Fuzzer, OperatorPrecedence, ValuesIn(gen_params()));
+INSTANTIATE_TEST_SUITE_P(Fuzzer, OperatorPrecedence,
+                         ValuesIn(gen_precedence_params()));
+
+struct TypePrintTestParam {
+  std::string str;
+  std::shared_ptr<Type> type;
+
+  TypePrintTestParam(std::string str, Type type)
+      : str(std::move(str)), type(std::make_shared<Type>(std::move(type))) {}
+};
+
+std::ostream& operator<<(std::ostream& os, const TypePrintTestParam& param) {
+  return os << param.str;
+}
+
+class TypePrinting : public TestWithParam<TypePrintTestParam> {};
+
+TEST_P(TypePrinting, CorrectStrType) {
+  const auto& param = GetParam();
+
+  std::ostringstream os;
+  os << *param.type;
+  EXPECT_THAT(os.str(), StrEq(param.str));
+}
+
+std::vector<TypePrintTestParam> gen_typing_params() {
+  std::vector<TypePrintTestParam> params;
+
+  {
+    Type type = QualifiedType(ScalarType::SignedInt);
+    std::string str = "int";
+
+    params.emplace_back(std::move(str), std::move(type));
+  }
+
+  {
+    Type type(QualifiedType(PointerType(QualifiedType(
+        PointerType(QualifiedType(ScalarType::Char, CvQualifiers::Const))))));
+    std::string str = "const char**";
+
+    params.emplace_back(std::move(str), std::move(type));
+  }
+
+  {
+    Type type(ReferenceType(QualifiedType(
+        PointerType(QualifiedType(ScalarType::SignedInt, CvQualifiers::Const)),
+        CvQualifiers::Volatile)));
+    std::string str = "const int* volatile&";
+
+    params.emplace_back(std::move(str), std::move(type));
+  }
+
+  {
+    Type type(QualifiedType(PointerType(
+        QualifiedType(TaggedType("TestStruct"), CvQualifiers::Const))));
+    std::string str = "const TestStruct*";
+
+    params.emplace_back(std::move(str), std::move(type));
+  }
+
+  {
+    Type type(QualifiedType(
+        PointerType(QualifiedType(ScalarType::Void, CvQualifiers::Const))));
+    std::string str = "const void*";
+
+    params.emplace_back(std::move(str), std::move(type));
+  }
+
+  {
+    Type type(QualifiedType(PointerType(QualifiedType(ScalarType::Void)),
+                            CvQualifiers::Const));
+    std::string str = "void* const";
+
+    params.emplace_back(std::move(str), std::move(type));
+  }
+
+  return params;
+}
+
+INSTANTIATE_TEST_SUITE_P(Fuzzer, TypePrinting, ValuesIn(gen_typing_params()));
