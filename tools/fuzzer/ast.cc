@@ -82,11 +82,13 @@ static const char* SCALAR_TYPES_STRINGS[NUM_SCALAR_TYPES] = {
 
 std::ostream& operator<<(std::ostream& os, CvQualifiers qualifiers) {
   const char* to_print;
-  if (qualifiers == (CvQualifiers::Const | CvQualifiers::Volatile)) {
+  bool is_const = qualifiers[(size_t)CvQualifier::Const];
+  bool is_volatile = qualifiers[(size_t)CvQualifier::Volatile];
+  if (is_const && is_volatile) {
     to_print = "const volatile";
-  } else if (qualifiers == CvQualifiers::Const) {
+  } else if (is_const) {
     to_print = "const";
-  } else if (qualifiers == CvQualifiers::Volatile) {
+  } else if (is_volatile) {
     to_print = "volatile";
   } else {
     return os;
@@ -127,11 +129,11 @@ std::ostream& operator<<(std::ostream& os, const QualifiedType& type) {
   const auto& inner_type = type.type();
   if (std::holds_alternative<PointerType>(inner_type)) {
     os << inner_type;
-    if (type.cv_qualifiers() != CvQualifiers::None) {
+    if (type.cv_qualifiers().any()) {
       os << " " << type.cv_qualifiers();
     }
   } else {
-    if (type.cv_qualifiers() != CvQualifiers::None) {
+    if (type.cv_qualifiers().any()) {
       os << type.cv_qualifiers() << " ";
     }
     os << inner_type;

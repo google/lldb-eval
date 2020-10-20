@@ -107,6 +107,13 @@ TernaryExpr ExprGenerator::gen_ternary_expr(const Weights& weights) {
   return TernaryExpr(std::move(cond), std::move(lhs), std::move(rhs));
 }
 
+CastExpr ExprGenerator::gen_cast_expr(const Weights& weights) {
+  auto type = gen_type(weights);
+  auto expr = gen_with_weights(weights);
+
+  return CastExpr(std::move(type), std::move(expr));
+}
+
 Expr ExprGenerator::gen_with_weights(const Weights& weights) {
   Weights new_weights = weights;
 
@@ -145,6 +152,10 @@ Expr ExprGenerator::gen_with_weights(const Weights& weights) {
       expr = gen_boolean_constant();
       break;
 
+    case ExprKind::CastExpr:
+      expr = gen_cast_expr(new_weights);
+      break;
+
     default:
       assert(false && "Unreachable");
       exit(1);
@@ -159,6 +170,78 @@ Expr ExprGenerator::maybe_parenthesized(Expr expr) {
   }
 
   return expr;
+}
+
+Type ExprGenerator::gen_type(const Weights& weights) {
+  Weights new_weights = weights;
+  auto choice = rng_->gen_type_kind(new_weights);
+  auto idx = (size_t)choice;
+
+  auto& new_type_weights = new_weights.type_weights();
+  new_type_weights[idx] *= cfg_.type_kind_weights[idx].dampening_factor;
+
+  switch (choice) {
+    case TypeKind::ScalarType:
+    case TypeKind::TaggedType:
+    case TypeKind::PointerType:
+      return gen_qualified_type(new_weights);
+
+    case TypeKind::ReferenceType:
+      return gen_reference_type(new_weights);
+  }
+
+  assert(false && "Unreachable");
+  return QualifiedType(ScalarType::Void);
+}
+
+ReferenceType ExprGenerator::gen_reference_type(const Weights& weights) {
+  auto type = gen_qualified_type(weights);
+
+  return ReferenceType(std::move(type));
+}
+
+PointerType ExprGenerator::gen_pointer_type(const Weights& weights) {
+  auto type = gen_qualified_type(weights);
+
+  return PointerType(std::move(type));
+}
+
+QualifiedType ExprGenerator::gen_qualified_type(const Weights& weights) {
+  Weights new_weights = weights;
+  auto choice = rng_->gen_type_kind(new_weights);
+  auto idx = (size_t)choice;
+
+  auto& new_type_weights = new_weights.type_weights();
+  new_type_weights[idx] *= cfg_.type_kind_weights[idx].dampening_factor;
+
+  auto qualifiers = gen_cv_qualifiers();
+
+  QualifiableType type;
+  // TODO (alextasos): Handle references
+  switch (choice) {
+    case TypeKind::ScalarType:
+    case TypeKind::ReferenceType:
+      type = gen_scalar_type();
+      break;
+
+    case TypeKind::TaggedType:
+      type = gen_tagged_type();
+      break;
+
+    case TypeKind::PointerType:
+      type = gen_pointer_type(weights);
+      break;
+  }
+
+  return QualifiedType(std::move(type), qualifiers);
+}
+
+TaggedType ExprGenerator::gen_tagged_type() { return TaggedType("TestStruct"); }
+
+ScalarType ExprGenerator::gen_scalar_type() { return ScalarType::Char; }
+
+CvQualifiers ExprGenerator::gen_cv_qualifiers() {
+  return rng_->gen_cv_qualifiers(cfg_.const_prob, cfg_.volatile_prob);
 }
 
 Expr ExprGenerator::generate() {
@@ -207,7 +290,7 @@ size_t pick_nth_set_bit(std::bitset<N> mask, Rng& rng) {
   return N;
 }
 
-template <size_t N, typename Rng, typename RealType = float>
+template <size_t N, typename Rng, typename RealType>
 size_t weighted_pick(const std::array<RealType, N>& array, Rng& rng) {
   static_assert(N != 0, "Array must have at least 1 element");
   static_assert(std::is_floating_point_v<RealType>,
@@ -256,12 +339,12 @@ CvQualifiers DefaultGeneratorRng::gen_cv_qualifiers(float const_prob,
   std::bernoulli_distribution const_distr(const_prob);
   std::bernoulli_distribution volatile_distr(volatile_prob);
 
-  auto retval = CvQualifiers::None;
+  CvQualifiers retval = 0;
   if (const_distr(rng_)) {
-    retval |= CvQualifiers::Const;
+    retval.set((size_t)CvQualifier::Const);
   }
   if (volatile_distr(rng_)) {
-    retval |= CvQualifiers::Volatile;
+    retval.set((size_t)CvQualifier::Volatile);
   }
 
   return retval;

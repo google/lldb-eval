@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <sstream>
 #include <type_traits>
 #include <utility>
@@ -490,9 +491,15 @@ std::vector<TypePrintTestParam> gen_typing_params() {
     params.emplace_back(std::move(str), std::move(type));
   }
 
+  CvQualifiers const_qual;
+  const_qual.set((size_t)CvQualifier::Const);
+
+  CvQualifiers volatile_qual;
+  volatile_qual.set((size_t)CvQualifier::Volatile);
+
   {
     Type type(QualifiedType(PointerType(QualifiedType(
-        PointerType(QualifiedType(ScalarType::Char, CvQualifiers::Const))))));
+        PointerType(QualifiedType(ScalarType::Char, const_qual))))));
     std::string str = "const char**";
 
     params.emplace_back(std::move(str), std::move(type));
@@ -500,16 +507,16 @@ std::vector<TypePrintTestParam> gen_typing_params() {
 
   {
     Type type(ReferenceType(QualifiedType(
-        PointerType(QualifiedType(ScalarType::SignedInt, CvQualifiers::Const)),
-        CvQualifiers::Volatile)));
+        PointerType(QualifiedType(ScalarType::SignedInt, const_qual)),
+        volatile_qual)));
     std::string str = "const int* volatile&";
 
     params.emplace_back(std::move(str), std::move(type));
   }
 
   {
-    Type type(QualifiedType(PointerType(
-        QualifiedType(TaggedType("TestStruct"), CvQualifiers::Const))));
+    Type type(QualifiedType(
+        PointerType(QualifiedType(TaggedType("TestStruct"), const_qual))));
     std::string str = "const TestStruct*";
 
     params.emplace_back(std::move(str), std::move(type));
@@ -517,7 +524,7 @@ std::vector<TypePrintTestParam> gen_typing_params() {
 
   {
     Type type(QualifiedType(
-        PointerType(QualifiedType(ScalarType::Void, CvQualifiers::Const))));
+        PointerType(QualifiedType(ScalarType::Void, const_qual))));
     std::string str = "const void*";
 
     params.emplace_back(std::move(str), std::move(type));
@@ -525,7 +532,7 @@ std::vector<TypePrintTestParam> gen_typing_params() {
 
   {
     Type type(QualifiedType(PointerType(QualifiedType(ScalarType::Void)),
-                            CvQualifiers::Const));
+                            const_qual));
     std::string str = "void* const";
 
     params.emplace_back(std::move(str), std::move(type));

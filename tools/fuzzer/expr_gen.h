@@ -39,7 +39,8 @@ enum class ExprKind : unsigned char {
   ArrayIndex,
   TernaryExpr,
   BooleanConstant,
-  EnumLast = BooleanConstant,
+  CastExpr,
+  EnumLast = CastExpr,
 };
 constexpr size_t NUM_GEN_EXPR_KINDS = (size_t)ExprKind::EnumLast + 1;
 
@@ -120,13 +121,14 @@ struct GenConfig {
       {0.0f, 0.0f},  // ExprKind::ArrayIndex
       {2.0f, 0.0f},  // ExprKind::TernaryExpr
       {1.0f, 0.0f},  // ExprKind::BooleanConstant
+      {1.0f, 0.4f},  // ExprKind::CastExpr
   }};
 
   std::array<TypeKindWeightInfo, NUM_GEN_TYPE_KINDS> type_kind_weights = {{
       {2.0f, 0.0f},  // TypeKind::ScalarType
-      {0.0f, 0.0f},  // TypeKind::TaggedType
+      {1.0f, 0.0f},  // TypeKind::TaggedType
       {1.0f, 0.1f},  // TypeKind::PointerType
-      {0.0f, 0.0f},  // TypeKind::ReferenceType
+      {1.0f, 0.1f},  // TypeKind::ReferenceType
   }};
 };
 
@@ -184,6 +186,15 @@ class ExprGenerator {
   BinaryExpr gen_binary_expr(const Weights& weights);
   UnaryExpr gen_unary_expr(const Weights& weights);
   TernaryExpr gen_ternary_expr(const Weights& weights);
+  CastExpr gen_cast_expr(const Weights& weights);
+
+  Type gen_type(const Weights& weights);
+  QualifiedType gen_qualified_type(const Weights& weights);
+  PointerType gen_pointer_type(const Weights& weights);
+  TaggedType gen_tagged_type();
+  ScalarType gen_scalar_type();
+  ReferenceType gen_reference_type(const Weights& weights);
+  CvQualifiers gen_cv_qualifiers();
 
   Expr gen_with_weights(const Weights& weights);
 
