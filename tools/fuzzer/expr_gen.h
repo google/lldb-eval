@@ -140,6 +140,7 @@ class GeneratorRng {
   virtual UnOp gen_un_op(UnOpMask mask) = 0;
   virtual ExprKind gen_expr_kind(const Weights& array) = 0;
   virtual TypeKind gen_type_kind(const Weights& array) = 0;
+  virtual ScalarType gen_scalar_type() = 0;
   virtual bool gen_boolean() = 0;
   virtual uint64_t gen_u64(uint64_t min, uint64_t max) = 0;
   virtual double gen_double(double min, double max) = 0;
@@ -156,6 +157,7 @@ class DefaultGeneratorRng : public GeneratorRng {
   UnOp gen_un_op(UnOpMask mask) override;
   ExprKind gen_expr_kind(const Weights& array) override;
   TypeKind gen_type_kind(const Weights& array) override;
+  ScalarType gen_scalar_type() override;
   bool gen_boolean() override;
   uint64_t gen_u64(uint64_t min, uint64_t max) override;
   double gen_double(double min, double max) override;

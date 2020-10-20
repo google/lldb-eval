@@ -111,6 +111,10 @@ CastExpr ExprGenerator::gen_cast_expr(const Weights& weights) {
   auto type = gen_type(weights);
   auto expr = gen_with_weights(weights);
 
+  if (expr_precedence(expr) > CastExpr::PRECEDENCE) {
+    expr = ParenthesizedExpr(std::move(expr));
+  }
+
   return CastExpr(std::move(type), std::move(expr));
 }
 
@@ -238,7 +242,7 @@ QualifiedType ExprGenerator::gen_qualified_type(const Weights& weights) {
 
 TaggedType ExprGenerator::gen_tagged_type() { return TaggedType("TestStruct"); }
 
-ScalarType ExprGenerator::gen_scalar_type() { return ScalarType::Char; }
+ScalarType ExprGenerator::gen_scalar_type() { return rng_->gen_scalar_type(); }
 
 CvQualifiers ExprGenerator::gen_cv_qualifiers() {
   return rng_->gen_cv_qualifiers(cfg_.const_prob, cfg_.volatile_prob);
@@ -366,6 +370,12 @@ ExprKind DefaultGeneratorRng::gen_expr_kind(const Weights& weights) {
 
 TypeKind DefaultGeneratorRng::gen_type_kind(const Weights& weights) {
   return (TypeKind)weighted_pick(weights.type_weights(), rng_);
+}
+
+ScalarType DefaultGeneratorRng::gen_scalar_type() {
+  std::uniform_int_distribution<int> distr((int)ScalarType::EnumMin,
+                                           (int)ScalarType::EnumMax);
+  return (ScalarType)distr(rng_);
 }
 
 }  // namespace fuzzer

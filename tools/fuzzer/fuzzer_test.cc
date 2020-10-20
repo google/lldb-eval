@@ -56,6 +56,14 @@ class FakeGeneratorRng : public GeneratorRng {
     return kind;
   }
 
+  ScalarType gen_scalar_type() override {
+    assert(!scalar_types_.empty());
+    ScalarType type = scalar_types_.back();
+    scalar_types_.pop_back();
+
+    return type;
+  }
+
   bool gen_boolean() override {
     assert(!bools_.empty());
     bool constant = bools_.back();
