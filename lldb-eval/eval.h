@@ -91,6 +91,8 @@ class Interpreter : Visitor {
   Value EvaluateSubscript(Value& lhs, Value& rhs);
   Value EvaluateAddition(Value& lhs, Value& rhs);
   Value EvaluateSubtraction(Value& lhs, Value& rhs);
+  Value EvaluateDivision(Value& lhs, Value& rhs);
+  Value EvaluateRemainder(Value& lhs, Value& rhs);
   Value EvaluateComparison(Value& lhs, Value& rhs, clang::tok::TokenKind op);
 
   bool BoolConvertible(Value& val);

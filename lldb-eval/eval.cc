@@ -411,7 +411,7 @@ void Interpreter::Visit(const BinaryOpNode* node) {
   // TODO(werat): Handle incorrect type combinations and zero division.
   switch (node->op()) {
     case clang::tok::slash:
-      result_ = Value(lhs_scalar / rhs_scalar);
+      result_ = EvaluateDivision(lhs, rhs);
       break;
     case clang::tok::star:
       result_ = Value(lhs_scalar * rhs_scalar);
@@ -423,7 +423,7 @@ void Interpreter::Visit(const BinaryOpNode* node) {
       result_ = Value(lhs_scalar & rhs_scalar);
       break;
     case clang::tok::percent:
-      result_ = Value(lhs_scalar % rhs_scalar);
+      result_ = EvaluateRemainder(lhs, rhs);
       break;
     case clang::tok::caret:
       result_ = Value(lhs_scalar ^ rhs_scalar);
@@ -492,14 +492,12 @@ void Interpreter::Visit(const UnaryOpNode* node) {
 
   // Unary minus.
   if (node->op() == clang::tok::minus) {
-    if (rhs.IsPointer()) {
-      ReportTypeError("invalid argument type '{0}' to unary expression", rhs);
-      return;
-    }
     if (rhs.IsScalar()) {
       result_ = Value(rhs.AsScalar() * Scalar(-1));
       return;
     }
+    ReportTypeError("invalid argument type '{0}' to unary expression", rhs);
+    return;
   }
 
   // Unary negation (!).
@@ -513,7 +511,10 @@ void Interpreter::Visit(const UnaryOpNode* node) {
 
   // Bitwise NOT (~).
   if (node->op() == clang::tok::tilde) {
-    if (rhs.IsScalar()) {
+    // TODO(werat): Avoid creating SbValue here, expose the type info in a
+    // different way.
+    auto rhs_type = rhs.AsSbValue(target_).GetType().GetCanonicalType();
+    if (rhs_type.GetTypeFlags() & lldb::eTypeIsInteger) {
       result_ = Value(~rhs.AsScalar());
       return;
     }
@@ -684,6 +685,52 @@ Value Interpreter::EvaluateSubtraction(Value& lhs, Value& rhs) {
 
   ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
   return Value();
+}
+
+Value Interpreter::EvaluateDivision(Value& lhs, Value& rhs) {
+  auto lhs_scalar = lhs.AsScalar();
+  auto rhs_scalar = rhs.AsScalar();
+
+  // TODO(werat): Would be great to get the type info from Value directly.
+  bool is_float_div = lhs_scalar.type_ == Scalar::Type::FLOAT ||
+                      lhs_scalar.type_ == Scalar::Type::DOUBLE ||
+                      rhs_scalar.type_ == Scalar::Type::FLOAT ||
+                      rhs_scalar.type_ == Scalar::Type::DOUBLE;
+
+  if (!is_float_div && rhs_scalar.GetInt64() == 0) {
+    // This is UB and the compiler would generate a warning:
+    //
+    //  warning: division by zero is undefined [-Wdivision-by-zero]
+    //
+    return Value(Scalar(0));
+  }
+
+  return Value(lhs_scalar / rhs_scalar);
+}
+
+Value Interpreter::EvaluateRemainder(Value& lhs, Value& rhs) {
+  // TODO(werat): This looks excessive, would be nice to avoid creating SbValue.
+  auto lhs_type = lhs.AsSbValue(target_).GetType().GetCanonicalType();
+  auto rhs_type = rhs.AsSbValue(target_).GetType().GetCanonicalType();
+
+  if (!(lhs_type.GetTypeFlags() & lldb::eTypeIsInteger) ||
+      !(rhs_type.GetTypeFlags() & lldb::eTypeIsInteger)) {
+    ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
+    return Value();
+  }
+
+  auto lhs_scalar = lhs.AsScalar();
+  auto rhs_scalar = rhs.AsScalar();
+
+  if (rhs_scalar.GetInt64() == 0) {
+    // This is UB and the compiler would generate a warning:
+    //
+    //  warning: remainder by zero is undefined [-Wdivision-by-zero]
+    //
+    return Value(Scalar(0));
+  }
+
+  return Value(lhs_scalar % rhs_scalar);
 }
 
 Value Interpreter::EvaluateComparison(Value& lhs, Value& rhs,

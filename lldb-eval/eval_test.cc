@@ -234,9 +234,25 @@ TEST_F(InterpreterTest, TestArithmetic) {
   TestExpr("-20LL / 1ULL", "18446744073709551596");
 
   // Floating tricks.
+  TestExpr("0.0 / 0", "NaN");
+  TestExpr("0 / 0.0", "NaN");
+  TestExpr("1 / +0.0", "+Inf");
+  TestExpr("1 / -0.0", "-Inf");
   TestExpr("+0.0 / +0.0  != +0.0 / +0.0", "true");
   TestExpr("-1.f * 0", "-0");
   TestExpr("0x0.123p-1", "0.0355224609375");
+
+  {
+    // Zero division and remainder is UB and LLDB return garbage values. Our
+    // implementation returns zero, but that might change in the future. The
+    // important thing here is to avoid crashing with SIGFPE.
+    SkipLLDB _(this);
+
+    TestExpr("1 / 0", "0");
+    TestExpr("1 / uint_zero", "0");
+    TestExpr("1 % 0", "0");
+    TestExpr("1 % uint_zero", "0");
+  }
 
   // References and typedefs.
   TestExpr("r + 1", "3");
