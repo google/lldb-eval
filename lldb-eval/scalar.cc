@@ -211,7 +211,7 @@ Scalar Scalar::FromSbValue(lldb::SBValue value) {
         // Error trying to get uint8_t: error.GetCString()
         break;
       }
-      return Scalar(static_cast<uint32_t>(val));
+      return Scalar(static_cast<int32_t>(val));
     }
     case lldb::eBasicTypeChar:
     case lldb::eBasicTypeSignedChar:

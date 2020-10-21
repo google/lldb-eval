@@ -278,6 +278,8 @@ TEST_F(InterpreterTest, TestBitwiseOperators) {
   TestExpr("~1LL", "-2");
   TestExpr("~true", "-2");
   TestExpr("~false", "-1");
+  TestExpr("~var_true", "-2");
+  TestExpr("~var_false", "-1");
   TestExpr("~ull_max", "0");
   TestExpr("~ull_zero", "18446744073709551615");
 
@@ -288,6 +290,7 @@ TEST_F(InterpreterTest, TestBitwiseOperators) {
   TestExpr("(32 >> 2)", "8");
 
   TestExpr("0b1011 & 0xFF", "11");
+  TestExpr("0b1011 & mask_ff", "11");
   TestExpr("0b1011 & 0b0111", "3");
   TestExpr("0b1011 | 0b0111", "15");
   TestExpr("-0b1011 | 0xFF", "-1");
@@ -488,6 +491,9 @@ TEST_F(InterpreterTest, TestAddressOf) {
   TestExprOnlyCompare("&externGlobalVar");
   TestExprOnlyCompare("&s_str");
   TestExprOnlyCompare("&param");
+
+  TestExprErr("&1", "cannot take the address of an rvalue of type 'int'");
+  TestExprErr("&0.1", "cannot take the address of an rvalue of type 'double'");
 
   TestExprErr("&this",
               "cannot take the address of an rvalue of type 'TestMethods *'");
