@@ -140,6 +140,11 @@ class FakeGeneratorRng : public GeneratorRng {
     double_constants_.push_back(e.value());
   }
 
+  void operator()(const BooleanConstant& e) {
+    expr_kinds_.push_back(ExprKind::BooleanConstant);
+    bools_.push_back(e.value());
+  }
+
   void operator()(const ParenthesizedExpr& e) { std::visit(*this, e.expr()); }
 
   void operator()(const AddressOf& e) {
@@ -171,6 +176,7 @@ class FakeGeneratorRng : public GeneratorRng {
   }
 
   void operator()(const CastExpr& e) {
+    expr_kinds_.push_back(ExprKind::CastExpr);
     std::visit(*this, e.type());
     std::visit(*this, e.expr());
   }
@@ -182,27 +188,26 @@ class FakeGeneratorRng : public GeneratorRng {
 
   void operator()(const PointerType& e) {
     type_kinds_.push_back(TypeKind::PointerType);
+    type_kinds_.push_back(TypeKind::PointerType);
     (*this)(e.type());
   }
 
   void operator()(const ReferenceType& e) {
+    type_kinds_.push_back(TypeKind::ReferenceType);
     type_kinds_.push_back(TypeKind::ReferenceType);
     (*this)(e.type());
   }
 
   void operator()(const TaggedType& e) {
     type_kinds_.push_back(TypeKind::TaggedType);
+    type_kinds_.push_back(TypeKind::TaggedType);
     tagged_types_.push_back(e.name());
   }
 
   void operator()(const ScalarType& e) {
     type_kinds_.push_back(TypeKind::ScalarType);
+    type_kinds_.push_back(TypeKind::ScalarType);
     scalar_types_.push_back(e);
-  }
-
-  void operator()(BooleanConstant e) {
-    expr_kinds_.push_back(ExprKind::BooleanConstant);
-    bools_.push_back(e.value());
   }
 
  private:
@@ -458,6 +463,90 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
     // clang-format on
 
     std::string str = "3 - (4 + 5)";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    // clang-format off
+    Expr expected = UnaryExpr(UnOp::Neg,
+                              UnaryExpr(UnOp::Neg, IntegerConstant(1)));
+    // clang-format on
+
+    std::string str = "- -1";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    // clang-format off
+    Expr expected =
+        CastExpr(QualifiedType(ScalarType::SignedInt), IntegerConstant(50));
+    // clang-format on
+
+    std::string str = "(int) 50";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    // clang-format off
+    Expr expected = BinaryExpr(
+        CastExpr(QualifiedType(ScalarType::SignedInt), IntegerConstant(50)),
+        BinOp::Plus,
+        IntegerConstant(1));
+    // clang-format on
+
+    std::string str = "(int) 50 + 1";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    // clang-format off
+    Expr expected = CastExpr(QualifiedType(ScalarType::SignedInt),
+        ParenthesizedExpr(
+            BinaryExpr(IntegerConstant(50), BinOp::Plus, IntegerConstant(1))));
+    // clang-format on
+
+    std::string str = "(int) (50 + 1)";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    // clang-format off
+    Expr expected = CastExpr(
+        QualifiedType(ScalarType::SignedInt),
+        ParenthesizedExpr(TernaryExpr(
+            IntegerConstant(1), IntegerConstant(2), IntegerConstant(3))));
+    // clang-format on
+
+    std::string str = "(int) (1 ? 2 : 3)";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    // clang-format off
+    Expr expected = TernaryExpr(
+            BooleanConstant(true),
+            IntegerConstant(0),
+            TernaryExpr(
+                BooleanConstant(false),
+                IntegerConstant(1),
+                IntegerConstant(2)));
+    // clang-format on
+
+    std::string str = "true ? 0 : false ? 1 : 2";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    // clang-format off
+    Expr expected = TernaryExpr(
+        ParenthesizedExpr( TernaryExpr(
+            BinaryExpr(IntegerConstant(1), BinOp::Eq, IntegerConstant(2)),
+            BooleanConstant(false),
+            BooleanConstant(true))),
+        IntegerConstant(1),
+        IntegerConstant(0));
+    // clang-format on
+
+    std::string str = "(1 == 2 ? false : true) ? 1 : 0";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    Expr expected = UnaryExpr(UnOp::Neg, DoubleConstant(1.5));
+
+    std::string str = "-1.5";
     params.emplace_back(std::move(str), std::move(expected));
   }
 

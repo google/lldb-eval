@@ -104,6 +104,10 @@ TernaryExpr ExprGenerator::gen_ternary_expr(const Weights& weights) {
   auto lhs = gen_with_weights(weights);
   auto rhs = gen_with_weights(weights);
 
+  if (expr_precedence(cond) == TernaryExpr::PRECEDENCE) {
+    cond = ParenthesizedExpr(std::move(cond));
+  }
+
   return TernaryExpr(std::move(cond), std::move(lhs), std::move(rhs));
 }
 
