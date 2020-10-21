@@ -111,7 +111,7 @@ struct GenConfig {
 
   std::array<ExprKindWeightInfo, NUM_EXPR_KINDS> expr_kind_weights = {{
       {1.0f, 0.0f},  // ExprKind::IntegerConstant
-      {0.0f, 0.0f},  // ExprKind::DoubleConstant
+      {2.0f, 0.0f},  // ExprKind::DoubleConstant
       {1.0f, 0.0f},  // ExprKind::VariableExpr
       {7.0f, 0.4f},  // ExprKind::UnaryExpr
       {3.0f, 0.4f},  // ExprKind::BinaryExpr
