@@ -195,7 +195,6 @@ class ExprGenerator {
   PointerType gen_pointer_type(const Weights& weights);
   TaggedType gen_tagged_type();
   ScalarType gen_scalar_type();
-  ReferenceType gen_reference_type(const Weights& weights);
   CvQualifiers gen_cv_qualifiers();
 
   Expr gen_with_weights(const Weights& weights);

@@ -188,24 +188,20 @@ class FakeGeneratorRng : public GeneratorRng {
 
   void operator()(const PointerType& e) {
     type_kinds_.push_back(TypeKind::PointerType);
-    type_kinds_.push_back(TypeKind::PointerType);
     (*this)(e.type());
   }
 
   void operator()(const ReferenceType& e) {
-    type_kinds_.push_back(TypeKind::ReferenceType);
     type_kinds_.push_back(TypeKind::ReferenceType);
     (*this)(e.type());
   }
 
   void operator()(const TaggedType& e) {
     type_kinds_.push_back(TypeKind::TaggedType);
-    type_kinds_.push_back(TypeKind::TaggedType);
     tagged_types_.push_back(e.name());
   }
 
   void operator()(const ScalarType& e) {
-    type_kinds_.push_back(TypeKind::ScalarType);
     type_kinds_.push_back(TypeKind::ScalarType);
     scalar_types_.push_back(e);
   }

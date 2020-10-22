@@ -188,24 +188,28 @@ Type ExprGenerator::gen_type(const Weights& weights) {
   auto& new_type_weights = new_weights.type_weights();
   new_type_weights[idx] *= cfg_.type_kind_weights[idx].dampening_factor;
 
+  QualifiableType type;
   switch (choice) {
     case TypeKind::ScalarType:
-    case TypeKind::TaggedType:
-    case TypeKind::PointerType:
-      return gen_qualified_type(new_weights);
+      type = gen_scalar_type();
+      break;
 
-    case TypeKind::ReferenceType:
-      return gen_reference_type(new_weights);
+    case TypeKind::TaggedType:
+      type = gen_tagged_type();
+      break;
+
+    case TypeKind::PointerType:
+      type = gen_pointer_type(new_weights);
+      break;
+
+    case TypeKind::ReferenceType: {
+      auto type = gen_qualified_type(new_weights);
+      return ReferenceType(std::move(type));
+    }
   }
 
-  assert(false && "Unreachable");
-  return QualifiedType(ScalarType::Void);
-}
-
-ReferenceType ExprGenerator::gen_reference_type(const Weights& weights) {
-  auto type = gen_qualified_type(weights);
-
-  return ReferenceType(std::move(type));
+  auto qualifiers = gen_cv_qualifiers();
+  return QualifiedType(std::move(type), qualifiers);
 }
 
 PointerType ExprGenerator::gen_pointer_type(const Weights& weights) {
@@ -216,19 +220,18 @@ PointerType ExprGenerator::gen_pointer_type(const Weights& weights) {
 
 QualifiedType ExprGenerator::gen_qualified_type(const Weights& weights) {
   Weights new_weights = weights;
+  auto& new_type_weights = new_weights.type_weights();
+  // Reference types are not qualified types, hence don't generate any
+  new_type_weights[(size_t)TypeKind::ReferenceType] = 0;
+
   auto choice = rng_->gen_type_kind(new_weights);
   auto idx = (size_t)choice;
 
-  auto& new_type_weights = new_weights.type_weights();
   new_type_weights[idx] *= cfg_.type_kind_weights[idx].dampening_factor;
 
-  auto qualifiers = gen_cv_qualifiers();
-
   QualifiableType type;
-  // TODO (alextasos): Handle references
   switch (choice) {
     case TypeKind::ScalarType:
-    case TypeKind::ReferenceType:
       type = gen_scalar_type();
       break;
 
@@ -239,7 +242,12 @@ QualifiedType ExprGenerator::gen_qualified_type(const Weights& weights) {
     case TypeKind::PointerType:
       type = gen_pointer_type(weights);
       break;
+
+    default:
+      assert(false && "Unreachable");
+      return QualifiedType(ScalarType::Void);
   }
+  auto qualifiers = gen_cv_qualifiers();
 
   return QualifiedType(std::move(type), qualifiers);
 }
