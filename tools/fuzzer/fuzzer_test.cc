@@ -72,10 +72,10 @@ class FakeGeneratorRng : public GeneratorRng {
     return constant;
   }
 
-  uint64_t gen_u64(uint64_t, uint64_t) override {
-    assert(!u64_constants_.empty());
-    uint64_t constant = u64_constants_.back();
-    u64_constants_.pop_back();
+  IntegerConstant gen_integer_constant(uint64_t, uint64_t) override {
+    assert(!int_constants_.empty());
+    IntegerConstant constant = int_constants_.back();
+    int_constants_.pop_back();
 
     return constant;
   }
@@ -105,7 +105,7 @@ class FakeGeneratorRng : public GeneratorRng {
     std::reverse(rng.un_ops_.begin(), rng.un_ops_.end());
     std::reverse(rng.bin_ops_.begin(), rng.bin_ops_.end());
     std::reverse(rng.bools_.begin(), rng.bools_.end());
-    std::reverse(rng.u64_constants_.begin(), rng.u64_constants_.end());
+    std::reverse(rng.int_constants_.begin(), rng.int_constants_.end());
     std::reverse(rng.double_constants_.begin(), rng.double_constants_.end());
     std::reverse(rng.expr_kinds_.begin(), rng.expr_kinds_.end());
     std::reverse(rng.cv_qualifiers_.begin(), rng.cv_qualifiers_.end());
@@ -132,7 +132,7 @@ class FakeGeneratorRng : public GeneratorRng {
 
   void operator()(const IntegerConstant& e) {
     expr_kinds_.push_back(ExprKind::IntegerConstant);
-    u64_constants_.push_back(e.value());
+    int_constants_.push_back(e);
   }
 
   void operator()(const DoubleConstant& e) {
@@ -209,7 +209,7 @@ class FakeGeneratorRng : public GeneratorRng {
  private:
   std::vector<UnOp> un_ops_;
   std::vector<BinOp> bin_ops_;
-  std::vector<uint64_t> u64_constants_;
+  std::vector<IntegerConstant> int_constants_;
   std::vector<double> double_constants_;
   std::vector<bool> bools_;
   std::vector<ExprKind> expr_kinds_;
@@ -543,6 +543,22 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
     Expr expected = UnaryExpr(UnOp::Neg, DoubleConstant(1.5));
 
     std::string str = "-1.5";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    Expr expected = IntegerConstant(0xbadf00d, IntegerConstant::Base::Hex,
+                                    IntegerConstant::Length::LongLong,
+                                    IntegerConstant::Signedness::Unsigned);
+
+    std::string str = "0xbadf00dLLU";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    Expr expected = IntegerConstant(0b1001'1001, IntegerConstant::Base::Bin,
+                                    IntegerConstant::Length::Long,
+                                    IntegerConstant::Signedness::Signed);
+
+    std::string str = "0b10011001L";
     params.emplace_back(std::move(str), std::move(expected));
   }
 

@@ -235,18 +235,50 @@ class VariableExpr {
 
 class IntegerConstant {
  public:
+  enum class Base : unsigned char {
+    EnumFirst,
+    Dec = EnumFirst,
+    Hex,
+    Oct,
+    Bin,
+    EnumLast = Bin,
+  };
+
+  enum class Length {
+    EnumFirst,
+    Int = EnumFirst,
+    Long,
+    LongLong,
+    EnumLast = LongLong,
+  };
+  enum class Signedness {
+    EnumFirst,
+    Signed = EnumFirst,
+    Unsigned,
+    EnumLast = Unsigned,
+  };
+
   static constexpr int PRECEDENCE = 0;
 
-  explicit IntegerConstant(uint64_t value);
+  explicit IntegerConstant(uint64_t value) : value_(value) {}
+  IntegerConstant(uint64_t value, Base base, Length length,
+                  Signedness signedness)
+      : value_(value), base_(base), length_(length), signedness_(signedness) {}
 
-  uint64_t value() const;
+  uint64_t value() const { return value_; }
+  Base base() const { return base_; }
+  Length length() const { return length_; }
+  Signedness signedness() const { return signedness_; }
   int precedence() const { return PRECEDENCE; }
 
   friend std::ostream& operator<<(std::ostream& os,
                                   const IntegerConstant& expr);
 
  private:
-  uint64_t value_;
+  uint64_t value_ = 0;
+  Base base_ = Base::Dec;
+  Length length_ = Length::Int;
+  Signedness signedness_ = Signedness::Signed;
 };
 
 class DoubleConstant {

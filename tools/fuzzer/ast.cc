@@ -16,6 +16,7 @@
 
 #include "tools/fuzzer/ast.h"
 
+#include <climits>
 #include <cstdint>
 #include <cstdio>
 #include <memory>
@@ -192,10 +193,62 @@ std::ostream& operator<<(std::ostream& os, const UnaryExpr& e) {
   return os << e.expr();
 }
 
-IntegerConstant::IntegerConstant(uint64_t value) : value_(value) {}
-uint64_t IntegerConstant::value() const { return value_; }
 std::ostream& operator<<(std::ostream& os, const IntegerConstant& e) {
-  return os << e.value();
+  using Base = IntegerConstant::Base;
+  using Length = IntegerConstant::Length;
+  using Signedness = IntegerConstant::Signedness;
+
+  auto saved_flags = os.flags();
+  switch (e.base_) {
+    case Base::Bin: {
+      // iostream doesn't support binary numbers yet, so we'll do it ourselves.
+      std::bitset<CHAR_BIT * sizeof(e.value())> bits(e.value());
+      auto str = bits.to_string();
+      auto idx = str.find('1');
+      // Print from the first '1' onward (or print `0` if the value is zero).
+      const char* to_print = (idx != std::string::npos) ? &str[idx] : "0";
+
+      os << "0b" << to_print;
+      break;
+    }
+
+    case Base::Hex:
+      os << std::hex << std::showbase << e.value();
+      break;
+
+    case Base::Oct:
+      os << std::oct << std::showbase << e.value();
+      break;
+
+    case Base::Dec:
+      os << std::dec << e.value();
+      break;
+  }
+
+  switch (e.length_) {
+    case Length::Int:
+      break;
+
+    case Length::Long:
+      os << "L";
+      break;
+
+    case Length::LongLong:
+      os << "LL";
+      break;
+  }
+
+  switch (e.signedness_) {
+    case Signedness::Signed:
+      break;
+
+    case Signedness::Unsigned:
+      os << "U";
+      break;
+  }
+
+  os.flags(saved_flags);
+  return os;
 }
 
 DoubleConstant::DoubleConstant(double value) : value_(value) {}
