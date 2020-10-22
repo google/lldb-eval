@@ -20,7 +20,7 @@ cc_library(
     ],
     deps = [
         "//lldb-eval:defines",
-    ]
+    ],
 )
 
 cc_binary(

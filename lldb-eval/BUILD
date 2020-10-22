@@ -13,8 +13,8 @@ COPTS = select({
 })
 
 cc_library(
-  name = "defines",
-  hdrs = ["defines.h"]
+    name = "defines",
+    hdrs = ["defines.h"],
 )
 
 cc_library(
