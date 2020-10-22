@@ -20,7 +20,6 @@
 #include "clang/Basic/TokenKinds.h"
 #include "expression_context.h"
 #include "lldb-eval/ast.h"
-#include "lldb-eval/defines.h"
 #include "lldb-eval/value.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBProcess.h"
