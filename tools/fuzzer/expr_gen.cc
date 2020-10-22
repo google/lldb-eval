@@ -35,13 +35,6 @@ BooleanConstant ExprGenerator::gen_boolean_constant() {
   return BooleanConstant(rng_->gen_boolean());
 }
 
-DoubleConstant ExprGenerator::gen_double_constant() {
-  auto value =
-      rng_->gen_double(cfg_.double_constant_min, cfg_.double_constant_max);
-
-  return DoubleConstant(value);
-}
-
 VariableExpr ExprGenerator::gen_variable_expr() { return VariableExpr(VAR); }
 
 BinaryExpr ExprGenerator::gen_binary_expr(const Weights& weights) {
@@ -132,7 +125,8 @@ Expr ExprGenerator::gen_with_weights(const Weights& weights) {
       break;
 
     case ExprKind::DoubleConstant:
-      expr = gen_double_constant();
+      expr = rng_->gen_double_constant(cfg_.double_constant_min,
+                                       cfg_.double_constant_max);
       break;
 
     case ExprKind::VariableExpr:
@@ -355,9 +349,23 @@ IntegerConstant DefaultGeneratorRng::gen_integer_constant(uint64_t min,
   return IntegerConstant(value, base, length, signedness);
 }
 
-double DefaultGeneratorRng::gen_double(double min, double max) {
+DoubleConstant DefaultGeneratorRng::gen_double_constant(double min,
+                                                        double max) {
+  using Format = DoubleConstant::Format;
+  using Length = DoubleConstant::Length;
+
   std::uniform_real_distribution<double> distr(min, max);
-  return distr(rng_);
+  auto value = distr(rng_);
+
+  std::uniform_int_distribution<int> format_distr((int)Format::EnumFirst,
+                                                  (int)Format::EnumLast);
+  auto format = (Format)format_distr(rng_);
+
+  std::uniform_int_distribution<int> length_distr((int)Length::EnumFirst,
+                                                  (int)Length::EnumLast);
+  auto length = (Length)length_distr(rng_);
+
+  return DoubleConstant(value, format, length);
 }
 
 CvQualifiers DefaultGeneratorRng::gen_cv_qualifiers(float const_prob,

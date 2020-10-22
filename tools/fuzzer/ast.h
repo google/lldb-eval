@@ -283,17 +283,37 @@ class IntegerConstant {
 
 class DoubleConstant {
  public:
+  enum class Format : unsigned char {
+    EnumFirst,
+    Default = EnumFirst,
+    Scientific,
+    Hex,
+    EnumLast = Hex,
+  };
+
+  // TODO(alextasos): Add long doubles when lldb-eval adds support for them
+  enum class Length : unsigned char {
+    EnumFirst,
+    Float = EnumFirst,
+    Double,
+    EnumLast = Double,
+  };
+
   static constexpr int PRECEDENCE = 0;
 
-  explicit DoubleConstant(double value);
+  explicit DoubleConstant(double value) : value_(value) {}
+  DoubleConstant(double value, Format format, Length length)
+      : value_(value), format_(format), length_(length) {}
 
-  double value() const;
+  double value() const { return value_; }
   int precedence() const { return PRECEDENCE; }
 
   friend std::ostream& operator<<(std::ostream& os, const DoubleConstant& expr);
 
  private:
-  double value_;
+  double value_ = 0;
+  Format format_ = Format::Default;
+  Length length_ = Length::Double;
 };
 
 class ParenthesizedExpr {

@@ -80,9 +80,9 @@ class FakeGeneratorRng : public GeneratorRng {
     return constant;
   }
 
-  double gen_double(double, double) override {
+  DoubleConstant gen_double_constant(double, double) override {
     assert(!double_constants_.empty());
-    double constant = double_constants_.back();
+    DoubleConstant constant = double_constants_.back();
     double_constants_.pop_back();
 
     return constant;
@@ -137,7 +137,7 @@ class FakeGeneratorRng : public GeneratorRng {
 
   void operator()(const DoubleConstant& e) {
     expr_kinds_.push_back(ExprKind::DoubleConstant);
-    double_constants_.push_back(e.value());
+    double_constants_.push_back(e);
   }
 
   void operator()(const BooleanConstant& e) {
@@ -210,7 +210,7 @@ class FakeGeneratorRng : public GeneratorRng {
   std::vector<UnOp> un_ops_;
   std::vector<BinOp> bin_ops_;
   std::vector<IntegerConstant> int_constants_;
-  std::vector<double> double_constants_;
+  std::vector<DoubleConstant> double_constants_;
   std::vector<bool> bools_;
   std::vector<ExprKind> expr_kinds_;
   std::vector<TypeKind> type_kinds_;
@@ -559,6 +559,20 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
                                     IntegerConstant::Signedness::Signed);
 
     std::string str = "0b10011001L";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    Expr expected = DoubleConstant(1.5, DoubleConstant::Format::Default,
+                                   DoubleConstant::Length::Float);
+
+    std::string str = "1.5f";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    Expr expected = DoubleConstant(0x0.1p-1070, DoubleConstant::Format::Hex,
+                                   DoubleConstant::Length::Double);
+
+    std::string str = "0x0.0000000000001p-1022";
     params.emplace_back(std::move(str), std::move(expected));
   }
 

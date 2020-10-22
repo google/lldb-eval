@@ -19,6 +19,7 @@
 #include <climits>
 #include <cstdint>
 #include <cstdio>
+#include <ios>
 #include <memory>
 #include <sstream>
 #include <utility>
@@ -251,10 +252,36 @@ std::ostream& operator<<(std::ostream& os, const IntegerConstant& e) {
   return os;
 }
 
-DoubleConstant::DoubleConstant(double value) : value_(value) {}
-double DoubleConstant::value() const { return value_; }
 std::ostream& operator<<(std::ostream& os, const DoubleConstant& e) {
-  return os << e.value();
+  using Format = DoubleConstant::Format;
+  using Length = DoubleConstant::Length;
+
+  auto saved_flags = os.flags();
+  switch (e.format_) {
+    case Format::Default:
+      os << std::defaultfloat << e.value_;
+      break;
+
+    case Format::Scientific:
+      os << std::fixed << e.value_;
+      break;
+
+    case Format::Hex:
+      os << std::hexfloat << e.value_;
+      break;
+  }
+
+  switch (e.length_) {
+    case Length::Float:
+      os << "f";
+      break;
+
+    case Length::Double:
+      break;
+  }
+
+  os.flags(saved_flags);
+  return os;
 }
 
 ParenthesizedExpr::ParenthesizedExpr(Expr expr)
