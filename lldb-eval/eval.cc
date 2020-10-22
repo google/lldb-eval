@@ -19,6 +19,7 @@
 
 #include "clang/Basic/TokenKinds.h"
 #include "lldb-eval/ast.h"
+#include "lldb-eval/defines.h"
 #include "lldb-eval/value.h"
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
@@ -584,7 +585,7 @@ Value Interpreter::EvaluateSubscript(Value& lhs, Value& rhs) {
     item_type = base.GetType().GetPointeeType();
     base_addr = static_cast<lldb::addr_t>(base.GetValueAsUnsigned());
   } else {
-    unreachable("Subscripted value must be either array or pointer.");
+    lldb_eval_unreachable("Subscripted value must be either array or pointer.");
   }
 
   // Create a pointer and add the index, i.e. "base + index".
@@ -711,7 +712,7 @@ Value Interpreter::EvaluateComparison(Value& lhs, Value& rhs,
       case clang::tok::greaterequal:
         return Value(lhs_scalar >= rhs_scalar);
       default:
-        unreachable("Invalid comparison operation.");
+        lldb_eval_unreachable("Invalid comparison operation.");
     }
   }
 
@@ -750,7 +751,7 @@ Value Interpreter::EvaluateComparison(Value& lhs, Value& rhs,
       case clang::tok::greaterequal:
         return Value(lhs_addr >= rhs_addr);
       default:
-        unreachable("Invalid comparison operation.");
+        lldb_eval_unreachable("Invalid comparison operation.");
     }
   }
 

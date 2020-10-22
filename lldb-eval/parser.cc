@@ -34,7 +34,6 @@
 #include "clang/Lex/PreprocessorOptions.h"
 #include "clang/Lex/Token.h"
 #include "lldb-eval/ast.h"
-#include "lldb-eval/defines.h"
 #include "lldb-eval/scalar.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"

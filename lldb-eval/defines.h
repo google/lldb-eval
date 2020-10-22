@@ -17,29 +17,18 @@
 #ifndef LLDB_EVAL_DEFINES_H_
 #define LLDB_EVAL_DEFINES_H_
 
-#include "llvm/Support/ErrorHandling.h"
+#include <cstdio>
+#include <cstdlib>
 
-#ifdef _MSC_VER
-#if LLDB_EVAL_LINKED_AS_SHARED_LIBRARY
-#define LLDB_EVAL_API __declspec(dllimport)
-#elif LLDB_EVAL_CREATE_SHARED_LIBRARY
-#define LLDB_EVAL_API __declspec(dllexport)
-#endif
-#elif __GNUC__ >= 4 || defined(__clang__)
-#define LLDB_EVAL_API __attribute__((visibility("default")))
-#endif
-
-#ifndef LLDB_EVAL_API
-#define LLDB_EVAL_API
-#endif
+#define lldb_eval_unreachable(msg) \
+  lldb_eval::unreachable(msg, __FILE__, __LINE__)
 
 namespace lldb_eval {
 
-[[noreturn]] inline void unreachable(const char* msg) {
-  // llvm_unreachable may ignore "msg" depending on the available platform
-  // features. Reference the parameter explicitly to avoid the warning.
-  (void)msg;
-  llvm_unreachable(msg);
+[[noreturn]] inline void unreachable(const char* msg, const char* file,
+                                     int line) {
+  fprintf(stderr, "Unreachable statement at %s:%d (%s)\n", file, line, msg);
+  abort();
 }
 
 }  // namespace lldb_eval

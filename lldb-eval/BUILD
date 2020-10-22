@@ -13,6 +13,11 @@ COPTS = select({
 })
 
 cc_library(
+    name = "defines",
+    hdrs = ["defines.h"],
+)
+
+cc_library(
     name = "lldb-eval",
     srcs = [
         "api.cc",
@@ -27,7 +32,6 @@ cc_library(
     hdrs = [
         "api.h",
         "ast.h",
-        "defines.h",
         "eval.h",
         "expression_context.h",
         "parser.h",
@@ -37,6 +41,7 @@ cc_library(
     ],
     copts = COPTS,
     deps = [
+        ":defines",
         "@llvm_project//:clang-basic",
         "@llvm_project//:clang-lex",
         "@llvm_project//:lldb-api",

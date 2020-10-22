@@ -18,6 +18,9 @@ cc_library(
         "ast.h",
         "expr_gen.h",
     ],
+    deps = [
+        "//lldb-eval:defines",
+    ],
 )
 
 cc_binary(

@@ -22,6 +22,7 @@
 #include <random>
 #include <variant>
 
+#include "lldb-eval/defines.h"
 #include "tools/fuzzer/ast.h"
 
 namespace fuzzer {
@@ -128,8 +129,7 @@ Expr ExprGenerator::gen_with_weights(const Weights& weights) {
       break;
 
     default:
-      assert(false && "Unreachable");
-      exit(1);
+      lldb_eval_unreachable("Unhandled expression generation case");
   }
 
   return maybe_parenthesized(std::move(expr));
@@ -178,10 +178,7 @@ size_t pick_nth_set_bit(std::bitset<N> mask, Rng& rng) {
   // per loop iteration.
   // The only way for this assertion to fire is for `mask` to be empty (which
   // we have asserted beforehand).
-  assert(false && "Unreachable");
-  // Fallback return statement with invalid bit index to silence warnings when
-  // running in `opt` mode (hence `-DNDEBUG` is set).
-  return N;
+  lldb_eval_unreachable("Mask has no bits set");
 }
 
 BinOp DefaultGeneratorRng::gen_bin_op(BinOpMask mask) {

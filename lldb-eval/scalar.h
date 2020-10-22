@@ -107,7 +107,8 @@ class Scalar {
       case Type::DOUBLE:
         return static_cast<T>(value_.double_);
     }
-    unreachable("Scalar::Type enum wasn't exhausted in the switch statement.");
+    lldb_eval_unreachable(
+        "Scalar::Type enum wasn't exhausted in the switch statement.");
   }
 
   bool AsBool() const { return GetAs<bool>(); }
