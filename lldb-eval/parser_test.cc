@@ -20,6 +20,8 @@
 #include "lldb-eval/expression_context.h"
 #include "lldb/API/SBExecutionContext.h"
 
+// DISALLOW_COPY_AND_ASSIGN is also defined in
+// lldb/lldb-defines.h
 #undef DISALLOW_COPY_AND_ASSIGN
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"

@@ -19,6 +19,7 @@
 
 #include "clang/Basic/TokenKinds.h"
 #include "lldb-eval/ast.h"
+#include "lldb-eval/defines.h"
 #include "lldb-eval/value.h"
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
