@@ -91,7 +91,8 @@ Scalar Value::AsScalar() const {
       return Scalar::FromSbValue(sb_value_);
     }
   }
-  unreachable("Value::Type enum wasn't exhausted in the switch statement.");
+  lldb_eval_unreachable(
+      "Value::Type enum wasn't exhausted in the switch statement.");
 }
 
 Pointer Value::AsPointer() const {
@@ -108,7 +109,8 @@ Pointer Value::AsPointer() const {
       return Pointer::FromSbValue(sb_value_);
     }
   }
-  unreachable("Value::Type enum wasn't exhausted in the switch statement.");
+  lldb_eval_unreachable(
+      "Value::Type enum wasn't exhausted in the switch statement.");
 }
 
 lldb::SBValue Value::AsSbValue(lldb::SBTarget target) const {

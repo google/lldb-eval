@@ -17,10 +17,23 @@
 #ifndef LLDB_EVAL_API_H_
 #define LLDB_EVAL_API_H_
 
-#include "lldb-eval/defines.h"
 #include "lldb/API/SBError.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBValue.h"
+
+#ifdef _MSC_VER
+#if LLDB_EVAL_LINKED_AS_SHARED_LIBRARY
+#define LLDB_EVAL_API __declspec(dllimport)
+#elif LLDB_EVAL_CREATE_SHARED_LIBRARY
+#define LLDB_EVAL_API __declspec(dllexport)
+#endif
+#elif __GNUC__ >= 4 || defined(__clang__)
+#define LLDB_EVAL_API __attribute__((visibility("default")))
+#endif
+
+#ifndef LLDB_EVAL_API
+#define LLDB_EVAL_API
+#endif
 
 namespace lldb_eval {
 

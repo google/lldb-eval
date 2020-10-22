@@ -633,7 +633,8 @@ bool operator==(const Scalar& lhs, const Scalar& rhs) {
     case Scalar::Type::DOUBLE:
       return a.value_.double_ == b.value_.double_;
   }
-  unreachable("Scalar::Type enum wasn't exhausted in the switch statement.");
+  lldb_eval_unreachable(
+      "Scalar::Type enum wasn't exhausted in the switch statement.");
 }
 
 bool operator!=(const Scalar& lhs, const Scalar& rhs) { return !(lhs == rhs); }
@@ -658,7 +659,8 @@ bool operator<(const Scalar& lhs, const Scalar& rhs) {
     case Scalar::Type::DOUBLE:
       return a.value_.double_ < b.value_.double_;
   }
-  unreachable("Scalar::Type enum wasn't exhausted in the switch statement.");
+  lldb_eval_unreachable(
+      "Scalar::Type enum wasn't exhausted in the switch statement.");
 }
 
 bool operator<=(const Scalar& lhs, const Scalar& rhs) { return !(rhs < lhs); }
