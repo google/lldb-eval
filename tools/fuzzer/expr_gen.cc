@@ -203,8 +203,8 @@ Type ExprGenerator::gen_type(const Weights& weights) {
       break;
 
     case TypeKind::ReferenceType: {
-      auto type = gen_qualified_type(new_weights);
-      return ReferenceType(std::move(type));
+      auto qualified_type = gen_qualified_type(new_weights);
+      return ReferenceType(std::move(qualified_type));
     }
   }
 
