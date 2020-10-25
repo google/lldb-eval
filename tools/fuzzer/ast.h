@@ -18,8 +18,8 @@
 #define INCLUDE_AST_H
 
 #include <cinttypes>
+#include <iosfwd>
 #include <memory>
-#include <ostream>
 #include <string>
 #include <variant>
 
