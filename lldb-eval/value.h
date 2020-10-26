@@ -18,7 +18,7 @@
 #define LLDB_EVAL_VALUE_H_
 
 #include <cstdint>
-#include <iostream>
+#include <iosfwd>
 #include <string>
 
 #include "lldb-eval/pointer.h"
