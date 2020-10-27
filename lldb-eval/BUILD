@@ -25,8 +25,6 @@ cc_library(
         "eval.cc",
         "expression_context.cc",
         "parser.cc",
-        "pointer.cc",
-        "scalar.cc",
         "value.cc",
     ],
     hdrs = [
@@ -35,8 +33,7 @@ cc_library(
         "eval.h",
         "expression_context.h",
         "parser.h",
-        "pointer.h",
-        "scalar.h",
+        "traits.h",
         "value.h",
     ],
     copts = COPTS,

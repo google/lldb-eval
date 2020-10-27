@@ -17,8 +17,9 @@
 #ifndef LLDB_EVAL_EXPRESSION_CONTEXT_H_
 #define LLDB_EVAL_EXPRESSION_CONTEXT_H_
 
+#include <string>
+
 #include "clang/Basic/SourceManager.h"
-#include "lldb-eval/scalar.h"
 #include "lldb/API/SBExecutionContext.h"
 #include "lldb/API/SBType.h"
 
@@ -26,7 +27,7 @@ namespace lldb_eval {
 
 class ExpressionContext {
  public:
-  ExpressionContext(const std::string& expr, lldb::SBExecutionContext exec_ctx);
+  ExpressionContext(std::string expr, lldb::SBExecutionContext exec_ctx);
 
   clang::SourceManager& GetSourceManager() const { return smff_->get(); }
   lldb::SBExecutionContext GetExecutionContext() const { return exec_ctx_; }

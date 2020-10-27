@@ -14,6 +14,9 @@
 
 #include "lldb-eval/ast.h"
 
+#include <string>
+
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatVariadic.h"
 
 namespace {

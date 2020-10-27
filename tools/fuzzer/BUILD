@@ -1,13 +1,5 @@
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
-COPTS = select({
-    "@bazel_tools//src/conditions:windows": [
-        # Mark the LLVM includes as external
-        "/external:I external/llvm_project/include",
-    ],
-    "//conditions:default": [],
-})
-
 cc_library(
     name = "fuzzer_lib",
     srcs = [
@@ -26,9 +18,11 @@ cc_library(
 cc_binary(
     name = "fuzzer",
     srcs = ["main.cc"],
-    copts = COPTS + select({
+    copts = select({
         "@bazel_tools//src/conditions:windows": [
-            # Disable warnings only for cpp-linenoise
+            # Disable warnings for llvm_project
+            "/external:I external/llvm_project/include",
+            # Disable warnings for cpp-linenoise
             "/external:I $(BINDIR)/external/io_github_yhirose_cpplinenoise",
         ],
         "//conditions:default": [],
@@ -51,7 +45,6 @@ cc_binary(
 cc_test(
     name = "fuzzer_test",
     srcs = ["fuzzer_test.cc"],
-    copts = COPTS,
     deps = [
         ":fuzzer_lib",
         "@com_google_googletest//:gtest",

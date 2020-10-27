@@ -16,6 +16,8 @@
 #include <string>
 
 static void TestArithmetic() {
+  char c = 10;
+  unsigned char uc = 1;
   int a = 1;
   int int_max = std::numeric_limits<int>::max();
   int int_min = std::numeric_limits<int>::min();
@@ -28,6 +30,7 @@ static void TestArithmetic() {
 
   int x = 2;
   int& r = x;
+  int* p = &x;
 
   typedef int& myr;
   myr my_r = x;
@@ -199,6 +202,7 @@ static void TestSubscript() {
   unsigned char uchar_idx = std::numeric_limits<unsigned char>::max();
   uint8_t uint8_arr[256];
   uint8_arr[255] = 0xAB;
+  uint8_t* uint8_ptr = uint8_arr;
 
   // BREAK(TestSubscript)
 }
