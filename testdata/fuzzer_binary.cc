@@ -167,7 +167,13 @@ int main() {
   auto ldsnan = std::numeric_limits<long double>::signaling_NaN();
   auto ldmax = std::numeric_limits<long double>::max();
   // Smallest positive non-zero long double denormal
+#ifdef _WIN32
+  // `long double` on Win32 is an alias for `double`.
+  auto lddenorm = 0x0.1p-1070L;
+#else
   auto lddenorm = 0x0.1p-16440L;
+#endif
+
   (void)ldinf, (void)ldnan, (void)ldsnan, (void)ldmax, (void)lddenorm;
 
   int x = 42;
