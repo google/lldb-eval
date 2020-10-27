@@ -82,11 +82,13 @@ static const char* SCALAR_TYPES_STRINGS[NUM_SCALAR_TYPES] = {
 
 std::ostream& operator<<(std::ostream& os, CvQualifiers qualifiers) {
   const char* to_print;
-  if (qualifiers == (CvQualifiers::Const | CvQualifiers::Volatile)) {
+  bool is_const = qualifiers[(size_t)CvQualifier::Const];
+  bool is_volatile = qualifiers[(size_t)CvQualifier::Volatile];
+  if (is_const && is_volatile) {
     to_print = "const volatile";
-  } else if (qualifiers == CvQualifiers::Const) {
+  } else if (is_const) {
     to_print = "const";
-  } else if (qualifiers == CvQualifiers::Volatile) {
+  } else if (is_volatile) {
     to_print = "volatile";
   } else {
     return os;
@@ -127,11 +129,11 @@ std::ostream& operator<<(std::ostream& os, const QualifiedType& type) {
   const auto& inner_type = type.type();
   if (std::holds_alternative<PointerType>(inner_type)) {
     os << inner_type;
-    if (type.cv_qualifiers() != CvQualifiers::None) {
+    if (type.cv_qualifiers().any()) {
       os << " " << type.cv_qualifiers();
     }
   } else {
-    if (type.cv_qualifiers() != CvQualifiers::None) {
+    if (type.cv_qualifiers().any()) {
       os << type.cv_qualifiers() << " ";
     }
     os << inner_type;
@@ -256,7 +258,7 @@ const Expr& TernaryExpr::cond() const { return *cond_; }
 const Expr& TernaryExpr::lhs() const { return *lhs_; }
 const Expr& TernaryExpr::rhs() const { return *rhs_; }
 std::ostream& operator<<(std::ostream& os, const TernaryExpr& e) {
-  return os << e.cond() << " ? " << e.lhs() << e.rhs();
+  return os << e.cond() << " ? " << e.lhs() << " : " << e.rhs();
 }
 
 CastExpr::CastExpr(Type type, Expr expr)
@@ -269,7 +271,8 @@ std::ostream& operator<<(std::ostream& os, const CastExpr& e) {
 }
 
 std::ostream& operator<<(std::ostream& os, const BooleanConstant& expr) {
-  return os << expr.value();
+  const char* to_print = expr.value() ? "true" : "false";
+  return os << to_print;
 }
 
 std::ostream& operator<<(std::ostream& os, const Expr& e) {

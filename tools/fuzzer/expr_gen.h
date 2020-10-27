@@ -39,7 +39,8 @@ enum class ExprKind : unsigned char {
   ArrayIndex,
   TernaryExpr,
   BooleanConstant,
-  EnumLast = TernaryExpr,
+  CastExpr,
+  EnumLast = CastExpr,
 };
 constexpr size_t NUM_GEN_EXPR_KINDS = (size_t)ExprKind::EnumLast + 1;
 
@@ -83,6 +84,11 @@ struct ExprKindWeightInfo {
   float dampening_factor;
 };
 
+struct TypeKindWeightInfo {
+  float initial_weight;
+  float dampening_factor;
+};
+
 using BinOpMask = std::bitset<NUM_BIN_OPS>;
 using UnOpMask = std::bitset<NUM_UN_OPS>;
 
@@ -105,7 +111,7 @@ struct GenConfig {
 
   std::array<ExprKindWeightInfo, NUM_EXPR_KINDS> expr_kind_weights = {{
       {1.0f, 0.0f},  // ExprKind::IntegerConstant
-      {0.0f, 0.0f},  // ExprKind::DoubleConstant
+      {2.0f, 0.0f},  // ExprKind::DoubleConstant
       {1.0f, 0.0f},  // ExprKind::VariableExpr
       {7.0f, 0.4f},  // ExprKind::UnaryExpr
       {3.0f, 0.4f},  // ExprKind::BinaryExpr
@@ -113,7 +119,16 @@ struct GenConfig {
       {0.0f, 0.0f},  // ExprKind::MemberOf
       {0.0f, 0.0f},  // ExprKind::MemberOfPtr
       {0.0f, 0.0f},  // ExprKind::ArrayIndex
-      {0.0f, 0.0f},  // ExprKind::TernaryExpr
+      {2.0f, 0.0f},  // ExprKind::TernaryExpr
+      {1.0f, 0.0f},  // ExprKind::BooleanConstant
+      {1.0f, 0.4f},  // ExprKind::CastExpr
+  }};
+
+  std::array<TypeKindWeightInfo, NUM_GEN_TYPE_KINDS> type_kind_weights = {{
+      {2.0f, 0.0f},  // TypeKind::ScalarType
+      {1.0f, 0.0f},  // TypeKind::TaggedType
+      {1.0f, 0.1f},  // TypeKind::PointerType
+      {1.0f, 0.1f},  // TypeKind::ReferenceType
   }};
 };
 
@@ -125,6 +140,8 @@ class GeneratorRng {
   virtual UnOp gen_un_op(UnOpMask mask) = 0;
   virtual ExprKind gen_expr_kind(const Weights& array) = 0;
   virtual TypeKind gen_type_kind(const Weights& array) = 0;
+  virtual ScalarType gen_scalar_type() = 0;
+  virtual bool gen_boolean() = 0;
   virtual uint64_t gen_u64(uint64_t min, uint64_t max) = 0;
   virtual double gen_double(double min, double max) = 0;
   virtual bool gen_parenthesize(float probability) = 0;
@@ -140,6 +157,8 @@ class DefaultGeneratorRng : public GeneratorRng {
   UnOp gen_un_op(UnOpMask mask) override;
   ExprKind gen_expr_kind(const Weights& array) override;
   TypeKind gen_type_kind(const Weights& array) override;
+  ScalarType gen_scalar_type() override;
+  bool gen_boolean() override;
   uint64_t gen_u64(uint64_t min, uint64_t max) override;
   double gen_double(double min, double max) override;
   bool gen_parenthesize(float probability) override;
@@ -162,13 +181,23 @@ class ExprGenerator {
 
   Expr maybe_parenthesized(Expr expr);
 
-  IntegerConstant gen_integer_constant(const Weights&);
-  DoubleConstant gen_double_constant(const Weights&);
-  VariableExpr gen_variable_expr(const Weights&);
-  BinaryExpr gen_binary_expr(const Weights&);
-  UnaryExpr gen_unary_expr(const Weights&);
+  BooleanConstant gen_boolean_constant();
+  IntegerConstant gen_integer_constant();
+  DoubleConstant gen_double_constant();
+  VariableExpr gen_variable_expr();
+  BinaryExpr gen_binary_expr(const Weights& weights);
+  UnaryExpr gen_unary_expr(const Weights& weights);
+  TernaryExpr gen_ternary_expr(const Weights& weights);
+  CastExpr gen_cast_expr(const Weights& weights);
 
-  Expr gen_with_weights(const Weights&);
+  Type gen_type(const Weights& weights);
+  QualifiedType gen_qualified_type(const Weights& weights);
+  PointerType gen_pointer_type(const Weights& weights);
+  TaggedType gen_tagged_type();
+  ScalarType gen_scalar_type();
+  CvQualifiers gen_cv_qualifiers();
+
+  Expr gen_with_weights(const Weights& weights);
 
  private:
   std::unique_ptr<GeneratorRng> rng_;

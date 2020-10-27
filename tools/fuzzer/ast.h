@@ -17,6 +17,7 @@
 #ifndef INCLUDE_AST_H
 #define INCLUDE_AST_H
 
+#include <bitset>
 #include <cinttypes>
 #include <iosfwd>
 #include <memory>
@@ -33,34 +34,15 @@ class ReferenceType;
 using QualifiableType = std::variant<ScalarType, TaggedType, PointerType>;
 std::ostream& operator<<(std::ostream& os, const QualifiableType& type);
 
-// Important: We _must_ specify an underlying type. Otherwise, from C++17
-// onward, casting to an invalid value of an enum type with no underlying type
-// is undefined behavior.
-enum class CvQualifiers : unsigned char {
-  // Not an actual flag, intended to help with checking if a type has any
-  // cv-qualifiers.
-  None = 0,
-  Const = 1 << 0,
-  Volatile = 1 << 1,
+enum class CvQualifier : unsigned char {
+  EnumFirst,
+  Const = EnumFirst,
+  Volatile,
+  EnumLast = Volatile,
 };
+inline constexpr size_t NUM_CV_QUALIFIERS = (size_t)CvQualifier::EnumLast + 1;
+using CvQualifiers = std::bitset<NUM_CV_QUALIFIERS>;
 
-constexpr CvQualifiers operator|(CvQualifiers lhs, CvQualifiers rhs) {
-  return (CvQualifiers)((unsigned char)lhs | ((unsigned char)rhs));
-}
-
-constexpr CvQualifiers operator&(CvQualifiers lhs, CvQualifiers rhs) {
-  return (CvQualifiers)((unsigned char)lhs & ((unsigned char)rhs));
-}
-
-constexpr CvQualifiers& operator&=(CvQualifiers& lhs, CvQualifiers rhs) {
-  lhs = lhs & rhs;
-  return lhs;
-}
-
-constexpr CvQualifiers& operator|=(CvQualifiers& lhs, CvQualifiers rhs) {
-  lhs = lhs | rhs;
-  return lhs;
-}
 std::ostream& operator<<(std::ostream& os, CvQualifiers qualifiers);
 
 enum class ScalarType : unsigned char {
@@ -82,7 +64,7 @@ enum class ScalarType : unsigned char {
   UnsignedLongLong,
   EnumMax = UnsignedLongLong,
 };
-constexpr size_t NUM_SCALAR_TYPES = (size_t)ScalarType::EnumMax + 1;
+inline constexpr size_t NUM_SCALAR_TYPES = (size_t)ScalarType::EnumMax + 1;
 std::ostream& operator<<(std::ostream& os, ScalarType type);
 
 class TaggedType {
@@ -99,8 +81,7 @@ class TaggedType {
 
 class QualifiedType {
  public:
-  explicit QualifiedType(QualifiableType type,
-                         CvQualifiers cv_qualifiers = CvQualifiers::None);
+  explicit QualifiedType(QualifiableType type, CvQualifiers cv_qualifiers = 0);
 
   const QualifiableType& type() const;
   CvQualifiers cv_qualifiers() const;
@@ -163,7 +144,7 @@ enum class UnOp : unsigned char {
   // Used to determine the last enum element.
   EnumLast = BitNot,
 };
-constexpr size_t NUM_UN_OPS = (size_t)UnOp::EnumLast + 1;
+inline constexpr size_t NUM_UN_OPS = (size_t)UnOp::EnumLast + 1;
 
 enum class BinOp : unsigned char {
   // Used to determine the first enum element.
@@ -193,13 +174,13 @@ enum class BinOp : unsigned char {
   // Used to determine the last enum element.
   EnumLast = Ge,
 };
-constexpr size_t NUM_BIN_OPS = (size_t)BinOp::EnumLast + 1;
+inline constexpr size_t NUM_BIN_OPS = (size_t)BinOp::EnumLast + 1;
 
 using Expr =
     std::variant<IntegerConstant, DoubleConstant, VariableExpr, UnaryExpr,
                  BinaryExpr, AddressOf, MemberOf, MemberOfPtr, ArrayIndex,
                  TernaryExpr, CastExpr, BooleanConstant, ParenthesizedExpr>;
-constexpr size_t NUM_EXPR_KINDS = std::variant_size_v<Expr>;
+inline constexpr size_t NUM_EXPR_KINDS = std::variant_size_v<Expr>;
 
 std::ostream& operator<<(std::ostream& os, const Expr& expr);
 

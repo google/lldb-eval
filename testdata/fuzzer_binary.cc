@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include <limits>
+
 // This file _must not_ access the file system, since the current directory
 // is specified in the fuzzer as just `./`.
 
@@ -100,48 +102,102 @@ class NonEmptyDerived : public NonEmptyBase, public EmptyBase {
 };
 
 int main() {
+  auto char_min = std::numeric_limits<char>::min();
+  auto char_max = std::numeric_limits<char>::max();
+  (void)char_min, (void)char_max;
+
+  auto uchar_min = std::numeric_limits<unsigned char>::min();
+  auto uchar_max = std::numeric_limits<unsigned char>::max();
+  (void)uchar_min, (void)uchar_max;
+
+  auto schar_min = std::numeric_limits<signed char>::min();
+  auto schar_max = std::numeric_limits<signed char>::max();
+  (void)schar_min, (void)schar_max;
+
+  auto short_min = std::numeric_limits<short>::min();
+  auto short_max = std::numeric_limits<short>::max();
+  (void)short_min, (void)short_max;
+
+  auto ushort_min = std::numeric_limits<unsigned short>::min();
+  auto ushort_max = std::numeric_limits<unsigned short>::max();
+  (void)ushort_min, (void)ushort_max;
+
+  auto int_min = std::numeric_limits<int>::min();
+  auto int_max = std::numeric_limits<int>::max();
+  (void)int_min, (void)int_max;
+
+  auto uint_min = std::numeric_limits<unsigned int>::min();
+  auto uint_max = std::numeric_limits<unsigned int>::max();
+  (void)uint_min, (void)uint_max;
+
+  auto long_min = std::numeric_limits<long>::min();
+  auto long_max = std::numeric_limits<long>::max();
+  (void)long_min, (void)long_max;
+
+  auto ulong_min = std::numeric_limits<unsigned long>::min();
+  auto ulong_max = std::numeric_limits<unsigned long>::max();
+  (void)ulong_min, (void)ulong_max;
+
+  auto llong_min = std::numeric_limits<long long>::min();
+  auto llong_max = std::numeric_limits<long long>::max();
+  (void)llong_min, (void)llong_max;
+
+  auto ullong_min = std::numeric_limits<unsigned long long>::min();
+  auto ullong_max = std::numeric_limits<unsigned long long>::max();
+  (void)ullong_min, (void)ullong_max;
+
+  auto finf = std::numeric_limits<float>::infinity();
+  auto fnan = std::numeric_limits<float>::quiet_NaN();
+  auto fsnan = std::numeric_limits<float>::signaling_NaN();
+  auto fmax = std::numeric_limits<float>::max();
+  // Smallest positive non-zero float denormal
+  auto fdenorm = 0x0.1p-145f;
+  (void)finf, (void)fnan, (void)fsnan, (void)fmax, (void)fdenorm;
+
+  auto dinf = std::numeric_limits<double>::infinity();
+  auto dnan = std::numeric_limits<double>::quiet_NaN();
+  auto dsnan = std::numeric_limits<double>::signaling_NaN();
+  auto dmax = std::numeric_limits<double>::max();
+  // Smallest positive non-zero double denormal
+  auto ddenorm = 0x0.1p-1070;
+  (void)dinf, (void)dnan, (void)dsnan, (void)dmax, (void)ddenorm;
+
+  auto ldinf = std::numeric_limits<long double>::infinity();
+  auto ldnan = std::numeric_limits<long double>::quiet_NaN();
+  auto ldsnan = std::numeric_limits<long double>::signaling_NaN();
+  auto ldmax = std::numeric_limits<long double>::max();
+  // Smallest positive non-zero long double denormal
+  auto lddenorm = 0x0.1p-16440L;
+  (void)ldinf, (void)ldnan, (void)ldsnan, (void)ldmax, (void)lddenorm;
+
   int x = 42;
-  (void)x;
-
   int* p = &x;
-  (void)p;
-
   int** q = &p;
-  (void)q;
-
   int& ref = x;
-  (void)ref;
-
   int* const* const& refp = &p;
-  (void)refp;
+
+  (void)x, (void)p, (void)q, (void)ref, (void)refp;
 
   int array2d[3][3] = {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}};
   (void)array2d;
 
   MultiInheritDerived multi;
-  (void)multi;
-
   DeadlyDiamondSubclass diamond;
-  (void)diamond;
-
   VirtualDiamondSubclass virtual_diamond;
-  (void)diamond;
+  (void)multi, (void)diamond, (void)diamond;
 
   const char* null_char_ptr = nullptr;
-  (void)null_char_ptr;
-
   const char* test_str = "Hee hee hee";
-  (void)test_str;
+  (void)null_char_ptr, (void)test_str;
 
   NonEmptyDerived empty_base;
   (void)empty_base;
 
   TestStruct ts;
-  (void)ts;
-
   TestUnion tu;
   tu.uint_field = 65;
-  (void)tu;
+
+  (void)ts, (void)tu;
 
   // BREAK HERE
 
