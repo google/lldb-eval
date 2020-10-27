@@ -578,7 +578,7 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
     // floats.
     //
     // Hence we're using this ifdef guard as a temporary workaround.
-    std::string str = "0x0.000000-1022";
+    std::string str = "0x0.000000p-1022";
 #else
     std::string str = "0x0.0000000000001p-1022";
 #endif
