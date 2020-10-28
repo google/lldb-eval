@@ -312,12 +312,20 @@ void Interpreter::Visit(const CStyleCastNode* node) {
   if (type.IsPointerType()) {
     // TODO(b/161677840): Implement type compatibility checks.
     // TODO(b/161677840): Do some error handling here.
-    if (rhs.IsFloat()) {
+    uintptr_t addr;
+
+    if (rhs.IsInteger()) {
+      addr = rhs.ConvertTo<uintptr_t>();
+    } else if (rhs.IsPointer()) {
+      addr = rhs.GetValueAsAddress();
+    } else {
       std::string msg = llvm::formatv(
           "cannot cast from type '{{0}' to pointer type '{0}'", type.GetName());
       ReportTypeError(msg.c_str(), rhs);
+      return;
     }
-    result_ = Value(rhs.inner_value().Cast(type), /* is_rvalue */ true);
+
+    result_ = CreateValueFromPointer(target_, addr, type);
     return;
   }
 

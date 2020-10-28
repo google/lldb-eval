@@ -662,6 +662,11 @@ TEST_F(InterpreterTest, TestCStyleCastPointer) {
   TestExprOnlyCompare("(unsigned long long*)vp");
   TestExprOnlyCompare("(unsigned short int*)vp");
 
+  TestExpr("(void*)0", "0x0000000000000000");
+  TestExpr("(void*)1", "0x0000000000000001");
+  TestExpr("(void*)a", "0x0000000000000001");
+  TestExpr("(void*)na", "0xffffffffffffffff");
+
   TestExprErr("(char*) 1.0",
               "cannot cast from type 'double' to pointer type 'char *'");
 
