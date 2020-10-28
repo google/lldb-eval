@@ -288,7 +288,14 @@ TEST_F(InterpreterTest, TestArithmetic) {
 
   // Some promotions and conversions.
   TestExpr("(uint8_t)250 + (uint8_t)250", "500");
+
+#ifdef _WIN32
+  // On Windows sizeof(int) == sizeof(long) == 4.
   TestExpr("(unsigned int)4294967295 + (long)2", "1");
+#else
+  // On Linux sizeof(int) == 4 and sizeof(long) == 8.
+  TestExpr("(unsigned int)4294967295 + (long)2", "4294967297");
+#endif
 }
 
 TEST_F(InterpreterTest, TestBitwiseOperators) {

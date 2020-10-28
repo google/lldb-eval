@@ -106,11 +106,10 @@ class Value {
       CASE(lldb::eBasicTypeUnsignedLongLong);
       CASE(lldb::eBasicTypeFloat);
       CASE(lldb::eBasicTypeDouble);
+      default:
+        return T();
     }
-
 #undef CASE
-
-    return T();
   }
 
  private:

@@ -25,25 +25,25 @@ struct lldb_type_to_builtin;
     using value = T2;                \
   };
 
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeBool, bool);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeChar, char);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeSignedChar, signed char);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedChar, unsigned char);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeChar16, char16_t);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeChar32, char32_t);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeWChar, wchar_t);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeSignedWChar, wchar_t);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedWChar, wchar_t);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeShort, short);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedShort, unsigned short);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeInt, int);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedInt, unsigned int);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeLong, long);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedLong, unsigned long);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeLongLong, long long);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedLongLong, unsigned long long);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeFloat, float);
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeDouble, double);
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeBool, bool)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeChar, char)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeSignedChar, signed char)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedChar, unsigned char)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeChar16, char16_t)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeChar32, char32_t)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeWChar, wchar_t)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeSignedWChar, wchar_t)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedWChar, wchar_t)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeShort, short)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedShort, unsigned short)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeInt, int)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedInt, unsigned int)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeLong, long)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedLong, unsigned long)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeLongLong, long long)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedLongLong, unsigned long long)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeFloat, float)
+LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeDouble, double)
 
 #undef LLDB_TYPE_TO_BUILTIN
 
@@ -56,11 +56,11 @@ struct builtin_to_lldb_type;
     const static lldb::BasicType value = T2; \
   };
 
-BUILTIN_TO_LLDB_TYPE(int, lldb::eBasicTypeInt);
-BUILTIN_TO_LLDB_TYPE(unsigned int, lldb::eBasicTypeUnsignedInt);
-BUILTIN_TO_LLDB_TYPE(long, lldb::eBasicTypeLong);
-BUILTIN_TO_LLDB_TYPE(unsigned long, lldb::eBasicTypeUnsignedLong);
-BUILTIN_TO_LLDB_TYPE(long long, lldb::eBasicTypeLongLong);
-BUILTIN_TO_LLDB_TYPE(unsigned long long, lldb::eBasicTypeUnsignedLongLong);
+BUILTIN_TO_LLDB_TYPE(int, lldb::eBasicTypeInt)
+BUILTIN_TO_LLDB_TYPE(unsigned int, lldb::eBasicTypeUnsignedInt)
+BUILTIN_TO_LLDB_TYPE(long, lldb::eBasicTypeLong)
+BUILTIN_TO_LLDB_TYPE(unsigned long, lldb::eBasicTypeUnsignedLong)
+BUILTIN_TO_LLDB_TYPE(long long, lldb::eBasicTypeLongLong)
+BUILTIN_TO_LLDB_TYPE(unsigned long long, lldb::eBasicTypeUnsignedLongLong)
 
 #undef BUILTIN_TO_LLDB_TYPE

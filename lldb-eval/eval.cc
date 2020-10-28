@@ -49,9 +49,38 @@ bool Compare(clang::tok::TokenKind op, const T& l, const T& r) {
       return l > r;
     case clang::tok::greaterequal:
       return l >= r;
+
+    default:
+      lldb_eval_unreachable("Invalid comparison operation.");
   }
-  lldb_eval_unreachable("Invalid comparison operation.");
-};
+}
+
+// Comparison operators for llvm::APFloat were introduced in LLVM 11.
+#if LLVM_VERSION_MAJOR < 11
+
+template <>
+bool Compare(clang::tok::TokenKind op, const llvm::APFloat& l,
+             const llvm::APFloat& r) {
+  switch (op) {
+    case clang::tok::equalequal:
+      return l.compare(r) == llvm::APFloat::cmpEqual;
+    case clang::tok::exclaimequal:
+      return l.compare(r) != llvm::APFloat::cmpEqual;
+    case clang::tok::less:
+      return l.compare(r) == llvm::APFloat::cmpLessThan;
+    case clang::tok::lessequal:
+      return r.compare(l) != llvm::APFloat::cmpLessThan;
+    case clang::tok::greater:
+      return l.compare(r) == llvm::APFloat::cmpGreaterThan;
+    case clang::tok::greaterequal:
+      return r.compare(l) != llvm::APFloat::cmpGreaterThan;
+
+    default:
+      lldb_eval_unreachable("Invalid comparison operation.");
+  }
+}
+
+#endif
 
 }  // namespace
 
@@ -967,6 +996,9 @@ Value EvaluateArithmeticOp(lldb::SBTarget target, ArithmeticOp op, Value lhs,
         return wrap(l / r);
       case ArithmeticOp::MUL:
         return wrap(l * r);
+
+      default:
+        break;
     }
   }
 

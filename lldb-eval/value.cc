@@ -88,9 +88,9 @@ llvm::APFloat Value::GetFloat() {
       return llvm::APFloat(ReadValue<float>());
     case lldb::eBasicTypeDouble:
       return llvm::APFloat(ReadValue<double>());
+    default:
+      return llvm::APFloat(NAN);
   }
-
-  return llvm::APFloat(NAN);
 }
 
 Value IntegralPromotion(lldb::SBTarget target, Value value) {
@@ -183,6 +183,9 @@ size_t ConversionRank(lldb::BasicType basic_type) {
       return 3;
     case lldb::eBasicTypeChar32:
       return 4;
+
+    default:
+      break;
   }
   return 0;
 }
