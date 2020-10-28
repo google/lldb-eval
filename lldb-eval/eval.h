@@ -108,11 +108,11 @@ class Interpreter : Visitor {
   Value EvaluateBinaryBitShl(Value lhs, Value rhs);
   Value EvaluateBinaryBitShr(Value lhs, Value rhs);
 
-  bool BoolConvertible(Value& val);
+  bool BoolConvertible(Value val);
 
   void ReportTypeError(const char* fmr);
-  void ReportTypeError(const char* fmt, Value& val);
-  void ReportTypeError(const char* fmt, Value& lhs, Value& rhs);
+  void ReportTypeError(const char* fmt, Value val);
+  void ReportTypeError(const char* fmt, Value lhs, Value rhs);
 
   Value PointerAdd(Value lhs, int64_t offset);
 

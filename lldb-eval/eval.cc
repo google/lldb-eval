@@ -14,7 +14,6 @@
 
 #include "lldb-eval/eval.h"
 
-#include <iostream>
 #include <memory>
 
 #include "clang/Basic/TokenKinds.h"
@@ -879,7 +878,7 @@ Value Interpreter::EvaluateBinaryBitShr(Value lhs, Value rhs) {
   return Value();
 }
 
-bool Interpreter::BoolConvertible(Value& val) {
+bool Interpreter::BoolConvertible(Value val) {
   if (val.IsScalar() || val.IsPointer()) {
     return true;
   }
@@ -893,14 +892,14 @@ void Interpreter::ReportTypeError(const char* fmt) {
   error_.Set(EvalErrorCode::INVALID_OPERAND_TYPE, fmt);
 }
 
-void Interpreter::ReportTypeError(const char* fmt, Value& val) {
+void Interpreter::ReportTypeError(const char* fmt, Value val) {
   std::string rhs_type = val.type().GetName();
 
   auto msg = llvm::formatv(fmt, rhs_type);
   error_.Set(EvalErrorCode::INVALID_OPERAND_TYPE, msg);
 }
 
-void Interpreter::ReportTypeError(const char* fmt, Value& lhs, Value& rhs) {
+void Interpreter::ReportTypeError(const char* fmt, Value lhs, Value rhs) {
   std::string lhs_type = lhs.type().GetName();
   std::string rhs_type = rhs.type().GetName();
 
