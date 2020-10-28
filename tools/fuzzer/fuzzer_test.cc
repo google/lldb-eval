@@ -575,7 +575,7 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
 #ifdef _WIN32
     // Apparently MSVC seems to not be adhering to the C++11 standard properly
     // and it takes into account the precision modifier when printing hex
-    // floats.
+    // floats (https://en.cppreference.com/w/cpp/locale/num_put/put#Notes).
     //
     // Hence we're using this ifdef guard as a temporary workaround.
     std::string str = "0x0.000000p-1022";
