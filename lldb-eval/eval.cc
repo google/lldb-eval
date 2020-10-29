@@ -68,12 +68,19 @@ bool Compare(clang::tok::TokenKind op, const llvm::APFloat& l,
       return l.compare(r) != llvm::APFloat::cmpEqual;
     case clang::tok::less:
       return l.compare(r) == llvm::APFloat::cmpLessThan;
-    case clang::tok::lessequal:
-      return r.compare(l) != llvm::APFloat::cmpLessThan;
     case clang::tok::greater:
       return l.compare(r) == llvm::APFloat::cmpGreaterThan;
-    case clang::tok::greaterequal:
-      return r.compare(l) != llvm::APFloat::cmpGreaterThan;
+
+    case clang::tok::lessequal: {
+      llvm::APFloat::cmpResult result = l.compare(r);
+      return result == llvm::APFloat::cmpLessThan ||
+             result == llvm::APFloat::cmpEqual;
+    }
+    case clang::tok::greaterequal: {
+      llvm::APFloat::cmpResult result = l.compare(r);
+      return result == llvm::APFloat::cmpGreaterThan ||
+             result == llvm::APFloat::cmpEqual;
+    }
 
     default:
       lldb_eval_unreachable("Invalid comparison operation.");
