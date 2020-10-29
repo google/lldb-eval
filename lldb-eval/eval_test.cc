@@ -260,6 +260,12 @@ TEST_F(InterpreterTest, TestArithmetic) {
   TestExpr("-1.f * 0", "-0");
   TestExpr("0x0.123p-1", "0.0355224609375");
 
+  TestExpr("fnan < fnan", "false");
+  TestExpr("fnan <= fnan", "false");
+  TestExpr("fnan == fnan", "false");
+  TestExpr("(unsigned int) fdenorm", "0");
+  TestExpr("(unsigned int) (1.0f + fdenorm)", "1");
+
   {
     // Zero division and remainder is UB and LLDB return garbage values. Our
     // implementation returns zero, but that might change in the future. The

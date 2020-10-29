@@ -35,6 +35,11 @@ static void TestArithmetic() {
   typedef int& myr;
   myr my_r = x;
 
+  auto fnan = std::numeric_limits<float>::quiet_NaN();
+  auto fsnan = std::numeric_limits<float>::signaling_NaN();
+  // Smallest positive non-zero float denormal
+  auto fdenorm = 0x0.1p-145f;
+
   // BREAK(TestArithmetic)
 }
 
