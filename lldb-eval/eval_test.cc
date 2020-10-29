@@ -292,9 +292,11 @@ TEST_F(InterpreterTest, TestArithmetic) {
 #ifdef _WIN32
   // On Windows sizeof(int) == sizeof(long) == 4.
   TestExpr("(unsigned int)4294967295 + (long)2", "1");
+  TestExpr("((unsigned int)1 + (long)1) - 3", "4294967295");
 #else
   // On Linux sizeof(int) == 4 and sizeof(long) == 8.
   TestExpr("(unsigned int)4294967295 + (long)2", "4294967297");
+  TestExpr("((unsigned int)1 + (long)1) - 3", "-1");
 #endif
 }
 

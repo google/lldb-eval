@@ -94,6 +94,9 @@ llvm::APFloat Value::GetFloat() {
 }
 
 Value IntegralPromotion(lldb::SBTarget target, Value value) {
+  // Perform itergal promotion on the operand:
+  // http://eel.is/c++draft/conv.prom
+
   // TODO(werat): Assert it's an integer?
   using IntegralPromotionResult =
       std::variant<int, unsigned int, long, unsigned long, long long,
@@ -145,6 +148,8 @@ Value IntegralPromotion(lldb::SBTarget target, Value value) {
 }
 
 size_t ConversionRank(lldb::BasicType basic_type) {
+  // Get integer conversion rank
+  // http://eel.is/c++draft/conv.rank
   switch (basic_type) {
     case lldb::eBasicTypeBool:
       return 1;
@@ -184,14 +189,94 @@ size_t ConversionRank(lldb::BasicType basic_type) {
     case lldb::eBasicTypeChar32:
       return 4;
 
+      // Technically float and double don't have a conversion rank, but we give
+      // them one for uniform ordering.
+    case lldb::eBasicTypeFloat:
+      return 1;
+    case lldb::eBasicTypeDouble:
+      return 2;
+
     default:
       break;
   }
   return 0;
 }
 
+lldb::BasicType BasicTypeToUnsigned(lldb::BasicType basic_type) {
+  switch (basic_type) {
+    case lldb::eBasicTypeInt:
+      return lldb::eBasicTypeUnsignedInt;
+    case lldb::eBasicTypeLong:
+      return lldb::eBasicTypeUnsignedLong;
+    case lldb::eBasicTypeLongLong:
+      return lldb::eBasicTypeUnsignedLongLong;
+    default:
+      return basic_type;
+  }
+}
+
+void ConvertLeftToRight(lldb::SBTarget target, Value* l, Value* r) {
+  if (r->IsFloat()) {
+    // Convert the candidate to the appropriate floating point value.
+    if (l->IsInteger()) {
+      // Integral value -> floating point value.
+      llvm::APFloat f = llvm::APFloat(r->GetFloat().getSemantics());
+      llvm::APSInt i = l->GetInteger();
+      f.convertFromAPInt(i, i.isSigned(), llvm::APFloat::rmNearestTiesToEven);
+
+      *l = CreateValueFromAP(target, f, r->type());
+      return;
+    }
+
+    if (l->IsFloat()) {
+      // Floating point -> floating point value.
+      llvm::APFloat f = l->GetFloat();
+      bool ignore;
+      f.convert(r->GetFloat().getSemantics(),
+                llvm::APFloat::rmNearestTiesToEven, &ignore);
+
+      *l = CreateValueFromAP(target, f, r->type());
+      return;
+    }
+  }
+
+  if (r->IsInteger()) {
+    // if `r` is signed and `l` is unsigned, check whether it can represent all
+    // of the values of the type of the `l`. If not, then promote `r` to the
+    // unsigned version of its type.
+    if (r->IsSigned() && !l->IsSigned()) {
+      auto l_size = l->type().GetByteSize();
+      auto r_size = r->type().GetByteSize();
+
+      assert(l_size <= r_size &&
+             "left value must not be larger then the right!");
+
+      if (r_size == l_size) {
+        llvm::APSInt i = r->GetInteger();
+        i.setIsUnsigned(true);
+
+        auto type = target.GetBasicType(
+            BasicTypeToUnsigned(r->type().GetCanonicalType().GetBasicType()));
+        *r = CreateValueFromAP(target, i, type);
+      }
+    }
+
+    llvm::APSInt i = l->GetInteger();
+    i = i.extOrTrunc(static_cast<uint32_t>(r->type().GetByteSize() * CHAR_BIT));
+    i.setIsSigned(r->IsSigned());
+
+    *l = CreateValueFromAP(target, i, r->type());
+    return;
+  }
+
+  lldb_eval_unreachable("Invalid arithmetic type");
+}
+
 lldb::SBType UsualArithmeticConversions(lldb::SBTarget target, Value* lhs,
                                         Value* rhs) {
+  // Perform usual arithmetic conversions on the operands:
+  // http://eel.is/c++draft/expr.arith.conv
+
   // If the operand passed to an arithmetic operator is integral or unscoped
   // enumeration type, then before any other action (but after lvalue-to-rvalue
   // conversion, if applicable), the operand undergoes integral promotion.
@@ -206,77 +291,22 @@ lldb::SBType UsualArithmeticConversions(lldb::SBTarget target, Value* lhs,
   using Rank = std::tuple<bool, size_t, bool>;
 
   auto GetRank = [](Value v) {
-    return Rank{v.IsFloat(), ConversionRank(v.type().GetBasicType()),
+    return Rank{v.IsFloat(),
+                ConversionRank(v.type().GetCanonicalType().GetBasicType()),
                 !v.IsSigned()};
   };
 
   auto l_rank = GetRank(*lhs);
   auto r_rank = GetRank(*rhs);
 
-  Value promo_candidate, other;
-
   if (l_rank < r_rank) {
-    promo_candidate = *lhs;
-    other = *rhs;
+    ConvertLeftToRight(target, lhs, rhs);
   } else if (l_rank > r_rank) {
-    promo_candidate = *rhs;
-    other = *lhs;
-  } else {
-    // TODO: make sure the types match.
-    return lhs->type();
+    ConvertLeftToRight(target, rhs, lhs);
   }
 
-  if (other.IsFloat()) {
-    // Convert the candidate to the appropriate floating point value.
-    if (promo_candidate.IsInteger()) {
-      // Integral value -> floating point value.
-      llvm::APFloat f = llvm::APFloat(other.GetFloat().getSemantics());
-      llvm::APSInt i = promo_candidate.GetInteger();
-      f.convertFromAPInt(i, i.isSigned(), llvm::APFloat::rmNearestTiesToEven);
-
-      promo_candidate = CreateValueFromAP(target, f, other.type());
-
-    } else if (promo_candidate.IsFloat()) {
-      // Floating point -> floating point value.
-      llvm::APFloat f = promo_candidate.GetFloat();
-      bool ignore;
-      f.convert(other.GetFloat().getSemantics(),
-                llvm::APFloat::rmNearestTiesToEven, &ignore);
-
-      promo_candidate = CreateValueFromAP(target, f, other.type());
-
-    } else {
-      lldb_eval_unreachable("Invalid arithmetic type");
-    }
-
-  } else if (other.IsInteger()) {
-    // The value being promoted can be only an integer, no floats allowed here.
-
-    // TODO(werat): It's possible that `other` should be promoted too, if the
-    // it's type can't represent all values of `promo_candidate`. For example,
-    // "(unsigned int) + (long) == (unsigned long)" on Windows x64, because
-    // both `int` and `long` are 4 bytes there.
-    //
-    // https://en.cppreference.com/w/cpp/language/operator_arithmetic
-
-    llvm::APSInt i = promo_candidate.GetInteger();
-    i = i.extOrTrunc(
-        static_cast<uint32_t>(other.type().GetByteSize() * CHAR_BIT));
-    i.setIsSigned(other.IsSigned());
-
-    promo_candidate = CreateValueFromAP(target, i, other.type());
-  }
-
-  // TODO(werat): Refactor this.
-  if (l_rank < r_rank) {
-    *lhs = promo_candidate;
-    *rhs = other;
-  } else {
-    *lhs = other;
-    *rhs = promo_candidate;
-  }
-
-  return other.type();
+  // TODO: make sure the types match.
+  return lhs->type().GetCanonicalType();
 }
 
 Value CastScalarToBasicType(lldb::SBTarget target, Value val,
