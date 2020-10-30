@@ -23,9 +23,9 @@
 
 namespace lldb_eval {
 
-ExpressionContext::ExpressionContext(const std::string& expr,
+ExpressionContext::ExpressionContext(std::string expr,
                                      lldb::SBExecutionContext exec_ctx)
-    : expr_(expr), exec_ctx_(exec_ctx) {
+    : expr_(std::move(expr)), exec_ctx_(exec_ctx) {
   // This holds a SourceManager and all of its dependencies.
   smff_ = std::make_unique<clang::SourceManagerForFile>("<expr>", expr_);
 

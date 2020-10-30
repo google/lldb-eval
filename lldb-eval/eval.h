@@ -18,8 +18,9 @@
 #define LLDB_EVAL_EVAL_H_
 
 #include "clang/Basic/TokenKinds.h"
-#include "expression_context.h"
 #include "lldb-eval/ast.h"
+#include "lldb-eval/defines.h"
+#include "lldb-eval/expression_context.h"
 #include "lldb-eval/value.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBProcess.h"
@@ -87,16 +88,33 @@ class Interpreter : Visitor {
  private:
   Value EvalNode(const AstNode* node);
 
-  Value EvaluateSubscript(Value& lhs, Value& rhs);
-  Value EvaluateAddition(Value& lhs, Value& rhs);
-  Value EvaluateSubtraction(Value& lhs, Value& rhs);
-  Value EvaluateComparison(Value& lhs, Value& rhs, clang::tok::TokenKind op);
+  Value EvaluateSubscript(Value lhs, Value rhs);
+  Value EvaluateComparison(clang::tok::TokenKind op, Value lhs, Value rhs);
 
-  bool BoolConvertible(Value& val);
+  Value EvaluateUnaryPlus(Value rhs);
+  Value EvaluateUnaryMinus(Value rhs);
+  Value EvaluateUnaryNegation(Value rhs);
+  Value EvaluateUnaryBitwiseNot(Value rhs);
+
+  Value EvaluateBinaryAddition(Value lhs, Value rhs);
+  Value EvaluateBinarySubtraction(Value lhs, Value rhs);
+  Value EvaluateBinaryMultiplication(Value lhs, Value rhs);
+  Value EvaluateBinaryDivision(Value lhs, Value rhs);
+  Value EvaluateBinaryRemainder(Value lhs, Value rhs);
+
+  Value EvaluateBinaryBitAnd(Value lhs, Value rhs);
+  Value EvaluateBinaryBitOr(Value lhs, Value rhs);
+  Value EvaluateBinaryBitXor(Value lhs, Value rhs);
+  Value EvaluateBinaryBitShl(Value lhs, Value rhs);
+  Value EvaluateBinaryBitShr(Value lhs, Value rhs);
+
+  bool BoolConvertible(Value val);
 
   void ReportTypeError(const char* fmr);
-  void ReportTypeError(const char* fmt, const Value& val);
-  void ReportTypeError(const char* fmt, const Value& lhs, const Value& rhs);
+  void ReportTypeError(const char* fmt, Value val);
+  void ReportTypeError(const char* fmt, Value lhs, Value rhs);
+
+  Value PointerAdd(Value lhs, int64_t offset);
 
  private:
   // Interpreter doesn't own expression context. The expression is evaluated in
@@ -111,6 +129,22 @@ class Interpreter : Visitor {
   Value result_;
   EvalError error_;
 };
+
+enum class ArithmeticOp {
+  ADD,
+  SUB,
+  DIV,
+  MUL,
+  REM,
+  BIT_AND,
+  BIT_OR,
+  BIT_XOR,
+  BIT_SHL,
+  BIT_SHR,
+};
+
+Value EvaluateArithmeticOp(lldb::SBTarget target, ArithmeticOp op, Value lhs,
+                           Value rhs, lldb::SBType rtype);
 
 }  // namespace lldb_eval
 

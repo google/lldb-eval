@@ -16,6 +16,8 @@
 #include <string>
 
 static void TestArithmetic() {
+  char c = 10;
+  unsigned char uc = 1;
   int a = 1;
   int int_max = std::numeric_limits<int>::max();
   int int_min = std::numeric_limits<int>::min();
@@ -28,15 +30,22 @@ static void TestArithmetic() {
 
   int x = 2;
   int& r = x;
+  int* p = &x;
 
   typedef int& myr;
   myr my_r = x;
+
+  auto fnan = std::numeric_limits<float>::quiet_NaN();
+  auto fsnan = std::numeric_limits<float>::signaling_NaN();
+  // Smallest positive non-zero float denormal
+  auto fdenorm = 0x0.1p-145f;
 
   // BREAK(TestArithmetic)
 }
 
 static void TestBitwiseOperators() {
-  uint32_t mask_ff = 0xFF;
+  bool var_true = true;
+  bool var_false = false;
 
   unsigned long long ull_max = std::numeric_limits<unsigned long long>::max();
   unsigned long long ull_zero = 0;
@@ -45,6 +54,8 @@ static void TestBitwiseOperators() {
   } s;
 
   const char* p = nullptr;
+
+  uint32_t mask_ff = 0xFF;
 
   // BREAK(TestBitwiseOperators)
 }
@@ -196,6 +207,7 @@ static void TestSubscript() {
   unsigned char uchar_idx = std::numeric_limits<unsigned char>::max();
   uint8_t uint8_arr[256];
   uint8_arr[255] = 0xAB;
+  uint8_t* uint8_ptr = uint8_arr;
 
   // BREAK(TestSubscript)
 }

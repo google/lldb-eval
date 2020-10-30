@@ -56,7 +56,7 @@ lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
     return lldb::SBValue();
   }
 
-  return result.AsSbValue(expr_ctx.GetExecutionContext().GetTarget());
+  return result.inner_value();
 }
 
 }  // namespace lldb_eval

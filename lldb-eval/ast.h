@@ -19,10 +19,13 @@
 
 #include <memory>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "clang/Basic/TokenKinds.h"
-#include "lldb-eval/scalar.h"
+#include "lldb/lldb-enumerations.h"
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APSInt.h"
 
 namespace lldb_eval {
 
@@ -80,19 +83,25 @@ class BooleanLiteralNode : public AstNode {
 
 class NumericLiteralNode : public AstNode {
  public:
-  explicit NumericLiteralNode(const Scalar& value) : value_(value) {}
+  using Constant = std::variant<llvm::APSInt, llvm::APFloat>;
+
+ public:
+  NumericLiteralNode(Constant value, lldb::BasicType type)
+      : value_(std::move(value)), type_(type) {}
 
   void Accept(Visitor* v) const override;
 
-  Scalar value() const { return value_; }
+  Constant value() const { return value_; }
+  lldb::BasicType type() const { return type_; }
 
  private:
-  Scalar value_;
+  Constant value_;
+  lldb::BasicType type_;
 };
 
 class IdentifierNode : public AstNode {
  public:
-  explicit IdentifierNode(const std::string& name) : name_(name) {}
+  explicit IdentifierNode(std::string name) : name_(std::move(name)) {}
 
   void Accept(Visitor* v) const override;
 
@@ -107,7 +116,7 @@ using IdExpression = std::unique_ptr<IdentifierNode>;
 class CStyleCastNode : public AstNode {
  public:
   CStyleCastNode(TypeDeclaration type_decl, ExprResult rhs)
-      : type_decl_(type_decl), rhs_(std::move(rhs)) {}
+      : type_decl_(std::move(type_decl)), rhs_(std::move(rhs)) {}
 
   void Accept(Visitor* v) const override;
 

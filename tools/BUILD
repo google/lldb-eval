@@ -2,7 +2,6 @@ load("@rules_cc//cc:defs.bzl", "cc_binary")
 
 COPTS = select({
     "@bazel_tools//src/conditions:windows": [
-        # Mark the LLVM includes as external
         "/external:I external/llvm_project/include",
     ],
     "//conditions:default": [],
@@ -13,7 +12,6 @@ cc_binary(
     srcs = ["exec.cc"],
     copts = COPTS + select({
         "@bazel_tools//src/conditions:windows": [
-            # Disable warnings only for cpp-linenoise
             "/external:I $(BINDIR)/external/io_github_yhirose_cpplinenoise",
         ],
         "//conditions:default": [],

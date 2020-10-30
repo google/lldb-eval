@@ -56,8 +56,7 @@ void EvalExpr(lldb::SBFrame frame, const std::string& expr) {
   } else {
     // Due to various bugs result can still be NULL even though there was no
     // error reported. Printing NULL leads to segfault, so check and replace it.
-    auto sb_value =
-        result.AsSbValue(expr_ctx.GetExecutionContext().GetTarget());
+    auto sb_value = result.inner_value();
 
     if (sb_value.IsValid()) {
       std::cerr << "value = " << sb_value.GetValue() << std::endl;

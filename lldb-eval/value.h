@@ -20,78 +20,119 @@
 #include <cstdint>
 #include <iosfwd>
 #include <string>
+#include <type_traits>
 
-#include "lldb-eval/pointer.h"
-#include "lldb-eval/scalar.h"
+#include "lldb-eval/traits.h"
 #include "lldb/API/SBTarget.h"
+#include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APSInt.h"
 
 namespace lldb_eval {
 
 class Value {
  public:
-  enum class Type {
-    INVALID,
-    BOOLEAN,
-    SCALAR,
-    POINTER,
-    SB_VALUE,
-  };
+  Value() {}
 
- public:
-  Value() : type_(Type::INVALID) {}
-
-  explicit Value(bool value) {
-    type_ = Type::BOOLEAN;
-    scalar_ = Scalar(static_cast<int32_t>(value));
-    is_rvalue_ = true;
-  }
-  explicit Value(const Scalar& value) {
-    type_ = Type::SCALAR;
-    scalar_ = value;
-    is_rvalue_ = true;
-  }
-  explicit Value(const Pointer& value) {
-    type_ = Type::POINTER;
-    pointer_ = value;
-    is_rvalue_ = true;
-  }
   explicit Value(lldb::SBValue value, bool is_rvalue = false) {
-    type_ = Type::SB_VALUE;
-    sb_value_ = value;
+    value_ = value;
+    type_ = value_.GetType();
     is_rvalue_ = is_rvalue;
   }
 
  public:
-  bool IsValid() const { return type_ != Type::INVALID; }
+  bool IsValid() { return value_.IsValid(); }
+  explicit operator bool() { return IsValid(); }
 
-  bool IsRValue() const { return is_rvalue_; }
+  lldb::SBValue inner_value() const { return value_; }
+  lldb::SBType type() const { return type_; };
 
+  bool IsRvalue() const { return is_rvalue_; }
   bool IsScalar();
+  bool IsInteger();
+  bool IsFloat();
   bool IsPointer();
+  bool IsPointerToVoid();
+  bool IsSigned();
 
-  bool AsBool();
-  Scalar AsScalar() const;
-  Pointer AsPointer() const;
-  lldb::SBValue AsSbValue(lldb::SBTarget target) const;
+  bool GetBool();
+  int64_t GetInt64();
+  uintptr_t GetValueAsAddress();
+  Value GetRvalueRef() const;
 
-  explicit operator bool() const { return IsValid(); }
+  Value AddressOf();
+  Value Dereference();
+
+  llvm::APSInt GetInteger();
+  llvm::APFloat GetFloat();
+
+  template <typename T>
+  T ReadValue() {
+    static_assert(std::is_scalar<T>::value, "T must be scalar");
+
+    lldb::SBError ignore;
+    T ret = 0;
+    value_.GetData().ReadRawData(ignore, 0, &ret, sizeof(T));
+
+    return ret;
+  }
+
+  template <typename T>
+  T ConvertTo() {
+    static_assert(std::is_scalar<T>::value, "T must be scalar");
+
+    switch (type_.GetCanonicalType().GetBasicType()) {
+#define CASE(basic_type, builtin_type)                \
+  case basic_type: {                                  \
+    return static_cast<T>(ReadValue<builtin_type>()); \
+  }
+
+      LLDB_TYPE_BUILTIN(CASE)
+#undef CASE
+
+      default:
+        return T();
+    }
+  }
 
  private:
-  Type type_;
+  lldb::SBValue value_;
   bool is_rvalue_;
 
-  // Possible values.
-  Scalar scalar_;
-  Pointer pointer_;
-  lldb::SBValue sb_value_;
+  // Same as value_.GetType(). Just a shortcut, because it's used extensively.
+  lldb::SBType type_;
 };
 
-Value CastScalarToBasicType(const Scalar& value, lldb::SBType type,
-                            lldb::SBTarget target);
+Value IntegralPromotion(lldb::SBTarget target, Value value);
 
-Value CastPointerToBasicType(const Pointer& value, lldb::SBType type,
-                             lldb::SBTarget target);
+lldb::SBType UsualArithmeticConversions(lldb::SBTarget target, Value* lhs,
+                                        Value* rhs);
+
+Value CastScalarToBasicType(lldb::SBTarget target, Value val,
+                            lldb::SBType type);
+
+Value CastPointerToBasicType(lldb::SBTarget target, Value val,
+                             lldb::SBType type);
+
+Value CreateValueFromBytes(lldb::SBTarget target, const void* bytes,
+                           lldb::SBType type);
+
+Value CreateValueFromBytes(lldb::SBTarget target, const void* bytes,
+                           lldb::BasicType basic_type);
+
+Value CreateValueFromAP(lldb::SBTarget target, const llvm::APInt& v,
+                        lldb::SBType type);
+
+Value CreateValueFromAP(lldb::SBTarget target, const llvm::APFloat& v,
+                        lldb::SBType type);
+
+Value CreateValueFromPointer(lldb::SBTarget target, uintptr_t addr,
+                             lldb::SBType type);
+
+Value CreateValueFromBool(lldb::SBTarget target, bool value);
+
+Value CreateValueZero(lldb::SBTarget target);
 
 }  // namespace lldb_eval
 

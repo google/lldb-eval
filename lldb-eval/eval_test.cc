@@ -28,6 +28,7 @@
 #include "lldb/API/SBProcess.h"
 #include "lldb/API/SBTarget.h"
 #include "lldb/API/SBThread.h"
+#include "lldb/API/SBType.h"
 #include "tools/cpp/runfiles/runfiles.h"
 
 // DISALLOW_COPY_AND_ASSIGN is also defined in
@@ -133,7 +134,7 @@ void InterpreterTest::EvaluateLldbEval(const std::string& expr,
   auto ret = interpreter.Eval(expr_result.get(), error);
   EXPECT_EQ(error.code(), lldb_eval::EvalErrorCode::OK);
   EXPECT_EQ(error.message(), "");
-  result = ret.AsSbValue(expr_ctx.GetExecutionContext().GetTarget());
+  result = ret.inner_value();
 }
 
 void InterpreterTest::EvaluateLldb(const std::string& expr,
@@ -144,11 +145,13 @@ void InterpreterTest::EvaluateLldb(const std::string& expr,
 
 void InterpreterTest::TestExpr(const std::string& expr,
                                const std::string& expected_result) {
+  // For comparing the type.
+  lldb::SBValue lldb_eval_result;
+
   {
     SCOPED_TRACE("[Evaluate with lldb-eval]: " + expr);
-    lldb::SBValue result;
-    EvaluateLldbEval(expr, result);
-    EXPECT_STREQ(result.GetValue(), expected_result.c_str());
+    EvaluateLldbEval(expr, lldb_eval_result);
+    EXPECT_STREQ(lldb_eval_result.GetValue(), expected_result.c_str());
   }
 
   if (!skip_lldb) {
@@ -170,7 +173,7 @@ void InterpreterTest::TestExprOnlyCompare(const std::string& expr) {
   lldb::SBValue lldb_native_result, lldb_eval_result;
   EvaluateLldb(expr, lldb_native_result);
   EvaluateLldbEval(expr, lldb_eval_result);
-  EXPECT_STREQ(lldb_native_result.GetValue(), lldb_eval_result.GetValue());
+  EXPECT_STREQ(lldb_eval_result.GetValue(), lldb_native_result.GetValue());
 }
 
 void InterpreterTest::TestExprErr(const std::string& expr,
@@ -233,10 +236,47 @@ TEST_F(InterpreterTest, TestArithmetic) {
   TestExpr("-20LL / 1U", "-20");
   TestExpr("-20LL / 1ULL", "18446744073709551596");
 
+  // Unary arithmetic.
+  TestExpr("+0", "0");
+  TestExpr("-0", "0");
+  TestExpr("+1", "1");
+  TestExpr("-1", "-1");
+  TestExpr("c", "'\\n'");
+  TestExpr("+c", "10");
+  TestExpr("-c", "-10");
+  TestExpr("uc", "'\\x01'");
+  TestExpr("-uc", "-1");
+  TestExprOnlyCompare("+p");
+  TestExprErr("-p", "invalid argument type 'int *' to unary expression");
+
   // Floating tricks.
+  TestExpr("+0.0", "0");
+  TestExpr("-0.0", "-0");
+  TestExpr("0.0 / 0", "NaN");
+  TestExpr("0 / 0.0", "NaN");
+  TestExpr("1 / +0.0", "+Inf");
+  TestExpr("1 / -0.0", "-Inf");
   TestExpr("+0.0 / +0.0  != +0.0 / +0.0", "true");
   TestExpr("-1.f * 0", "-0");
   TestExpr("0x0.123p-1", "0.0355224609375");
+
+  TestExpr("fnan < fnan", "false");
+  TestExpr("fnan <= fnan", "false");
+  TestExpr("fnan == fnan", "false");
+  TestExpr("(unsigned int) fdenorm", "0");
+  TestExpr("(unsigned int) (1.0f + fdenorm)", "1");
+
+  {
+    // Zero division and remainder is UB and LLDB return garbage values. Our
+    // implementation returns zero, but that might change in the future. The
+    // important thing here is to avoid crashing with SIGFPE.
+    SkipLLDB _(this);
+
+    TestExpr("1 / 0", "0");
+    TestExpr("1 / uint_zero", "0");
+    TestExpr("1 % 0", "0");
+    TestExpr("1 % uint_zero", "0");
+  }
 
   // References and typedefs.
   TestExpr("r + 1", "3");
@@ -251,6 +291,19 @@ TEST_F(InterpreterTest, TestArithmetic) {
   TestExpr("r - my_r", "0");
   TestExpr("r * my_r", "4");
   TestExpr("r / my_r", "1");
+
+  // Some promotions and conversions.
+  TestExpr("(uint8_t)250 + (uint8_t)250", "500");
+
+#ifdef _WIN32
+  // On Windows sizeof(int) == sizeof(long) == 4.
+  TestExpr("(unsigned int)4294967295 + (long)2", "1");
+  TestExpr("((unsigned int)1 + (long)1) - 3", "4294967295");
+#else
+  // On Linux sizeof(int) == 4 and sizeof(long) == 8.
+  TestExpr("(unsigned int)4294967295 + (long)2", "4294967297");
+  TestExpr("((unsigned int)1 + (long)1) - 3", "-1");
+#endif
 }
 
 TEST_F(InterpreterTest, TestBitwiseOperators) {
@@ -262,6 +315,8 @@ TEST_F(InterpreterTest, TestBitwiseOperators) {
   TestExpr("~1LL", "-2");
   TestExpr("~true", "-2");
   TestExpr("~false", "-1");
+  TestExpr("~var_true", "-2");
+  TestExpr("~var_false", "-1");
   TestExpr("~ull_max", "0");
   TestExpr("~ull_zero", "18446744073709551615");
 
@@ -272,6 +327,7 @@ TEST_F(InterpreterTest, TestBitwiseOperators) {
   TestExpr("(32 >> 2)", "8");
 
   TestExpr("0b1011 & 0xFF", "11");
+  TestExpr("0b1011 & mask_ff", "11");
   TestExpr("0b1011 & 0b0111", "3");
   TestExpr("0b1011 | 0b0111", "15");
   TestExpr("-0b1011 | 0xFF", "-1");
@@ -473,6 +529,9 @@ TEST_F(InterpreterTest, TestAddressOf) {
   TestExprOnlyCompare("&s_str");
   TestExprOnlyCompare("&param");
 
+  TestExprErr("&1", "cannot take the address of an rvalue of type 'int'");
+  TestExprErr("&0.1", "cannot take the address of an rvalue of type 'double'");
+
   TestExprErr("&this",
               "cannot take the address of an rvalue of type 'TestMethods *'");
   TestExprErr("&(&s_str)",
@@ -556,6 +615,8 @@ TEST_F(InterpreterTest, TestCStyleCastBasicType) {
   TestExpr("(long)1.1", "1");
   TestExpr("(long)-1.1f", "-1");
 
+  TestExprErr("&(int)1", "cannot take the address of an rvalue of type 'int'");
+
   // Test with variables.
   TestExpr("(char)a", "'\\x01'");
   TestExpr("(unsigned char)na", "'\\xff'");
@@ -568,6 +629,10 @@ TEST_F(InterpreterTest, TestCStyleCastBasicType) {
   TestExpr("(double)f", "1.1000000238418579");
   TestExpr("(int)f", "1");
   TestExpr("(long)f", "1");
+
+  TestExprErr(
+      "(int)ns_foo_",
+      "cannot convert 'ns::Foo' to 'int' without a conversion operator");
 
   // Test with typedefs and namespaces.
   TestExpr("(myint)1", "1");
@@ -604,6 +669,14 @@ TEST_F(InterpreterTest, TestCStyleCastPointer) {
   TestExprOnlyCompare("(short int*)vp");
   TestExprOnlyCompare("(unsigned long long*)vp");
   TestExprOnlyCompare("(unsigned short int*)vp");
+
+  TestExpr("(void*)0", "0x0000000000000000");
+  TestExpr("(void*)1", "0x0000000000000001");
+  TestExpr("(void*)a", "0x0000000000000001");
+  TestExpr("(void*)na", "0xffffffffffffffff");
+
+  TestExprErr("(char*) 1.0",
+              "cannot cast from type 'double' to pointer type 'char *'");
 
   TestExpr("*(const int* const)ap", "1");
   TestExpr("*(volatile int* const)ap", "1");

@@ -34,7 +34,7 @@
 #include "clang/Lex/PreprocessorOptions.h"
 #include "clang/Lex/Token.h"
 #include "lldb-eval/ast.h"
-#include "lldb-eval/scalar.h"
+#include "lldb-eval/defines.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/Support/FormatAdapters.h"
@@ -76,13 +76,8 @@ std::string FormatDiagnostics(const clang::SourceManager& sm,
                        llvm::fmt_pad("^", arrow - 1, arrow_rpad));
 }
 
-struct IntegerType {
-  unsigned width;
-  bool is_unsigned;
-};
-
-IntegerType PickIntegerType(const clang::NumericLiteralParser& literal,
-                            const llvm::APInt& value) {
+lldb::BasicType PickIntegerType(const clang::NumericLiteralParser& literal,
+                                const llvm::APInt& value) {
   unsigned int_size = TYPE_WIDTH(int);
   unsigned long_size = TYPE_WIDTH(long);
   unsigned long_long_size = TYPE_WIDTH(long long);
@@ -94,28 +89,28 @@ IntegerType PickIntegerType(const clang::NumericLiteralParser& literal,
   // Try int/unsigned int.
   if (!literal.isLong && !literal.isLongLong && value.isIntN(int_size)) {
     if (!literal.isUnsigned && value.isIntN(int_size - 1)) {
-      return {int_size, false};
+      return lldb::eBasicTypeInt;
     }
     if (unsigned_is_allowed) {
-      return {int_size, true};
+      return lldb::eBasicTypeUnsignedInt;
     }
   }
   // Try long/unsigned long.
   if (!literal.isLongLong && value.isIntN(long_size)) {
     if (!literal.isUnsigned && value.isIntN(long_size - 1)) {
-      return {long_size, false};
+      return lldb::eBasicTypeLong;
     }
     if (unsigned_is_allowed) {
-      return {long_size, true};
+      return lldb::eBasicTypeUnsignedLong;
     }
   }
   // Try long long/unsigned long long.
   if (value.isIntN(long_long_size)) {
     if (!literal.isUnsigned && value.isIntN(long_long_size - 1)) {
-      return {long_long_size, false};
+      return lldb::eBasicTypeLongLong;
     }
     if (unsigned_is_allowed) {
-      return {long_long_size, true};
+      return lldb::eBasicTypeUnsignedLongLong;
     }
   }
 
@@ -125,8 +120,7 @@ IntegerType PickIntegerType(const clang::NumericLiteralParser& literal,
   //  warning: integer literal is too large to be represented in a signed
   //  integer type, interpreting as unsigned [-Wimplicitly-unsigned-literal]
   //
-  // TODO(werat): Make this an error?
-  return {long_long_size, true};
+  return lldb::eBasicTypeUnsignedLongLong;
 }
 
 }  // namespace
@@ -1120,10 +1114,10 @@ ExprResult Parser::ParseFloatingLiteral(clang::NumericLiteralParser& literal,
     return std::make_unique<ErrorNode>();
   }
 
-  Scalar value = literal.isFloat ? Scalar(raw_value.convertToFloat())
-                                 : Scalar(raw_value.convertToDouble());
+  lldb::BasicType type =
+      literal.isFloat ? lldb::eBasicTypeFloat : lldb::eBasicTypeDouble;
 
-  return std::make_unique<NumericLiteralNode>(value);
+  return std::make_unique<NumericLiteralNode>(raw_value, type);
 }
 
 ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
@@ -1140,35 +1134,15 @@ ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
     return std::make_unique<ErrorNode>();
   }
 
-  Scalar value;
-  IntegerType int_type = PickIntegerType(literal, raw_value);
+  lldb::BasicType type = PickIntegerType(literal, raw_value);
 
-  if (int_type.is_unsigned) {
-    uint64_t v = raw_value.getZExtValue();
+  // TODO(werat): fix this hack.
+  bool is_unsigned = (type == lldb::eBasicTypeUnsignedInt ||
+                      type == lldb::eBasicTypeUnsignedLong ||
+                      type == lldb::eBasicTypeUnsignedLongLong);
 
-    if (int_type.width == 32) {
-      value.SetValueUInt32(static_cast<uint32_t>(v));
-    } else if (int_type.width == 64) {
-      value.SetValueUInt64(v);
-    }
-  } else {
-    int64_t v = raw_value.getSExtValue();
-
-    if (int_type.width == 32) {
-      value.SetValueInt32(static_cast<int32_t>(v));
-    } else if (int_type.width == 64) {
-      value.SetValueInt64(v);
-    }
-  }
-
-  if (value.type_ == Scalar::Type::INVALID) {
-    BailOut("unexpected int width (" + std::to_string(int_type.width) +
-                ") for numeric constant: " + TokenDescription(token),
-            token.getLocation());
-    return std::make_unique<ErrorNode>();
-  }
-
-  return std::make_unique<NumericLiteralNode>(value);
+  return std::make_unique<NumericLiteralNode>(
+      llvm::APSInt(raw_value, is_unsigned), type);
 }
 
 }  // namespace lldb_eval
