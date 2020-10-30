@@ -16,37 +16,6 @@
 
 #include "lldb/lldb-enumerations.h"
 
-template <int T>
-struct lldb_type_to_builtin;
-
-#define LLDB_TYPE_TO_BUILTIN(T1, T2) \
-  template <>                        \
-  struct lldb_type_to_builtin<T1> {  \
-    using value = T2;                \
-  };
-
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeBool, bool)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeChar, char)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeSignedChar, signed char)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedChar, unsigned char)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeChar16, char16_t)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeChar32, char32_t)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeWChar, wchar_t)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeSignedWChar, wchar_t)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedWChar, wchar_t)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeShort, short)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedShort, unsigned short)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeInt, int)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedInt, unsigned int)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeLong, long)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedLong, unsigned long)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeLongLong, long long)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeUnsignedLongLong, unsigned long long)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeFloat, float)
-LLDB_TYPE_TO_BUILTIN(lldb::eBasicTypeDouble, double)
-
-#undef LLDB_TYPE_TO_BUILTIN
-
 template <typename T>
 struct builtin_to_lldb_type;
 
@@ -64,3 +33,30 @@ BUILTIN_TO_LLDB_TYPE(long long, lldb::eBasicTypeLongLong)
 BUILTIN_TO_LLDB_TYPE(unsigned long long, lldb::eBasicTypeUnsignedLongLong)
 
 #undef BUILTIN_TO_LLDB_TYPE
+
+#define LLDB_TYPE_BUILTIN_PROMOTABLE_INTEGER(V)  \
+  V(lldb::eBasicTypeBool, bool)                  \
+  V(lldb::eBasicTypeChar, char)                  \
+  V(lldb::eBasicTypeSignedChar, signed char)     \
+  V(lldb::eBasicTypeUnsignedChar, unsigned char) \
+  V(lldb::eBasicTypeChar16, char16_t)            \
+  V(lldb::eBasicTypeChar32, char32_t)            \
+  V(lldb::eBasicTypeWChar, wchar_t)              \
+  V(lldb::eBasicTypeSignedWChar, wchar_t)        \
+  V(lldb::eBasicTypeUnsignedWChar, wchar_t)      \
+  V(lldb::eBasicTypeShort, short)                \
+  V(lldb::eBasicTypeUnsignedShort, unsigned short)
+
+#define LLDB_TYPE_BUILTIN_INTEGRAL(V)            \
+  LLDB_TYPE_BUILTIN_PROMOTABLE_INTEGER(V)        \
+  V(lldb::eBasicTypeInt, int)   \
+  V(lldb::eBasicTypeUnsignedInt, unsigned int)   \
+  V(lldb::eBasicTypeLong, long)                  \
+  V(lldb::eBasicTypeUnsignedLong, unsigned long) \
+  V(lldb::eBasicTypeLongLong, long long)         \
+  V(lldb::eBasicTypeUnsignedLongLong, unsigned long long)
+
+#define LLDB_TYPE_BUILTIN(V)      \
+  LLDB_TYPE_BUILTIN_INTEGRAL(V)   \
+  V(lldb::eBasicTypeFloat, float) \
+  V(lldb::eBasicTypeDouble, double)

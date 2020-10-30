@@ -343,7 +343,7 @@ void Interpreter::Visit(const CStyleCastNode* node) {
 }
 
 void Interpreter::Visit(const MemberOfNode* node) {
-  auto lhs = EvalNode(node->lhs());
+  Value lhs = EvalNode(node->lhs());
   if (!lhs) {
     return;
   }

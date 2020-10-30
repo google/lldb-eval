@@ -105,30 +105,19 @@ Value IntegralPromotion(lldb::SBTarget target, Value value) {
   lldb::SBError error;
   IntegralPromotionResult ipr;
 
-#define CASE(type)                                              \
-  case type:                                                    \
-    ipr = value.ReadValue<lldb_type_to_builtin<type>::value>(); \
+  switch (value.type().GetCanonicalType().GetBasicType()) {
+#define CASE(basic_type, builtin_type)     \
+  case basic_type:                         \
+    ipr = value.ReadValue<builtin_type>(); \
     break;
 
-  switch (value.type().GetCanonicalType().GetBasicType()) {
-    CASE(lldb::eBasicTypeBool);
-    CASE(lldb::eBasicTypeChar);
-    CASE(lldb::eBasicTypeSignedChar);
-    CASE(lldb::eBasicTypeUnsignedChar);
-    CASE(lldb::eBasicTypeWChar);
-    CASE(lldb::eBasicTypeSignedWChar);
-    CASE(lldb::eBasicTypeUnsignedWChar);
-    CASE(lldb::eBasicTypeChar16);
-    CASE(lldb::eBasicTypeChar32);
-    CASE(lldb::eBasicTypeShort);
-    CASE(lldb::eBasicTypeUnsignedShort);
+    LLDB_TYPE_BUILTIN_PROMOTABLE_INTEGER(CASE)
+#undef CASE
 
     default:
       // Other types don't need integral promotion.
       return value.GetRvalueRef();
   }
-
-#undef CASE
 
   if (error) {
     // Some error happened, integral promotion result is likely invalid.
@@ -154,35 +143,27 @@ size_t ConversionRank(lldb::BasicType basic_type) {
     case lldb::eBasicTypeBool:
       return 1;
     case lldb::eBasicTypeChar:
-      return 2;
     case lldb::eBasicTypeSignedChar:
-      return 2;
     case lldb::eBasicTypeUnsignedChar:
       return 2;
-    case lldb::eBasicTypeSignedWChar:
-      return 2;
-    case lldb::eBasicTypeUnsignedWChar:
-      return 2;
     case lldb::eBasicTypeShort:
-      return 3;
     case lldb::eBasicTypeUnsignedShort:
       return 3;
     case lldb::eBasicTypeInt:
-      return 4;
     case lldb::eBasicTypeUnsignedInt:
       return 4;
     case lldb::eBasicTypeLong:
-      return 5;
     case lldb::eBasicTypeUnsignedLong:
       return 5;
     case lldb::eBasicTypeLongLong:
-      return 6;
     case lldb::eBasicTypeUnsignedLongLong:
       return 6;
 
       // TODO: The ranks of char16_t, char32_t, and wchar_t are equal to the
       // ranks of their underlying types.
     case lldb::eBasicTypeWChar:
+    case lldb::eBasicTypeSignedWChar:
+    case lldb::eBasicTypeUnsignedWChar:
       return 3;
     case lldb::eBasicTypeChar16:
       return 3;
@@ -215,7 +196,7 @@ lldb::BasicType BasicTypeToUnsigned(lldb::BasicType basic_type) {
   }
 }
 
-void ConvertLeftToRight(lldb::SBTarget target, Value* l, Value* r) {
+void PerformArithmeticConversions(lldb::SBTarget target, Value* l, Value* r) {
   if (r->IsFloat()) {
     // Convert the candidate to the appropriate floating point value.
     if (l->IsInteger()) {
@@ -287,6 +268,10 @@ lldb::SBType UsualArithmeticConversions(lldb::SBTarget target, Value* lhs,
     *rhs = IntegralPromotion(target, *rhs);
   }
 
+  // Tuples are ordered element-wise, e.g. (2, 1) > (1, 2) > (1, 2). We use this
+  // property to figure out the operant with overall highest rank (e.g. `float`
+  // is higher than any of the integral types).
+  //
   // <is_float, conversion_rank, is_unsigned>
   using Rank = std::tuple<bool, size_t, bool>;
 
@@ -300,9 +285,9 @@ lldb::SBType UsualArithmeticConversions(lldb::SBTarget target, Value* lhs,
   auto r_rank = GetRank(*rhs);
 
   if (l_rank < r_rank) {
-    ConvertLeftToRight(target, lhs, rhs);
+    PerformArithmeticConversions(target, lhs, rhs);
   } else if (l_rank > r_rank) {
-    ConvertLeftToRight(target, rhs, lhs);
+    PerformArithmeticConversions(target, rhs, lhs);
   }
 
   // TODO: make sure the types match.
@@ -311,42 +296,23 @@ lldb::SBType UsualArithmeticConversions(lldb::SBTarget target, Value* lhs,
 
 Value CastScalarToBasicType(lldb::SBTarget target, Value val,
                             lldb::SBType type) {
-  // Create an lldb::SBValue representing this scalar value.
   Value ret;
 
-#define CASE(basic_type)                                               \
-  case basic_type: {                                                   \
-    auto v = val.ConvertTo<lldb_type_to_builtin<basic_type>::value>(); \
-    ret = CreateValueFromBytes(target, &v, type);                      \
-    break;                                                             \
+  switch (type.GetCanonicalType().GetBasicType()) {
+#define CASE(basic_type, builtin_type)            \
+  case basic_type: {                              \
+    auto v = val.ConvertTo<builtin_type>();       \
+    ret = CreateValueFromBytes(target, &v, type); \
+    break;                                        \
   }
 
-  switch (type.GetCanonicalType().GetBasicType()) {
-    CASE(lldb::eBasicTypeChar);
-    CASE(lldb::eBasicTypeSignedChar);
-    CASE(lldb::eBasicTypeUnsignedChar);
-    CASE(lldb::eBasicTypeChar16);
-    CASE(lldb::eBasicTypeChar32);
-    CASE(lldb::eBasicTypeWChar);
-    CASE(lldb::eBasicTypeSignedWChar);
-    CASE(lldb::eBasicTypeUnsignedWChar);
-    CASE(lldb::eBasicTypeShort);
-    CASE(lldb::eBasicTypeUnsignedShort);
-    CASE(lldb::eBasicTypeInt);
-    CASE(lldb::eBasicTypeUnsignedInt);
-    CASE(lldb::eBasicTypeLong);
-    CASE(lldb::eBasicTypeUnsignedLong);
-    CASE(lldb::eBasicTypeLongLong);
-    CASE(lldb::eBasicTypeUnsignedLongLong);
-    CASE(lldb::eBasicTypeFloat);
-    CASE(lldb::eBasicTypeDouble);
+    LLDB_TYPE_BUILTIN(CASE)
+#undef CASE
 
     default:
       // Invalid basic type, can't cast to it.
       break;
   }
-
-#undef CASE
 
   return ret;
 }
@@ -356,37 +322,21 @@ Value CastPointerToBasicType(lldb::SBTarget target, Value val,
   uintptr_t addr = val.GetValueAsAddress();
   Value ret;
 
-#define CASE(basic_type)                                                 \
-  case basic_type: {                                                     \
-    auto v = static_cast<lldb_type_to_builtin<basic_type>::value>(addr); \
-    ret = CreateValueFromBytes(target, &v, type);                        \
-    break;                                                               \
+  switch (type.GetCanonicalType().GetBasicType()) {
+#define CASE(basic_type, builtin_type)            \
+  case basic_type: {                              \
+    auto v = static_cast<builtin_type>(addr);     \
+    ret = CreateValueFromBytes(target, &v, type); \
+    break;                                        \
   }
 
-  switch (type.GetCanonicalType().GetBasicType()) {
-    CASE(lldb::eBasicTypeChar);
-    CASE(lldb::eBasicTypeSignedChar);
-    CASE(lldb::eBasicTypeUnsignedChar);
-    CASE(lldb::eBasicTypeChar16);
-    CASE(lldb::eBasicTypeChar32);
-    CASE(lldb::eBasicTypeWChar);
-    CASE(lldb::eBasicTypeSignedWChar);
-    CASE(lldb::eBasicTypeUnsignedWChar);
-    CASE(lldb::eBasicTypeShort);
-    CASE(lldb::eBasicTypeUnsignedShort);
-    CASE(lldb::eBasicTypeInt);
-    CASE(lldb::eBasicTypeUnsignedInt);
-    CASE(lldb::eBasicTypeLong);
-    CASE(lldb::eBasicTypeUnsignedLong);
-    CASE(lldb::eBasicTypeLongLong);
-    CASE(lldb::eBasicTypeUnsignedLongLong);
+    LLDB_TYPE_BUILTIN_INTEGRAL(CASE)
+#undef CASE
 
     default:
       // Invalid basic type, can't cast to it.
       break;
   }
-
-#undef CASE
 
   return ret;
 }

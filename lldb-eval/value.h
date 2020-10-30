@@ -82,34 +82,18 @@ class Value {
   T ConvertTo() {
     static_assert(std::is_scalar<T>::value, "T must be scalar");
 
-#define CASE(type) \
-  case type:       \
-    return static_cast<T>(ReadValue<lldb_type_to_builtin<type>::value>())
-
     switch (type_.GetCanonicalType().GetBasicType()) {
-      CASE(lldb::eBasicTypeBool);
-      CASE(lldb::eBasicTypeChar);
-      CASE(lldb::eBasicTypeSignedChar);
-      CASE(lldb::eBasicTypeChar16);
-      CASE(lldb::eBasicTypeChar32);
-      CASE(lldb::eBasicTypeWChar);
-      CASE(lldb::eBasicTypeSignedWChar);
-      CASE(lldb::eBasicTypeUnsignedWChar);
-      CASE(lldb::eBasicTypeShort);
-      CASE(lldb::eBasicTypeInt);
-      CASE(lldb::eBasicTypeLong);
-      CASE(lldb::eBasicTypeLongLong);
-      CASE(lldb::eBasicTypeUnsignedChar);
-      CASE(lldb::eBasicTypeUnsignedShort);
-      CASE(lldb::eBasicTypeUnsignedInt);
-      CASE(lldb::eBasicTypeUnsignedLong);
-      CASE(lldb::eBasicTypeUnsignedLongLong);
-      CASE(lldb::eBasicTypeFloat);
-      CASE(lldb::eBasicTypeDouble);
+#define CASE(basic_type, builtin_type)                \
+  case basic_type: {                                  \
+    return static_cast<T>(ReadValue<builtin_type>()); \
+  }
+
+      LLDB_TYPE_BUILTIN(CASE)
+#undef CASE
+
       default:
         return T();
     }
-#undef CASE
   }
 
  private:
