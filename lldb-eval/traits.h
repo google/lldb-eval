@@ -49,7 +49,7 @@ BUILTIN_TO_LLDB_TYPE(unsigned long long, lldb::eBasicTypeUnsignedLongLong)
 
 #define LLDB_TYPE_BUILTIN_INTEGRAL(V)            \
   LLDB_TYPE_BUILTIN_PROMOTABLE_INTEGER(V)        \
-  V(lldb::eBasicTypeInt, int)   \
+  V(lldb::eBasicTypeInt, int)                    \
   V(lldb::eBasicTypeUnsignedInt, unsigned int)   \
   V(lldb::eBasicTypeLong, long)                  \
   V(lldb::eBasicTypeUnsignedLong, unsigned long) \
