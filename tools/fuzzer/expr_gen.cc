@@ -35,19 +35,6 @@ BooleanConstant ExprGenerator::gen_boolean_constant() {
   return BooleanConstant(rng_->gen_boolean());
 }
 
-IntegerConstant ExprGenerator::gen_integer_constant() {
-  auto value = rng_->gen_u64(cfg_.int_const_min, cfg_.int_const_max);
-
-  return IntegerConstant(value);
-}
-
-DoubleConstant ExprGenerator::gen_double_constant() {
-  auto value =
-      rng_->gen_double(cfg_.double_constant_min, cfg_.double_constant_max);
-
-  return DoubleConstant(value);
-}
-
 VariableExpr ExprGenerator::gen_variable_expr() { return VariableExpr(VAR); }
 
 BinaryExpr ExprGenerator::gen_binary_expr(const Weights& weights) {
@@ -131,14 +118,15 @@ Expr ExprGenerator::gen_with_weights(const Weights& weights) {
   new_weights[kind] *= cfg_.expr_kind_weights[idx].dampening_factor;
 
   // Dummy value for initialization
-  Expr expr(IntegerConstant(0));
+  Expr expr(BooleanConstant(false));
   switch (kind) {
     case ExprKind::IntegerConstant:
-      expr = gen_integer_constant();
+      expr = rng_->gen_integer_constant(cfg_.int_const_min, cfg_.int_const_max);
       break;
 
     case ExprKind::DoubleConstant:
-      expr = gen_double_constant();
+      expr = rng_->gen_double_constant(cfg_.double_constant_min,
+                                       cfg_.double_constant_max);
       break;
 
     case ExprKind::VariableExpr:
@@ -337,14 +325,47 @@ UnOp DefaultGeneratorRng::gen_un_op(UnOpMask mask) {
   return (UnOp)pick_nth_set_bit(mask, rng_);
 }
 
-uint64_t DefaultGeneratorRng::gen_u64(uint64_t min, uint64_t max) {
+IntegerConstant DefaultGeneratorRng::gen_integer_constant(uint64_t min,
+                                                          uint64_t max) {
+  using Base = IntegerConstant::Base;
+  using Length = IntegerConstant::Length;
+  using Signedness = IntegerConstant::Signedness;
+
   std::uniform_int_distribution<uint64_t> distr(min, max);
-  return distr(rng_);
+  auto value = distr(rng_);
+
+  std::uniform_int_distribution<int> base_distr((int)Base::EnumFirst,
+                                                (int)Base::EnumLast);
+  auto base = (Base)base_distr(rng_);
+
+  std::uniform_int_distribution<int> length_distr((int)Length::EnumFirst,
+                                                  (int)Length::EnumLast);
+  auto length = (Length)base_distr(rng_);
+
+  std::uniform_int_distribution<int> sign_distr((int)Signedness::EnumFirst,
+                                                (int)Signedness::EnumLast);
+  auto signedness = (Signedness)base_distr(rng_);
+
+  return IntegerConstant(value, base, length, signedness);
 }
 
-double DefaultGeneratorRng::gen_double(double min, double max) {
+DoubleConstant DefaultGeneratorRng::gen_double_constant(double min,
+                                                        double max) {
+  using Format = DoubleConstant::Format;
+  using Length = DoubleConstant::Length;
+
   std::uniform_real_distribution<double> distr(min, max);
-  return distr(rng_);
+  auto value = distr(rng_);
+
+  std::uniform_int_distribution<int> format_distr((int)Format::EnumFirst,
+                                                  (int)Format::EnumLast);
+  auto format = (Format)format_distr(rng_);
+
+  std::uniform_int_distribution<int> length_distr((int)Length::EnumFirst,
+                                                  (int)Length::EnumLast);
+  auto length = (Length)length_distr(rng_);
+
+  return DoubleConstant(value, format, length);
 }
 
 CvQualifiers DefaultGeneratorRng::gen_cv_qualifiers(float const_prob,

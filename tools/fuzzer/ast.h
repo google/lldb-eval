@@ -235,33 +235,85 @@ class VariableExpr {
 
 class IntegerConstant {
  public:
+  enum class Base : unsigned char {
+    EnumFirst,
+    Dec = EnumFirst,
+    Hex,
+    Oct,
+    Bin,
+    EnumLast = Bin,
+  };
+
+  enum class Length {
+    EnumFirst,
+    Int = EnumFirst,
+    Long,
+    LongLong,
+    EnumLast = LongLong,
+  };
+  enum class Signedness {
+    EnumFirst,
+    Signed = EnumFirst,
+    Unsigned,
+    EnumLast = Unsigned,
+  };
+
   static constexpr int PRECEDENCE = 0;
 
-  explicit IntegerConstant(uint64_t value);
+  explicit IntegerConstant(uint64_t value) : value_(value) {}
+  IntegerConstant(uint64_t value, Base base, Length length,
+                  Signedness signedness)
+      : value_(value), base_(base), length_(length), signedness_(signedness) {}
 
-  uint64_t value() const;
+  uint64_t value() const { return value_; }
+  Base base() const { return base_; }
+  Length length() const { return length_; }
+  Signedness signedness() const { return signedness_; }
   int precedence() const { return PRECEDENCE; }
 
   friend std::ostream& operator<<(std::ostream& os,
                                   const IntegerConstant& expr);
 
  private:
-  uint64_t value_;
+  uint64_t value_ = 0;
+  Base base_ = Base::Dec;
+  Length length_ = Length::Int;
+  Signedness signedness_ = Signedness::Signed;
 };
 
 class DoubleConstant {
  public:
+  enum class Format : unsigned char {
+    EnumFirst,
+    Default = EnumFirst,
+    Scientific,
+    Hex,
+    EnumLast = Hex,
+  };
+
+  // TODO(alextasos): Add long doubles when lldb-eval adds support for them
+  enum class Length : unsigned char {
+    EnumFirst,
+    Float = EnumFirst,
+    Double,
+    EnumLast = Double,
+  };
+
   static constexpr int PRECEDENCE = 0;
 
-  explicit DoubleConstant(double value);
+  explicit DoubleConstant(double value) : value_(value) {}
+  DoubleConstant(double value, Format format, Length length)
+      : value_(value), format_(format), length_(length) {}
 
-  double value() const;
+  double value() const { return value_; }
   int precedence() const { return PRECEDENCE; }
 
   friend std::ostream& operator<<(std::ostream& os, const DoubleConstant& expr);
 
  private:
-  double value_;
+  double value_ = 0;
+  Format format_ = Format::Default;
+  Length length_ = Length::Double;
 };
 
 class ParenthesizedExpr {
