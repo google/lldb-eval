@@ -20,6 +20,7 @@
 #include "lldb/API/SBExecutionContext.h"
 #include "lldb/API/SBTarget.h"
 #include "lldb/API/SBType.h"
+#include "llvm/Support/FormatVariadic.h"
 
 namespace lldb_eval {
 
@@ -93,6 +94,67 @@ lldb::SBType ExpressionContext::ResolveTypeByName(const char* name) {
   }
 
   return lldb::SBType();
+}
+
+lldb::SBValue ExpressionContext::LookupIdentifier(const char* name) {
+  lldb::SBTarget target = exec_ctx_.GetTarget();
+  lldb::SBFrame frame = exec_ctx_.GetFrame();
+
+  // Internally values don't have global scope qualifier in their names and
+  // LLDB doesn't support queries with it too.
+  llvm::StringRef name_ref(name);
+  bool global_scope = false;
+
+  if (name_ref.startswith("::")) {
+    name_ref = name_ref.drop_front(2);
+    global_scope = true;
+  }
+
+  lldb::SBValue value;
+
+  // If the identifier doesn't refer to the global scope and doesn't have any
+  // other scope qualifiers, try looking among the local and instance variables.
+  if (!global_scope && name_ref.find("::") == llvm::StringRef::npos) {
+    // Try looking for a local variable in current scope.
+    if (!value) {
+      value = frame.FindVariable(name_ref.data());
+    }
+    // Try looking for an instance variable (class member).
+    if (!value) {
+      value =
+          frame.FindVariable("this").GetChildMemberWithName(name_ref.data());
+    }
+  }
+
+  // Try looking for a global or static variable.
+  if (!value) {
+    // TODO(werat): Implement scope-aware lookup. Relative scopes should be
+    // resolved relative to the current scope. I.e. if the current frame is in
+    // "ns1::ns2::Foo()", then "ns2::x" should resolve to "ns1::ns2::x".
+
+    // List global variable with the same "basename". There can be many matches
+    // from other scopes (namespaces, classes), so we do additional filtering
+    // later.
+    lldb::SBValueList values = target.FindGlobalVariables(
+        name_ref.data(), /*max_matches=*/std::numeric_limits<uint32_t>::max());
+
+    // Find the corrent variable by matching the name. lldb::SBValue::GetName()
+    // can return strings like "::globarVar", "ns::i" or "int const ns::foo"
+    // depending on the version and the platform.
+    for (uint32_t i = 0; i < values.GetSize(); ++i) {
+      lldb::SBValue val = values.GetValueAtIndex(i);
+      llvm::StringRef val_name = val.GetName();
+
+      if (val_name == name_ref ||
+          val_name == llvm::formatv("::{0}", name_ref).str() ||
+          val_name.endswith(llvm::formatv(" {0}", name_ref).str())) {
+        value = val;
+        break;
+      }
+    }
+  }
+
+  return value;
 }
 
 }  // namespace lldb_eval

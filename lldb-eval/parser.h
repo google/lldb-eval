@@ -48,19 +48,9 @@ inline std::string TokenKindsJoin(clang::tok::TokenKind k, Ts... ks) {
 // docs/expr-ebnf.txt
 class Parser {
  public:
-  // Type for representing errors that can occur during the parsing of the
-  // expression.
-  // TODO(werat): Use std::string + std::error_code?
-  // TODO(werat): This should at least contain the position in the expression.
-  using Error = std::string;
-
- public:
   explicit Parser(ExpressionContext& expr_ctx);
 
-  ExprResult Run();
-
-  bool HasError() { return !error_.empty(); }
-  const Error& GetError() { return error_; }
+  ExprResult Run(Error& error);
 
  private:
   ExprResult ParseExpression();
@@ -98,7 +88,7 @@ class Parser {
   bool IsCvQualifier(clang::Token token) const;
   bool IsPtrOperator(clang::Token token) const;
 
-  IdExpression ParseIdExpression();
+  std::string ParseIdExpression();
   std::string ParseUnqualifiedId();
 
   ExprResult ParseNumericLiteral();
@@ -111,11 +101,13 @@ class Parser {
                                  clang::Token token);
 
   void ConsumeToken();
-  void BailOut(const std::string& error, clang::SourceLocation loc);
+  void BailOut(ErrorCode error_code, const std::string& error,
+               clang::SourceLocation loc);
 
   void Expect(clang::tok::TokenKind kind) {
     if (token_.isNot(kind)) {
-      BailOut("expected " + TokenKindsJoin(kind) +
+      BailOut(ErrorCode::kUnknown,
+              "expected " + TokenKindsJoin(kind) +
                   ", got: " + TokenDescription(token_),
               token_.getLocation());
     }
@@ -124,7 +116,8 @@ class Parser {
   template <typename... Ts>
   void ExpectOneOf(clang::tok::TokenKind k, Ts... ks) {
     if (!token_.isOneOf(k, ks...)) {
-      BailOut("expected any of (" + TokenKindsJoin(k, ks...) +
+      BailOut(ErrorCode::kUnknown,
+              "expected any of (" + TokenKindsJoin(k, ks...) +
                   "), got: " + TokenDescription(token_),
               token_.getLocation());
     }
@@ -143,6 +136,10 @@ class Parser {
   // (for example, for source locations), so it's expected that expression
   // context will outlive the parser.
   ExpressionContext* expr_ctx_;
+
+  // Convenience references, used by the interpreter to lookup variables and
+  // types, create objects, perform casts, etc.
+  lldb::SBTarget target_;
 
   // The token lexer is stopped at (aka "current token").
   clang::Token token_;
@@ -179,7 +176,7 @@ class TentativeParsingAction {
   }
   void Rollback() {
     parser_->pp_->Backtrack();
-    parser_->error_.clear();
+    parser_->error_.Clear();
     parser_->token_ = backtrack_token_;
     enabled_ = false;
   }

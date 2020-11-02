@@ -31,32 +31,35 @@
 using bazel::tools::cpp::runfiles::Runfiles;
 
 void EvalExpr(lldb::SBFrame frame, const std::string& expr) {
+  lldb_eval::Error error;
   lldb_eval::ExpressionContext expr_ctx(expr, lldb::SBExecutionContext(frame));
 
-  auto time_start = std::chrono::high_resolution_clock::now();
+  auto t1 = std::chrono::high_resolution_clock::now();
 
   lldb_eval::Parser p(expr_ctx);
-  auto expr_result = p.Run();
+  lldb_eval::ExprResult expr_result = p.Run(error);
 
-  auto time_parse = std::chrono::high_resolution_clock::now();
+  auto elapsed_parse = std::chrono::duration_cast<std::chrono::microseconds>(
+      std::chrono::high_resolution_clock::now() - t1);
 
-  if (p.HasError()) {
-    std::cerr << p.GetError() << std::endl;
+  if (error) {
+    std::cerr << error.message() << std::endl;
   }
 
+  auto t2 = std::chrono::high_resolution_clock::now();
+
   lldb_eval::Interpreter eval(expr_ctx);
+  lldb_eval::Value value = eval.Eval(expr_result.get(), error);
 
-  lldb_eval::EvalError error;
-  lldb_eval::Value result = eval.Eval(expr_result.get(), error);
-
-  auto time_eval = std::chrono::high_resolution_clock::now();
+  auto elapsed_eval = std::chrono::duration_cast<std::chrono::microseconds>(
+      std::chrono::high_resolution_clock::now() - t2);
 
   if (error) {
     std::cerr << error.message() << std::endl;
   } else {
     // Due to various bugs result can still be NULL even though there was no
     // error reported. Printing NULL leads to segfault, so check and replace it.
-    auto sb_value = result.inner_value();
+    auto sb_value = value.inner_value();
 
     if (sb_value.IsValid()) {
       std::cerr << "value = " << sb_value.GetValue() << std::endl;
@@ -66,15 +69,8 @@ void EvalExpr(lldb::SBFrame frame, const std::string& expr) {
     }
   }
 
-  auto total = std::chrono::duration_cast<std::chrono::microseconds>(
-      time_eval - time_start);
-  auto elapsed_parse = std::chrono::duration_cast<std::chrono::microseconds>(
-      time_parse - time_start);
-  auto elapsed_eval = std::chrono::duration_cast<std::chrono::microseconds>(
-      time_eval - time_parse);
-
   std::cerr << "----------" << std::endl
-            << "elapsed = " << total.count()
+            << "elapsed = " << (elapsed_parse + elapsed_eval).count()
             << "us (parse = " << elapsed_parse.count()
             << "us, eval = " << elapsed_eval.count() << "us)" << std::endl;
 }

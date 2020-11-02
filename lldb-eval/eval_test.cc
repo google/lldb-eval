@@ -41,6 +41,26 @@ namespace {
 
 using bazel::tools::cpp::runfiles::Runfiles;
 
+lldb_eval::Value EvaluateExpression(lldb::SBFrame frame,
+                                    const std::string& expr,
+                                    lldb_eval::Error& error) {
+  lldb_eval::ExpressionContext ctx(expr, lldb::SBExecutionContext(frame));
+
+  lldb_eval::Parser p(ctx);
+  lldb_eval::ExprResult tree = p.Run(error);
+  if (error) {
+    return lldb_eval::Value();
+  }
+
+  lldb_eval::Interpreter eval(ctx);
+  lldb_eval::Value ret = eval.Eval(tree.get(), error);
+  if (error) {
+    return lldb_eval::Value();
+  }
+
+  return ret;
+}
+
 class InterpreterTest : public ::testing::Test {
  protected:
   static void SetUpTestSuite() {
@@ -125,14 +145,10 @@ Runfiles* InterpreterTest::runfiles_ = nullptr;
 
 void InterpreterTest::EvaluateLldbEval(const std::string& expr,
                                        lldb::SBValue& result) {
-  lldb_eval::ExpressionContext expr_ctx(expr, lldb::SBExecutionContext(frame_));
-  lldb_eval::Parser p(expr_ctx);
-  auto expr_result = p.Run();
-  ASSERT_FALSE(p.HasError()) << p.GetError();
-  lldb_eval::EvalError error;
-  lldb_eval::Interpreter interpreter(expr_ctx);
-  auto ret = interpreter.Eval(expr_result.get(), error);
-  EXPECT_EQ(error.code(), lldb_eval::EvalErrorCode::OK);
+  lldb_eval::Error error;
+  lldb_eval::Value ret = EvaluateExpression(frame_, expr, error);
+
+  EXPECT_EQ(error.code(), lldb_eval::ErrorCode::kOk);
   EXPECT_EQ(error.message(), "");
   result = ret.inner_value();
 }
@@ -179,13 +195,8 @@ void InterpreterTest::TestExprOnlyCompare(const std::string& expr) {
 void InterpreterTest::TestExprErr(const std::string& expr,
                                   const std::string& msg) {
   SCOPED_TRACE("[Evaluate with lldb-eval]: " + expr);
-  lldb_eval::ExpressionContext expr_ctx(expr, lldb::SBExecutionContext(frame_));
-  lldb_eval::Parser p(expr_ctx);
-  auto expr_result = p.Run();
-  ASSERT_FALSE(p.HasError()) << p.GetError();
-  lldb_eval::EvalError error;
-  lldb_eval::Interpreter interpreter(expr_ctx);
-  auto ret = interpreter.Eval(expr_result.get(), error);
+  lldb_eval::Error error;
+  lldb_eval::Value result = EvaluateExpression(frame_, expr, error);
   EXPECT_THAT(error.message(), ::testing::HasSubstr(msg));
 }
 
@@ -427,14 +438,10 @@ TEST_F(InterpreterTest, TestLogicalOperators) {
   TestExpr("falseVar || (2 > 1)", "true");
   TestExpr("falseVar || (2 < 1)", "false");
 
-  {
-    // TODO(b/155864809): This should fail due to the symbol resolution and type
-    // checking. Right now lldb-eval doesn't evaluate the second exprssion.
-    SkipLLDB _(this);
-
-    TestExpr("true || __doesnt_exist", "true");
-    TestExpr("false && __doesnt_exist", "false");
-  }
+  TestExprErr("true || __doesnt_exist",
+              "use of undeclared identifier '__doesnt_exist'");
+  TestExprErr("false && __doesnt_exist",
+              "use of undeclared identifier '__doesnt_exist'");
 
   TestExpr("!p_ptr", "false");
   TestExpr("!!p_ptr", "true");
@@ -477,6 +484,12 @@ TEST_F(InterpreterTest, TestMemberOf) {
   TestExpr("sp->r", "2");
   TestExpr("sp->r + 1", "3");
 
+  auto msg =
+      "<expr>:1:5: expected 'identifier', got: <'4' (numeric_constant)>\n"
+      "sp->4\n"
+      "    ^";
+  TestExprErr("sp->4", msg);
+  TestExprErr("sp->foo", "no member named 'foo' in 'S'");
   TestExprErr("sp->r / (void*)0",
               "invalid operands to binary expression ('int' and 'void *')");
 }

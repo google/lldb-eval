@@ -22,8 +22,37 @@
 #include "clang/Basic/SourceManager.h"
 #include "lldb/API/SBExecutionContext.h"
 #include "lldb/API/SBType.h"
+#include "lldb/API/SBValue.h"
 
 namespace lldb_eval {
+
+enum class ErrorCode : unsigned char {
+  kOk = 0,
+  kInvalidExpressionSyntax,
+  kInvalidNumericLiteral,
+  kInvalidOperandType,
+  kUndeclaredIdentifier,
+  kNotImplemented,
+  kUnknown,
+};
+
+class Error {
+ public:
+  void Set(ErrorCode code, std::string message) {
+    code_ = code;
+    message_ = std::move(message);
+  }
+  void Clear() { *this = {}; }
+
+  ErrorCode code() const { return code_; }
+  const std::string& message() const { return message_; }
+
+  explicit operator bool() const { return code_ != ErrorCode::kOk; }
+
+ private:
+  ErrorCode code_ = ErrorCode::kOk;
+  std::string message_;
+};
 
 class ExpressionContext {
  public:
@@ -34,6 +63,7 @@ class ExpressionContext {
 
  public:
   lldb::SBType ResolveTypeByName(const char* name);
+  lldb::SBValue LookupIdentifier(const char* name);
 
  private:
   // Store the expression, since SourceManager doesn't take the ownership.

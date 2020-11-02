@@ -30,41 +30,14 @@
 
 namespace lldb_eval {
 
-enum class EvalErrorCode {
-  OK = 0,
-  INVALID_EXPRESSION_SYNTAX,
-  INVALID_OPERAND_TYPE,
-  UNDECLARED_IDENTIFIER,
-  NOT_IMPLEMENTED,
-  UNKNOWN,
-};
-
-class EvalError {
- public:
-  EvalError();
-
-  void Set(EvalErrorCode code, const std::string& message);
-  void Clear();
-
-  EvalErrorCode code() const;
-  const std::string& message() const;
-
-  explicit operator bool() const;
-
- private:
-  EvalErrorCode code_;
-  std::string message_;
-};
-
 class Interpreter : Visitor {
  public:
   explicit Interpreter(ExpressionContext& expr_ctx) : expr_ctx_(&expr_ctx) {
     target_ = expr_ctx_->GetExecutionContext().GetTarget();
-    frame_ = expr_ctx_->GetExecutionContext().GetFrame();
   }
 
  public:
-  Value Eval(const AstNode* tree, EvalError& error);
+  Value Eval(const AstNode* tree, Error& error);
 
  private:
   void Visit(const ErrorNode* node) override;
@@ -124,10 +97,9 @@ class Interpreter : Visitor {
   // Convenience references, used by the interpreter to lookup variables and
   // types, create objects, perform casts, etc.
   lldb::SBTarget target_;
-  lldb::SBFrame frame_;
 
   Value result_;
-  EvalError error_;
+  Error error_;
 };
 
 enum class ArithmeticOp {

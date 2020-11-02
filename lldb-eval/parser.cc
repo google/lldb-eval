@@ -35,6 +35,9 @@
 #include "clang/Lex/Token.h"
 #include "lldb-eval/ast.h"
 #include "lldb-eval/defines.h"
+#include "lldb-eval/value.h"
+#include "lldb/API/SBType.h"
+#include "lldb/API/SBValue.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/Support/FormatAdapters.h"
@@ -128,6 +131,8 @@ lldb::BasicType PickIntegerType(const clang::NumericLiteralParser& literal,
 namespace lldb_eval {
 
 Parser::Parser(ExpressionContext& expr_ctx) : expr_ctx_(&expr_ctx) {
+  target_ = expr_ctx_->GetExecutionContext().GetTarget();
+
   clang::SourceManager& sm = expr_ctx_->GetSourceManager();
   clang::DiagnosticsEngine& de = sm.getDiagnostics();
 
@@ -160,14 +165,17 @@ Parser::Parser(ExpressionContext& expr_ctx) : expr_ctx_(&expr_ctx) {
   token_.setKind(clang::tok::unknown);
 }
 
-ExprResult Parser::Run() {
+ExprResult Parser::Run(Error& error) {
   ConsumeToken();
   auto expr = ParseExpression();
   Expect(clang::tok::eof);
 
+  error = error_;
+  error_.Clear();
+
   // Explicitly return ErrorNode if there was an error during the parsing. Some
   // routines raise an error, but don't change the return value (e.g. Expect).
-  if (HasError()) {
+  if (error) {
     return std::make_unique<ErrorNode>();
   }
   return expr;
@@ -182,14 +190,16 @@ void Parser::ConsumeToken() {
   pp_->Lex(token_);
 }
 
-void Parser::BailOut(const std::string& error, clang::SourceLocation loc) {
-  if (!error_.empty()) {
+void Parser::BailOut(ErrorCode code, const std::string& error,
+                     clang::SourceLocation loc) {
+  if (error_) {
     // If error is already set, then the parser is in the "bail-out" mode. Don't
     // do anything and keep the original error.
     return;
   }
 
-  error_ = FormatDiagnostics(expr_ctx_->GetSourceManager(), error, loc);
+  error_.Set(code,
+             FormatDiagnostics(expr_ctx_->GetSourceManager(), error, loc));
   token_.setKind(clang::tok::eof);
 }
 
@@ -522,6 +532,7 @@ ExprResult Parser::ParsePostfixExpression() {
       case clang::tok::plusplus:
       case clang::tok::minusminus: {
         BailOut(
+            ErrorCode::kNotImplemented,
             "Don't support postfix inc/dec yet: " + TokenDescription(token_),
             token_.getLocation());
         return std::make_unique<ErrorNode>();
@@ -535,11 +546,9 @@ ExprResult Parser::ParsePostfixExpression() {
                                              std::move(lhs), std::move(rhs));
         break;
       }
-      default: {
-        BailOut("Can't parse this: " + TokenDescription(token_),
-                token_.getLocation());
-        return std::make_unique<ErrorNode>();
-      }
+
+      default:
+        lldb_eval_unreachable("Invalid token");
     }
   }
 
@@ -561,10 +570,31 @@ ExprResult Parser::ParsePrimaryExpression() {
   } else if (token_.isOneOf(clang::tok::kw_true, clang::tok::kw_false)) {
     return ParseBooleanLiteral();
   } else if (token_.isOneOf(clang::tok::coloncolon, clang::tok::identifier)) {
-    return ParseIdExpression();
+    // Save the source location for the diagnostics message.
+    clang::SourceLocation loc = token_.getLocation();
+    auto identifier = ParseIdExpression();
+    auto value = expr_ctx_->LookupIdentifier(identifier.c_str());
+    if (!value) {
+      BailOut(ErrorCode::kUndeclaredIdentifier,
+              "use of undeclared identifier '" + identifier + "'", loc);
+      return std::make_unique<ErrorNode>();
+    }
+    return std::make_unique<IdentifierNode>(identifier,
+                                            Value(value, /*is_rvalue*/ false));
   } else if (token_.is(clang::tok::kw_this)) {
+    // Save the source location for the diagnostics message.
+    clang::SourceLocation loc = token_.getLocation();
     ConsumeToken();
-    return std::make_unique<IdentifierNode>("this");
+    auto value = expr_ctx_->LookupIdentifier("this");
+    if (!value) {
+      BailOut(ErrorCode::kUndeclaredIdentifier,
+              "invalid use of 'this' outside of a non-static member function",
+              loc);
+      return std::make_unique<ErrorNode>();
+    }
+    // Special case for "this" pointer. As per C++ standard, it's a prvalue.
+    return std::make_unique<IdentifierNode>("this",
+                                            Value(value, /*is_rvalue*/ true));
   } else if (token_.is(clang::tok::l_paren)) {
     ConsumeToken();
     auto expr = ParseExpression();
@@ -573,7 +603,8 @@ ExprResult Parser::ParsePrimaryExpression() {
     return expr;
   }
 
-  BailOut("Unexpected token: " + TokenDescription(token_),
+  BailOut(ErrorCode::kInvalidExpressionSyntax,
+          "Unexpected token: " + TokenDescription(token_),
           token_.getLocation());
   return std::make_unique<ErrorNode>();
 }
@@ -880,16 +911,15 @@ std::string Parser::ParseTemplateArgument() {
     // rollback again.
     TentativeParsingAction tentative_parsing(this);
 
-    // TODO(werat): Don't return IdExpression from ParseIdExpression, this makes
-    // it weird to perform error checking. Return either std::string (empty in
-    // case of an error) or just ExprResult and check it for ErrorNode.
+    // Parse an id_expression.
     auto id_expression = ParseIdExpression();
 
     // If we've parsed the id_expression successfully and the next token can
     // finish the template_argument, then we're done here.
-    if (!HasError() && token_.isOneOf(clang::tok::comma, clang::tok::greater)) {
+    if (!id_expression.empty() &&
+        token_.isOneOf(clang::tok::comma, clang::tok::greater)) {
       tentative_parsing.Commit();
-      return id_expression->name();
+      return id_expression;
     }
     // Failed to parse a id_expression.
     tentative_parsing.Rollback();
@@ -984,7 +1014,7 @@ bool Parser::IsPtrOperator(clang::Token token) const {
 //  identifier:
 //    ? clang::tok::identifier ?
 //
-IdExpression Parser::ParseIdExpression() {
+std::string Parser::ParseIdExpression() {
   // Try parsing optional global scope operator.
   bool global_scope = false;
   if (token_.is(clang::tok::coloncolon)) {
@@ -1001,9 +1031,8 @@ IdExpression Parser::ParseIdExpression() {
     // Parse unqualified_id and construct a fully qualified id expression.
     auto unqualified_id = ParseUnqualifiedId();
 
-    auto id_expression = llvm::formatv("{0}{1}{2}", global_scope ? "::" : "",
-                                       nested_name_specifier, unqualified_id);
-    return std::make_unique<IdentifierNode>(id_expression);
+    return llvm::formatv("{0}{1}{2}", global_scope ? "::" : "",
+                         nested_name_specifier, unqualified_id);
   }
 
   // No nested_name_specifier, but with global scope -- this is also a
@@ -1012,14 +1041,11 @@ IdExpression Parser::ParseIdExpression() {
     Expect(clang::tok::identifier);
     std::string identifier = pp_->getSpelling(token_);
     ConsumeToken();
-    auto id_expression =
-        llvm::formatv("{0}{1}", global_scope ? "::" : "", identifier);
-    return std::make_unique<IdentifierNode>(id_expression);
+    return llvm::formatv("{0}{1}", global_scope ? "::" : "", identifier);
   }
 
   // This is unqualified_id production.
-  auto unqualified_id = ParseUnqualifiedId();
-  return std::make_unique<IdentifierNode>(unqualified_id);
+  return ParseUnqualifiedId();
 }
 
 // Parse an unqualified_id.
@@ -1059,7 +1085,8 @@ ExprResult Parser::ParseBooleanLiteral() {
   ExpectOneOf(clang::tok::kw_true, clang::tok::kw_false);
   bool literal_value = token_.is(clang::tok::kw_true);
   ConsumeToken();
-  return std::make_unique<BooleanLiteralNode>(literal_value);
+  return std::make_unique<BooleanLiteralNode>(
+      CreateValueFromBool(target_, literal_value));
 }
 
 ExprResult Parser::ParseNumericConstant(clang::Token token) {
@@ -1076,6 +1103,7 @@ ExprResult Parser::ParseNumericConstant(clang::Token token) {
 
   if (literal.hadError) {
     BailOut(
+        ErrorCode::kInvalidNumericLiteral,
         "Failed to parse token as numeric-constant: " + TokenDescription(token),
         token.getLocation());
     return std::make_unique<ErrorNode>();
@@ -1091,7 +1119,8 @@ ExprResult Parser::ParseNumericConstant(clang::Token token) {
   }
 
   // Don't care about anything else.
-  BailOut("numeric-constant should be either float or integer literal: " +
+  BailOut(ErrorCode::kInvalidNumericLiteral,
+          "numeric-constant should be either float or integer literal: " +
               TokenDescription(token),
           token.getLocation());
   return std::make_unique<ErrorNode>();
@@ -1109,7 +1138,8 @@ ExprResult Parser::ParseFloatingLiteral(clang::NumericLiteralParser& literal,
   // underflowed to zero (APFloat reports denormals as underflow).
   if ((result & llvm::APFloat::opOverflow) ||
       ((result & llvm::APFloat::opUnderflow) && raw_value.isZero())) {
-    BailOut("float underflow/overflow happened: " + TokenDescription(token),
+    BailOut(ErrorCode::kInvalidNumericLiteral,
+            "float underflow/overflow happened: " + TokenDescription(token),
             token.getLocation());
     return std::make_unique<ErrorNode>();
   }
@@ -1117,7 +1147,10 @@ ExprResult Parser::ParseFloatingLiteral(clang::NumericLiteralParser& literal,
   lldb::BasicType type =
       literal.isFloat ? lldb::eBasicTypeFloat : lldb::eBasicTypeDouble;
 
-  return std::make_unique<NumericLiteralNode>(raw_value, type);
+  Value value =
+      CreateValueFromAPFloat(target_, raw_value, target_.GetBasicType(type));
+
+  return std::make_unique<NumericLiteralNode>(std::move(value));
 }
 
 ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
@@ -1127,8 +1160,8 @@ ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
 
   if (literal.GetIntegerValue(raw_value)) {
     BailOut(
-        "integer literal is too large to be represented in any integer "
-        "type: " +
+        ErrorCode::kInvalidNumericLiteral,
+        "integer literal is too large to be represented in any integer type: " +
             TokenDescription(token),
         token.getLocation());
     return std::make_unique<ErrorNode>();
@@ -1141,8 +1174,11 @@ ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
                       type == lldb::eBasicTypeUnsignedLong ||
                       type == lldb::eBasicTypeUnsignedLongLong);
 
-  return std::make_unique<NumericLiteralNode>(
-      llvm::APSInt(raw_value, is_unsigned), type);
+  Value value =
+      CreateValueFromAPInt(target_, llvm::APSInt(raw_value, is_unsigned),
+                           target_.GetBasicType(type));
+
+  return std::make_unique<NumericLiteralNode>(std::move(value));
 }
 
 }  // namespace lldb_eval

@@ -19,13 +19,10 @@
 
 #include <memory>
 #include <string>
-#include <variant>
 #include <vector>
 
 #include "clang/Basic/TokenKinds.h"
-#include "lldb/lldb-enumerations.h"
-#include "llvm/ADT/APFloat.h"
-#include "llvm/ADT/APSInt.h"
+#include "lldb-eval/value.h"
 
 namespace lldb_eval {
 
@@ -71,47 +68,42 @@ class ErrorNode : public AstNode {
 
 class BooleanLiteralNode : public AstNode {
  public:
-  explicit BooleanLiteralNode(bool value) : value_(value) {}
+  explicit BooleanLiteralNode(Value value) : value_(std::move(value)) {}
 
   void Accept(Visitor* v) const override;
 
-  bool value() const { return value_; }
+  Value value() const { return value_; }
 
  private:
-  bool value_;
+  Value value_;
 };
 
 class NumericLiteralNode : public AstNode {
  public:
-  using Constant = std::variant<llvm::APSInt, llvm::APFloat>;
-
- public:
-  NumericLiteralNode(Constant value, lldb::BasicType type)
-      : value_(std::move(value)), type_(type) {}
+  NumericLiteralNode(Value value) : value_(std::move(value)) {}
 
   void Accept(Visitor* v) const override;
 
-  Constant value() const { return value_; }
-  lldb::BasicType type() const { return type_; }
+  Value value() const { return value_; }
 
  private:
-  Constant value_;
-  lldb::BasicType type_;
+  Value value_;
 };
 
 class IdentifierNode : public AstNode {
  public:
-  explicit IdentifierNode(std::string name) : name_(std::move(name)) {}
+  IdentifierNode(std::string name, Value value)
+      : name_(std::move(name)), value_(std::move(value)) {}
 
   void Accept(Visitor* v) const override;
 
   std::string name() const { return name_; }
+  Value value() const { return value_; }
 
  private:
   std::string name_;
+  Value value_;
 };
-
-using IdExpression = std::unique_ptr<IdentifierNode>;
 
 class CStyleCastNode : public AstNode {
  public:
@@ -136,19 +128,19 @@ class MemberOfNode : public AstNode {
   };
 
  public:
-  MemberOfNode(Type type, ExprResult lhs, IdExpression member_id)
+  MemberOfNode(Type type, ExprResult lhs, std::string member_id)
       : type_(type), lhs_(std::move(lhs)), member_id_(std::move(member_id)) {}
 
   void Accept(Visitor* v) const override;
 
   Type type() const { return type_; }
   AstNode* lhs() const { return lhs_.get(); }
-  IdentifierNode* member_id() const { return member_id_.get(); }
+  std::string member_id() const { return member_id_; }
 
  private:
   Type type_;
   ExprResult lhs_;
-  IdExpression member_id_;
+  std::string member_id_;
 };
 
 class BinaryOpNode : public AstNode {
