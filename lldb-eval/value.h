@@ -121,11 +121,11 @@ Value CreateValueFromBytes(lldb::SBTarget target, const void* bytes,
 Value CreateValueFromBytes(lldb::SBTarget target, const void* bytes,
                            lldb::BasicType basic_type);
 
-Value CreateValueFromAP(lldb::SBTarget target, const llvm::APInt& v,
-                        lldb::SBType type);
+Value CreateValueFromAPInt(lldb::SBTarget target, const llvm::APInt& v,
+                           lldb::SBType type);
 
-Value CreateValueFromAP(lldb::SBTarget target, const llvm::APFloat& v,
-                        lldb::SBType type);
+Value CreateValueFromAPFloat(lldb::SBTarget target, const llvm::APFloat& v,
+                             lldb::SBType type);
 
 Value CreateValueFromPointer(lldb::SBTarget target, uintptr_t addr,
                              lldb::SBType type);
