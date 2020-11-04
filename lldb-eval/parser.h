@@ -33,16 +33,6 @@
 
 namespace lldb_eval {
 
-inline std::string TokenKindsJoin(clang::tok::TokenKind k) {
-  std::string s = clang::tok::getTokenName(k);
-  return "'" + s + "'";
-}
-
-template <typename... Ts>
-inline std::string TokenKindsJoin(clang::tok::TokenKind k, Ts... ks) {
-  return TokenKindsJoin(k) + ", " + TokenKindsJoin(ks...);
-}
-
 // Pure recursive descent parser for C++ like expressions.
 // EBNF grammar is described here:
 // docs/expr-ebnf.txt
@@ -104,30 +94,12 @@ class Parser {
   void BailOut(ErrorCode error_code, const std::string& error,
                clang::SourceLocation loc);
 
-  void Expect(clang::tok::TokenKind kind) {
-    if (token_.isNot(kind)) {
-      BailOut(ErrorCode::kUnknown,
-              "expected " + TokenKindsJoin(kind) +
-                  ", got: " + TokenDescription(token_),
-              token_.getLocation());
-    }
-  }
+  void Expect(clang::tok::TokenKind kind);
 
   template <typename... Ts>
-  void ExpectOneOf(clang::tok::TokenKind k, Ts... ks) {
-    if (!token_.isOneOf(k, ks...)) {
-      BailOut(ErrorCode::kUnknown,
-              "expected any of (" + TokenKindsJoin(k, ks...) +
-                  "), got: " + TokenDescription(token_),
-              token_.getLocation());
-    }
-  }
+  void ExpectOneOf(clang::tok::TokenKind k, Ts... ks);
 
-  std::string TokenDescription(const clang::Token& token) {
-    auto spelling = pp_->getSpelling(token);
-    auto kind_name = token.getName();
-    return "<'" + spelling + "' (" + kind_name + ")>";
-  }
+  std::string TokenDescription(const clang::Token& token);
 
  private:
   friend class TentativeParsingAction;
