@@ -20,6 +20,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <type_traits>
 
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/LangOptions.h"
@@ -223,6 +224,10 @@ void Parser::Expect(clang::tok::TokenKind kind) {
 
 template <typename... Ts>
 void Parser::ExpectOneOf(clang::tok::TokenKind k, Ts... ks) {
+  static_assert((std::is_same_v<Ts, clang::tok::TokenKind> && ...),
+                "ExpectOneOf can be only called with values of type "
+                "clang::tok::TokenKind");
+
   if (!token_.isOneOf(k, ks...)) {
     BailOut(ErrorCode::kUnknown,
             llvm::formatv("expected any of ({0}), got: {1}",
@@ -581,11 +586,10 @@ ExprResult Parser::ParsePostfixExpression() {
       }
       case clang::tok::plusplus:
       case clang::tok::minusminus: {
-        BailOut(
-            ErrorCode::kNotImplemented,
-            llvm::formatv("We don't support postfix inc/dec yet: {0}",
-                TokenDescription(token_)),
-            token_.getLocation());
+        BailOut(ErrorCode::kNotImplemented,
+                llvm::formatv("We don't support postfix inc/dec yet: {0}",
+                              TokenDescription(token_)),
+                token_.getLocation());
         return std::make_unique<ErrorNode>();
       }
       case clang::tok::l_square: {
@@ -627,7 +631,8 @@ ExprResult Parser::ParsePrimaryExpression() {
     auto value = expr_ctx_->LookupIdentifier(identifier.c_str());
     if (!value) {
       BailOut(ErrorCode::kUndeclaredIdentifier,
-              llvm::formatv("use of undeclared identifier '{0}', identifier), loc);
+              llvm::formatv("use of undeclared identifier '{0}'", identifier),
+              loc);
       return std::make_unique<ErrorNode>();
     }
     return std::make_unique<IdentifierNode>(identifier,
@@ -1190,7 +1195,8 @@ ExprResult Parser::ParseFloatingLiteral(clang::NumericLiteralParser& literal,
   if ((result & llvm::APFloat::opOverflow) ||
       ((result & llvm::APFloat::opUnderflow) && raw_value.isZero())) {
     BailOut(ErrorCode::kInvalidNumericLiteral,
-            llvm::formatv("float underflow/overflow happened: {0}", TokenDescription(token)),
+            llvm::formatv("float underflow/overflow happened: {0}",
+                          TokenDescription(token)),
             token.getLocation());
     return std::make_unique<ErrorNode>();
   }
@@ -1210,12 +1216,11 @@ ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
   llvm::APInt raw_value(type_width<uintmax_t>(), 0);
 
   if (literal.GetIntegerValue(raw_value)) {
-    BailOut(
-        ErrorCode::kInvalidNumericLiteral,
-        llvm::formatv(
-            "integer literal is too large to be represented in any integer type: {0}",
-            TokenDescription(token)),
-        token.getLocation());
+    BailOut(ErrorCode::kInvalidNumericLiteral,
+            llvm::formatv("integer literal is too large to be represented in "
+                          "any integer type: {0}",
+                          TokenDescription(token)),
+            token.getLocation());
     return std::make_unique<ErrorNode>();
   }
 

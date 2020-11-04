@@ -30,29 +30,30 @@
 
 using bazel::tools::cpp::runfiles::Runfiles;
 
+// Helper functions to hide very long chrono names.
+auto now() { return std::chrono::high_resolution_clock::now(); }
+auto since(std::chrono::high_resolution_clock::time_point t) {
+  return std::chrono::duration_cast<std::chrono::microseconds>(
+      std::chrono::high_resolution_clock::now() - t);
+}
+
 void EvalExpr(lldb::SBFrame frame, const std::string& expr) {
   lldb_eval::Error error;
   lldb_eval::ExpressionContext expr_ctx(expr, lldb::SBExecutionContext(frame));
 
-  auto t1 = std::chrono::high_resolution_clock::now();
-
+  auto parse_start = now();
   lldb_eval::Parser p(expr_ctx);
   lldb_eval::ExprResult expr_result = p.Run(error);
-
-  auto elapsed_parse = std::chrono::duration_cast<std::chrono::microseconds>(
-      std::chrono::high_resolution_clock::now() - t1);
+  auto parse_elapsed = since(parse_start);
 
   if (error) {
     std::cerr << error.message() << std::endl;
   }
 
-  auto t2 = std::chrono::high_resolution_clock::now();
-
+  auto eval_start = now();
   lldb_eval::Interpreter eval(expr_ctx);
   lldb_eval::Value value = eval.Eval(expr_result.get(), error);
-
-  auto elapsed_eval = std::chrono::duration_cast<std::chrono::microseconds>(
-      std::chrono::high_resolution_clock::now() - t2);
+  auto eval_elapsed = since(eval_start);
 
   if (error) {
     std::cerr << error.message() << std::endl;
@@ -70,9 +71,9 @@ void EvalExpr(lldb::SBFrame frame, const std::string& expr) {
   }
 
   std::cerr << "----------" << std::endl
-            << "elapsed = " << (elapsed_parse + elapsed_eval).count()
-            << "us (parse = " << elapsed_parse.count()
-            << "us, eval = " << elapsed_eval.count() << "us)" << std::endl;
+            << "elapsed = " << (parse_elapsed + eval_elapsed).count()
+            << "us (parse = " << parse_elapsed.count()
+            << "us, eval = " << eval_elapsed.count() << "us)" << std::endl;
 }
 
 void RunRepl(lldb::SBFrame frame) {
