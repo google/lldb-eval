@@ -583,7 +583,8 @@ ExprResult Parser::ParsePostfixExpression() {
       case clang::tok::minusminus: {
         BailOut(
             ErrorCode::kNotImplemented,
-            "Don't support postfix inc/dec yet: " + TokenDescription(token_),
+            llvm::formatv("We don't support postfix inc/dec yet: {0}",
+                TokenDescription(token_)),
             token_.getLocation());
         return std::make_unique<ErrorNode>();
       }
@@ -626,7 +627,7 @@ ExprResult Parser::ParsePrimaryExpression() {
     auto value = expr_ctx_->LookupIdentifier(identifier.c_str());
     if (!value) {
       BailOut(ErrorCode::kUndeclaredIdentifier,
-              "use of undeclared identifier '" + identifier + "'", loc);
+              llvm::formatv("use of undeclared identifier '{0}', identifier), loc);
       return std::make_unique<ErrorNode>();
     }
     return std::make_unique<IdentifierNode>(identifier,
@@ -654,7 +655,7 @@ ExprResult Parser::ParsePrimaryExpression() {
   }
 
   BailOut(ErrorCode::kInvalidExpressionSyntax,
-          "Unexpected token: " + TokenDescription(token_),
+          llvm::formatv("Unexpected token: {0}", TokenDescription(token_)),
           token_.getLocation());
   return std::make_unique<ErrorNode>();
 }
@@ -1189,7 +1190,7 @@ ExprResult Parser::ParseFloatingLiteral(clang::NumericLiteralParser& literal,
   if ((result & llvm::APFloat::opOverflow) ||
       ((result & llvm::APFloat::opUnderflow) && raw_value.isZero())) {
     BailOut(ErrorCode::kInvalidNumericLiteral,
-            "float underflow/overflow happened: " + TokenDescription(token),
+            llvm::formatv("float underflow/overflow happened: {0}", TokenDescription(token)),
             token.getLocation());
     return std::make_unique<ErrorNode>();
   }
@@ -1211,8 +1212,9 @@ ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
   if (literal.GetIntegerValue(raw_value)) {
     BailOut(
         ErrorCode::kInvalidNumericLiteral,
-        "integer literal is too large to be represented in any integer type: " +
-            TokenDescription(token),
+        llvm::formatv(
+            "integer literal is too large to be represented in any integer type: {0}",
+            TokenDescription(token)),
         token.getLocation());
     return std::make_unique<ErrorNode>();
   }
