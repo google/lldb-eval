@@ -215,8 +215,8 @@ std::string Parser::TokenDescription(const clang::Token& token) {
 void Parser::Expect(clang::tok::TokenKind kind) {
   if (token_.isNot(kind)) {
     BailOut(ErrorCode::kUnknown,
-            "expected " + TokenKindsJoin(kind) +
-                ", got: " + TokenDescription(token_),
+            llvm::formatv("expected {0}, got: {1}", TokenKindsJoin(kind),
+                          TokenDescription(token_)),
             token_.getLocation());
   }
 }
@@ -225,8 +225,8 @@ template <typename... Ts>
 void Parser::ExpectOneOf(clang::tok::TokenKind k, Ts... ks) {
   if (!token_.isOneOf(k, ks...)) {
     BailOut(ErrorCode::kUnknown,
-            "expected any of (" + TokenKindsJoin(k, ks...) +
-                "), got: " + TokenDescription(token_),
+            llvm::formatv("expected any of ({0}), got: {1}",
+                          TokenKindsJoin(k, ks...), TokenDescription(token_)),
             token_.getLocation());
   }
 }
