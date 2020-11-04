@@ -28,27 +28,34 @@
 
 namespace lldb_eval {
 
+namespace {
+
+Value EvaluateExpression(lldb::SBFrame frame, const char* expr, Error& error) {
+  ExpressionContext ctx(expr, lldb::SBExecutionContext(frame));
+
+  Parser p(ctx);
+  ExprResult tree = p.Run(error);
+  if (error) {
+    return Value();
+  }
+
+  Interpreter eval(ctx);
+  Value ret = eval.Eval(tree.get(), error);
+  if (error) {
+    return Value();
+  }
+
+  return ret;
+}
+
+}  // namespace
+
 lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
                                  lldb::SBError& error) {
   error.Clear();
 
-  ExpressionContext expr_ctx(expression, lldb::SBExecutionContext(frame));
-
-  Parser p(expr_ctx);
-  auto expr = p.Run();
-
-  if (p.HasError()) {
-    error.SetError(
-        static_cast<uint32_t>(EvalErrorCode::INVALID_EXPRESSION_SYNTAX),
-        lldb::eErrorTypeGeneric);
-    error.SetErrorString(p.GetError().c_str());
-    return lldb::SBValue();
-  }
-
-  Interpreter eval(expr_ctx);
-
-  EvalError err;
-  Value result = eval.Eval(expr.get(), err);
+  Error err;
+  Value result = EvaluateExpression(frame, expression, err);
 
   if (err) {
     error.SetError(static_cast<uint32_t>(err.code()), lldb::eErrorTypeGeneric);

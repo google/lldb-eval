@@ -19,6 +19,7 @@
 #include "clang/Basic/TokenKinds.h"
 #include "lldb-eval/ast.h"
 #include "lldb-eval/defines.h"
+#include "lldb-eval/expression_context.h"
 #include "lldb-eval/value.h"
 #include "lldb/API/SBTarget.h"
 #include "lldb/API/SBType.h"
@@ -93,21 +94,7 @@ bool Compare(clang::tok::TokenKind op, const llvm::APFloat& l,
 
 namespace lldb_eval {
 
-EvalError::EvalError() : code_(EvalErrorCode::OK) {}
-
-void EvalError::Set(EvalErrorCode code, const std::string& message) {
-  code_ = code;
-  message_ = message;
-}
-
-void EvalError::Clear() { *this = {}; }
-
-EvalErrorCode EvalError::code() const { return code_; }
-const std::string& EvalError::message() const { return message_; }
-
-EvalError::operator bool() const { return code_ != EvalErrorCode::OK; }
-
-Value Interpreter::Eval(const AstNode* tree, EvalError& error) {
+Value Interpreter::Eval(const AstNode* tree, Error& error) {
   // Evaluate an AST.
   EvalNode(tree);
   // Grab the error and reset the interpreter state.
@@ -128,94 +115,30 @@ Value Interpreter::EvalNode(const AstNode* node) {
 }
 
 void Interpreter::Visit(const ErrorNode*) {
-  error_.Set(EvalErrorCode::UNKNOWN, "The AST is not valid.");
+  error_.Set(ErrorCode::kUnknown, "The AST is not valid.");
 }
 
 void Interpreter::Visit(const BooleanLiteralNode* node) {
-  result_ = CreateValueFromBool(target_, node->value());
+  result_ = node->value();
 }
 
 void Interpreter::Visit(const NumericLiteralNode* node) {
-  result_ = std::visit(
-      [this, node](auto&& v) {
-        return CreateValueFromAP(target_, v,
-                                 target_.GetBasicType(node->type()));
-      },
-      node->value());
+  result_ = node->value();
 }
 
 void Interpreter::Visit(const IdentifierNode* node) {
-  // Internally values don't have global scope qualifier in their names and
-  // LLDB doesn't support queries with it too.
-  std::string name = node->name();
-  bool global_scope = false;
-
-  if (name.rfind("::", 0) == 0) {
-    name = name.substr(2);
-    global_scope = true;
-  }
-
-  lldb::SBValue value;
-
-  // If the identifier doesn't refer to the global scope and doesn't have any
-  // other scope qualifiers, try looking among the local and instance variables.
-  if (!global_scope && name.find("::") == std::string::npos) {
-    // Try looking for a local variable in current scope.
-    if (!value) {
-      value = frame_.FindVariable(name.c_str());
-    }
-    // Try looking for an instance variable (class member).
-    if (!value) {
-      value = frame_.FindVariable("this").GetChildMemberWithName(name.c_str());
-    }
-  }
-
-  // Try looking for a global or static variable.
-  if (!value) {
-    // TODO(werat): Implement scope-aware lookup. Relative scopes should be
-    // resolved relative to the current scope. I.e. if the current frame is in
-    // "ns1::ns2::Foo()", then "ns2::x" should resolve to "ns1::ns2::x".
-
-    // List global variable with the same "basename". There can be many matches
-    // from other scopes (namespaces, classes), so we do additional filtering
-    // later.
-    lldb::SBValueList values = target_.FindGlobalVariables(
-        name.c_str(), /*max_matches=*/std::numeric_limits<uint32_t>::max());
-
-    // Find the corrent variable by matching the name. lldb::SBValue::GetName()
-    // can return strings like "::globarVar", "ns::i" or "int const ns::foo"
-    // depending on the version and the platform.
-    for (uint32_t i = 0; i < values.GetSize(); ++i) {
-      lldb::SBValue val = values.GetValueAtIndex(i);
-      llvm::StringRef val_name = val.GetName();
-
-      if (val_name == name || val_name == "::" + name ||
-          val_name.endswith(" " + name)) {
-        value = val;
-        break;
-      }
-    }
-  }
-
-  if (!value) {
-    std::string msg = "use of undeclared identifier '" + node->name() + "'";
-    error_.Set(EvalErrorCode::UNDECLARED_IDENTIFIER, msg);
-    return;
-  }
+  result_ = node->value();
 
   // If value is a reference, dereference it to get to the underlying type. All
   // operations on a reference should be actually operations on the referent.
-  if (value.GetType().IsReferenceType()) {
-    value = value.Dereference();
+  if (result_.type().IsReferenceType()) {
+    result_ = result_.Dereference();
   }
-
-  // Special case for "this" pointer. As per C++ standard, it's a prvalue.
-  bool is_rvalue = node->name() == "this";
-
-  result_ = Value(value, is_rvalue);
 }
 
 void Interpreter::Visit(const CStyleCastNode* node) {
+  // TODO(werat): CStyleCastNode should already contain a resolved type.
+
   // Resolve the type from the type declaration.
   TypeDeclaration type_decl = node->type_decl();
 
@@ -227,7 +150,7 @@ void Interpreter::Visit(const CStyleCastNode* node) {
     // TODO(werat): Make sure we don't have false negative errors here.
     std::string msg =
         "use of undeclared identifier '" + type_decl.GetBaseName() + "'";
-    error_.Set(EvalErrorCode::UNDECLARED_IDENTIFIER, msg);
+    error_.Set(ErrorCode::kUndeclaredIdentifier, msg);
     return;
   }
 
@@ -239,7 +162,7 @@ void Interpreter::Visit(const CStyleCastNode* node) {
         std::string msg = llvm::formatv(
             "'type name' declared as a pointer to a reference of type '{0}'",
             type.GetName());
-        error_.Set(EvalErrorCode::INVALID_OPERAND_TYPE, msg);
+        error_.Set(ErrorCode::kInvalidOperandType, msg);
         return;
       }
       // Get pointer type for the base type: e.g. int* -> int**.
@@ -249,7 +172,7 @@ void Interpreter::Visit(const CStyleCastNode* node) {
       // References to references are forbidden.
       if (type.IsReferenceType()) {
         std::string msg = "type name declared as a reference to a reference";
-        error_.Set(EvalErrorCode::INVALID_OPERAND_TYPE, msg);
+        error_.Set(ErrorCode::kInvalidOperandType, msg);
         return;
       }
       // Get reference type for the base type: e.g. int -> int&.
@@ -307,7 +230,7 @@ void Interpreter::Visit(const CStyleCastNode* node) {
       // This can be a false-negative error (the cast is actually valid), so
       // make it unknown for now.
       // TODO(werat): Make sure there are not false-negative errors.
-      error_.Set(EvalErrorCode::UNKNOWN, msg);
+      error_.Set(ErrorCode::kUnknown, msg);
       return;
     }
 
@@ -339,7 +262,7 @@ void Interpreter::Visit(const CStyleCastNode* node) {
   std::string msg =
       llvm::formatv("casting of '{0}' to '{1}' is not implemented yet",
                     rhs.type().GetName(), type.GetName());
-  error_.Set(EvalErrorCode::NOT_IMPLEMENTED, msg);
+  error_.Set(ErrorCode::kNotImplemented, msg);
 }
 
 void Interpreter::Visit(const MemberOfNode* node) {
@@ -384,14 +307,14 @@ void Interpreter::Visit(const MemberOfNode* node) {
     return;
   }
 
-  Value member_val = Value(lhs.inner_value().GetChildMemberWithName(
-      node->member_id()->name().c_str()));
+  Value member_val = Value(
+      lhs.inner_value().GetChildMemberWithName(node->member_id().c_str()));
 
   if (!member_val) {
-    auto msg = llvm::formatv("no member named '{0}' in '{1}'",
-                             node->member_id()->name(),
-                             lhs.type().GetUnqualifiedType().GetName());
-    error_.Set(EvalErrorCode::INVALID_OPERAND_TYPE, msg);
+    auto msg =
+        llvm::formatv("no member named '{0}' in '{1}'", node->member_id(),
+                      lhs.type().GetUnqualifiedType().GetName());
+    error_.Set(ErrorCode::kInvalidOperandType, msg);
     return;
   }
 
@@ -495,7 +418,7 @@ void Interpreter::Visit(const BinaryOpNode* node) {
   }
 
   std::string msg = "Unexpected op: " + node->op_name();
-  error_.Set(EvalErrorCode::UNKNOWN, msg);
+  error_.Set(ErrorCode::kUnknown, msg);
 }
 
 void Interpreter::Visit(const UnaryOpNode* node) {
@@ -554,7 +477,7 @@ void Interpreter::Visit(const UnaryOpNode* node) {
 
   // Unsupported/invalid operation.
   std::string msg = "Unexpected op: " + node->op_name();
-  error_.Set(EvalErrorCode::UNKNOWN, msg);
+  error_.Set(ErrorCode::kUnknown, msg);
 }
 
 void Interpreter::Visit(const TernaryOpNode* node) {
@@ -693,13 +616,13 @@ Value Interpreter::EvaluateUnaryMinus(Value rhs) {
     rhs = IntegralPromotion(target_, rhs);
     llvm::APSInt v = rhs.GetInteger();
     v.negate();
-    return CreateValueFromAP(target_, v, rhs.type());
+    return CreateValueFromAPInt(target_, v, rhs.type());
   }
 
   if (rhs.IsFloat()) {
     llvm::APFloat v = rhs.GetFloat();
     v.changeSign();
-    return CreateValueFromAP(target_, v, rhs.type());
+    return CreateValueFromAPFloat(target_, v, rhs.type());
   }
 
   ReportTypeError(kInvalidOperandsToUnaryExpression, rhs);
@@ -720,7 +643,7 @@ Value Interpreter::EvaluateUnaryBitwiseNot(Value rhs) {
     rhs = IntegralPromotion(target_, rhs);
     llvm::APSInt v = rhs.GetInteger();
     v.flipAllBits();
-    return CreateValueFromAP(target_, v, rhs.type());
+    return CreateValueFromAPInt(target_, v, rhs.type());
   }
 
   ReportTypeError(kInvalidOperandsToUnaryExpression, rhs);
@@ -933,14 +856,14 @@ bool Interpreter::BoolConvertible(Value val) {
 }
 
 void Interpreter::ReportTypeError(const char* fmt) {
-  error_.Set(EvalErrorCode::INVALID_OPERAND_TYPE, fmt);
+  error_.Set(ErrorCode::kInvalidOperandType, fmt);
 }
 
 void Interpreter::ReportTypeError(const char* fmt, Value val) {
   std::string rhs_type = val.type().GetName();
 
   auto msg = llvm::formatv(fmt, rhs_type);
-  error_.Set(EvalErrorCode::INVALID_OPERAND_TYPE, msg);
+  error_.Set(ErrorCode::kInvalidOperandType, msg);
 }
 
 void Interpreter::ReportTypeError(const char* fmt, Value lhs, Value rhs) {
@@ -948,7 +871,7 @@ void Interpreter::ReportTypeError(const char* fmt, Value lhs, Value rhs) {
   std::string rhs_type = rhs.type().GetName();
 
   auto msg = llvm::formatv(fmt, lhs_type, rhs_type);
-  error_.Set(EvalErrorCode::INVALID_OPERAND_TYPE, msg);
+  error_.Set(ErrorCode::kInvalidOperandType, msg);
 }
 
 Value Interpreter::PointerAdd(Value lhs, int64_t offset) {
@@ -966,7 +889,7 @@ Value EvaluateArithmeticOp(lldb::SBTarget target, ArithmeticOp op, Value lhs,
     auto r = rhs.GetInteger();
 
     auto wrap = [target, rtype](auto value) {
-      return CreateValueFromAP(target, value, rtype);
+      return CreateValueFromAPInt(target, value, rtype);
     };
 
     switch (op) {
@@ -999,7 +922,7 @@ Value EvaluateArithmeticOp(lldb::SBTarget target, ArithmeticOp op, Value lhs,
     auto r = rhs.GetFloat();
 
     auto wrap = [target, rtype](auto value) {
-      return CreateValueFromAP(target, value, rtype);
+      return CreateValueFromAPFloat(target, value, rtype);
     };
 
     switch (op) {

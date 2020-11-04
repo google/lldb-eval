@@ -28,16 +28,15 @@
 
 namespace {
 
-using testing::HasSubstr;
-
-lldb_eval::Parser::Error ParseExpr(const std::string& expr) {
+lldb_eval::Error ParseExpr(const std::string& expr) {
   // Use empty lldb::SBExecutionContext for testing. It is used by parser to
   // resolve ambiguous situations (mostly to resolve types/variables in the
   // target context), but not required if the expression is unambiguous.
   lldb_eval::ExpressionContext expr_ctx(expr, lldb::SBExecutionContext());
   lldb_eval::Parser parser(expr_ctx);
-  parser.Run();
-  return parser.GetError();
+  lldb_eval::Error error;
+  parser.Run(error);
+  return error;
 }
 
 class ParserTest : public ::testing::Test {
@@ -45,13 +44,14 @@ class ParserTest : public ::testing::Test {
   void TestExpr(const std::string& expr) {
     SCOPED_TRACE("[parsing expr]: " + expr);
     auto error = ParseExpr(expr);
-    ASSERT_EQ(error, "");
+    EXPECT_EQ(error.code(), lldb_eval::ErrorCode::kOk);
+    EXPECT_EQ(error.message(), "");
   }
 
   void TestExprErr(const std::string& expr, const std::string& msg) {
     SCOPED_TRACE("[parsing expr]: " + expr);
     auto error = ParseExpr(expr);
-    ASSERT_THAT(error, HasSubstr(msg));
+    EXPECT_THAT(error.message(), ::testing::HasSubstr(msg));
   }
 };
 
@@ -70,16 +70,6 @@ TEST_F(ParserTest, TestUnbalancedParentheses) {
       "1 + (2 - 3 \n"
       "          ^";
   TestExprErr("1 + (2 - 3", msg);
-}
-
-TEST_F(ParserTest, TestMemberAccess) { TestExpr("foo->bar.baz"); }
-
-TEST_F(ParserTest, TestMemberAccessInvalid) {
-  auto msg =
-      "<expr>:1:6: expected 'identifier', got: <'2' (numeric_constant)>\n"
-      "foo->2\n"
-      "     ^";
-  TestExprErr("foo->2", msg);
 }
 
 TEST_F(ParserTest, TestCStyleCast) {
@@ -115,12 +105,12 @@ TEST_F(ParserTest, TestDiagnostics) {
 
   auto expr_2 =
       "1 + 2 +\n"
-      "3 + foo->4 +\n"
+      "3 + foo +\n"
       "5 + 6\n";
   auto msg_2 =
-      "<expr>:2:10: expected 'identifier', got: <'4' (numeric_constant)>\n"
-      "3 + foo->4 +\n"
-      "         ^  ";
+      "<expr>:2:5: use of undeclared identifier 'foo'\n"
+      "3 + foo +\n"
+      "    ^    ";
   TestExprErr(expr_2, msg_2);
 
   auto expr_3 =
@@ -132,18 +122,6 @@ TEST_F(ParserTest, TestDiagnostics) {
       "5 + 6 + \n"
       "       ^";
   TestExprErr(expr_3, msg_3);
-}
-
-TEST_F(ParserTest, TestTemplateTypes) {
-  TestExprErr("Foo<int()> + 1",
-              "<expr>:1:5: Unexpected token: <'int' (int)>\n"
-              "Foo<int()> + 1\n"
-              "    ^         ");
-
-  TestExprErr("Foo<bar()> + 1",
-              "<expr>:1:8: expected 'eof', got: <'(' (l_paren)>\n"
-              "Foo<bar()> + 1\n"
-              "       ^      ");
 }
 
 }  // namespace
