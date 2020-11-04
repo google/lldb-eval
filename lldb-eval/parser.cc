@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <sstream>
 #include <string>
 
 #include "clang/Basic/Diagnostic.h"
@@ -44,9 +45,33 @@
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Host.h"
 
-#define TYPE_WIDTH(type) static_cast<unsigned>(sizeof(type)) * 8
-
 namespace {
+
+template <typename T>
+constexpr unsigned type_width() {
+  return static_cast<unsigned>(sizeof(T)) * CHAR_BIT;
+}
+
+inline void TokenKindsJoinImpl(std::ostringstream& os,
+                               clang::tok::TokenKind k) {
+  os << "'" << clang::tok::getTokenName(k) << "'";
+}
+
+template <typename... Ts>
+inline void TokenKindsJoinImpl(std::ostringstream& os, clang::tok::TokenKind k,
+                               Ts... ks) {
+  TokenKindsJoinImpl(os, k);
+  os << ", ";
+  TokenKindsJoinImpl(os, ks...);
+}
+
+template <typename... Ts>
+inline std::string TokenKindsJoin(clang::tok::TokenKind k, Ts... ks) {
+  std::ostringstream os;
+  TokenKindsJoinImpl(os, k, ks...);
+
+  return os.str();
+}
 
 std::string FormatDiagnostics(const clang::SourceManager& sm,
                               const std::string& message,
@@ -81,9 +106,9 @@ std::string FormatDiagnostics(const clang::SourceManager& sm,
 
 lldb::BasicType PickIntegerType(const clang::NumericLiteralParser& literal,
                                 const llvm::APInt& value) {
-  unsigned int_size = TYPE_WIDTH(int);
-  unsigned long_size = TYPE_WIDTH(long);
-  unsigned long_long_size = TYPE_WIDTH(long long);
+  unsigned int_size = type_width<int>();
+  unsigned long_size = type_width<long>();
+  unsigned long_long_size = type_width<long long>();
 
   // Binary, Octal, Hexadecimal and literals with a U suffix are allowed to be
   // an unsigned integer.
@@ -179,6 +204,31 @@ ExprResult Parser::Run(Error& error) {
     return std::make_unique<ErrorNode>();
   }
   return expr;
+}
+
+std::string Parser::TokenDescription(const clang::Token& token) {
+  const auto& spelling = pp_->getSpelling(token);
+  const auto* kind_name = token.getName();
+  return llvm::formatv("<'{0}' ({1})>", spelling, kind_name);
+}
+
+void Parser::Expect(clang::tok::TokenKind kind) {
+  if (token_.isNot(kind)) {
+    BailOut(ErrorCode::kUnknown,
+            "expected " + TokenKindsJoin(kind) +
+                ", got: " + TokenDescription(token_),
+            token_.getLocation());
+  }
+}
+
+template <typename... Ts>
+void Parser::ExpectOneOf(clang::tok::TokenKind k, Ts... ks) {
+  if (!token_.isOneOf(k, ks...)) {
+    BailOut(ErrorCode::kUnknown,
+            "expected any of (" + TokenKindsJoin(k, ks...) +
+                "), got: " + TokenDescription(token_),
+            token_.getLocation());
+  }
 }
 
 void Parser::ConsumeToken() {
@@ -1156,7 +1206,7 @@ ExprResult Parser::ParseFloatingLiteral(clang::NumericLiteralParser& literal,
 ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
                                        clang::Token token) {
   // Create a value big enough to fit all valid numbers.
-  llvm::APInt raw_value(TYPE_WIDTH(uintmax_t), 0);
+  llvm::APInt raw_value(type_width<uintmax_t>(), 0);
 
   if (literal.GetIntegerValue(raw_value)) {
     BailOut(
