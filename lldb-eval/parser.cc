@@ -78,9 +78,8 @@ std::string FormatDiagnostics(const clang::SourceManager& sm,
                               const std::string& message,
                               clang::SourceLocation loc) {
   // Get the source buffer and the location of the current token.
-  const llvm::MemoryBuffer* buf = sm.getBuffer(sm.getFileID(loc));
-  llvm::StringRef text = buf->getBuffer();
-  size_t loc_offset = sm.getCharacterData(loc) - buf->getBufferStart();
+  llvm::StringRef text = sm.getBufferData(sm.getFileID(loc));
+  size_t loc_offset = sm.getCharacterData(loc) - text.data();
 
   // Look for the start of the line.
   size_t line_start = text.rfind('\n', loc_offset);
