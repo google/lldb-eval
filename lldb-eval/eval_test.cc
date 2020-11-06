@@ -12,18 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "lldb-eval/eval.h"
-
+#include <functional>
 #include <memory>
 #include <string>
 
-#include "lldb-eval/ast.h"
-#include "lldb-eval/expression_context.h"
-#include "lldb-eval/parser.h"
+#include "lldb-eval/api.h"
 #include "lldb-eval/runner.h"
-#include "lldb-eval/value.h"
 #include "lldb/API/SBDebugger.h"
-#include "lldb/API/SBExecutionContext.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBProcess.h"
 #include "lldb/API/SBTarget.h"
@@ -37,29 +32,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-namespace {
-
 using bazel::tools::cpp::runfiles::Runfiles;
-
-lldb_eval::Value EvaluateExpression(lldb::SBFrame frame,
-                                    const std::string& expr,
-                                    lldb_eval::Error& error) {
-  lldb_eval::ExpressionContext ctx(expr, lldb::SBExecutionContext(frame));
-
-  lldb_eval::Parser p(ctx);
-  lldb_eval::ExprResult tree = p.Run(error);
-  if (error) {
-    return lldb_eval::Value();
-  }
-
-  lldb_eval::Interpreter eval(ctx);
-  lldb_eval::Value ret = eval.Eval(tree.get(), error);
-  if (error) {
-    return lldb_eval::Value();
-  }
-
-  return ret;
-}
 
 class InterpreterTest : public ::testing::Test {
  protected:
@@ -91,18 +64,24 @@ class InterpreterTest : public ::testing::Test {
 
     // Evaluate expressions with both lldb-eval and LLDB by default.
     skip_lldb = false;
-    expect_error_lldb = false;
   }
 
   void TearDown() { process_.Destroy(); }
 
-  void EvaluateLldbEval(const std::string& expr, lldb::SBValue& result);
-  void EvaluateLldb(const std::string& expr, lldb::SBValue& result);
-
   void TestExpr(const std::string& expr, const std::string& expected_result);
+  void TestExpr(const std::string& scope, const std::string& expr,
+                const std::string& expected_result);
+
+  void TestExprErr(const std::string& expr, const std::string& expected_error);
+  void TestExprErr(const std::string& scope, const std::string& expr,
+                   const std::string& expected_error);
 
   void TestExprOnlyCompare(const std::string& expr);
-  void TestExprErr(const std::string& expr, const std::string& msg);
+
+ private:
+  void TestExprEx(const std::string& scope, const std::string& expr,
+                  const std::string& expected_error,
+                  const std::string& expected_value, bool compare_with_lldb);
 
  protected:
   lldb::SBDebugger debugger_;
@@ -116,7 +95,6 @@ class InterpreterTest : public ::testing::Test {
   friend class ExpectErrorLLDB;
 
   bool skip_lldb;
-  bool expect_error_lldb;
 };
 
 class SkipLLDB {
@@ -129,80 +107,124 @@ class SkipLLDB {
   InterpreterTest* test_;
 };
 
-class ExpectErrorLLDB {
- public:
-  ExpectErrorLLDB(InterpreterTest* test) : test_(test) {
-    test_->expect_error_lldb = true;
-  }
-
-  ~ExpectErrorLLDB() { test_->expect_error_lldb = false; }
-
- private:
-  InterpreterTest* test_;
-};
-
 Runfiles* InterpreterTest::runfiles_ = nullptr;
-
-void InterpreterTest::EvaluateLldbEval(const std::string& expr,
-                                       lldb::SBValue& result) {
-  lldb_eval::Error error;
-  lldb_eval::Value ret = EvaluateExpression(frame_, expr, error);
-
-  EXPECT_EQ(error.code(), lldb_eval::ErrorCode::kOk);
-  EXPECT_EQ(error.message(), "");
-  result = ret.inner_value();
-}
-
-void InterpreterTest::EvaluateLldb(const std::string& expr,
-                                   lldb::SBValue& result) {
-  result = frame_.EvaluateExpression(expr.c_str());
-  EXPECT_STREQ(result.GetError().GetCString(), NULL);
-}
 
 void InterpreterTest::TestExpr(const std::string& expr,
                                const std::string& expected_result) {
-  // For comparing the type.
-  lldb::SBValue lldb_eval_result;
+  TestExprEx(/* scope */ "",
+             /* expr */ expr,
+             /* expected_error */ "",
+             /* expected_value */ expected_result,
+             /* compare_with_lldb */ !skip_lldb);
+}
 
-  {
-    SCOPED_TRACE("[Evaluate with lldb-eval]: " + expr);
-    EvaluateLldbEval(expr, lldb_eval_result);
-    EXPECT_STREQ(lldb_eval_result.GetValue(), expected_result.c_str());
+void InterpreterTest::TestExpr(const std::string& scope,
+                               const std::string& expr,
+                               const std::string& expected_result) {
+  TestExprEx(/* scope */ scope,
+             /* expr */ expr,
+             /* expected_error */ "",
+             /* expected_value */ expected_result,
+             /* compare_with_lldb */ !skip_lldb);
+}
+
+void InterpreterTest::TestExprErr(const std::string& expr,
+                                  const std::string& expected_error) {
+  TestExprEx(/* scope */ "",
+             /* expr */ expr,
+             /* expected_error */ expected_error,
+             /* expected_value */ "",
+             /* compare_with_lldb */ true);
+}
+
+void InterpreterTest::TestExprErr(const std::string& scope,
+                                  const std::string& expr,
+                                  const std::string& expected_error) {
+  TestExprEx(/* scope */ scope,
+             /* expr */ expr,
+             /* expected_error */ expected_error,
+             /* expected_value */ "",
+             /* compare_with_lldb */ true);
+}
+
+void InterpreterTest::TestExprOnlyCompare(const std::string& expr) {
+  SCOPED_TRACE("[Compare lldb-eval <-> LLDB]");
+
+  TestExprEx(/* scope */ "",
+             /* expr */ expr,
+             /* expected_error */ "",
+             /* expected_value */ "",
+             /* compare_with_lldb */ true);
+}
+
+void InterpreterTest::TestExprEx(const std::string& scope,
+                                 const std::string& expr,
+                                 const std::string& expected_error,
+                                 const std::string& expected_value,
+                                 bool compare_with_lldb) {
+  std::string scope_msg;
+  if (!scope.empty()) {
+    scope_msg = "[evaluate in scope = '" + scope + "']: " + expr;
+  } else {
+    scope_msg = "[evaluate in frame]: " + expr;
+  }
+  SCOPED_TRACE(scope_msg);
+
+  std::function<lldb::SBValue(lldb::SBError&)> lldb_eval_func;
+  std::function<lldb::SBValue()> lldb_func;
+
+  if (!scope.empty()) {
+    // Resolve the scope variable (assume it's a local variable).
+    lldb::SBValue scope_var = frame_.FindVariable(scope.c_str());
+    ASSERT_TRUE(scope_var.IsValid())
+        << "Failed to resolve the scope variable. Are you sure it's available "
+           "in the current scope?";
+
+    // Evaluate in the variable context.
+    lldb_eval_func = [expr, scope_var](lldb::SBError& error) {
+      return lldb_eval::EvaluateExpression(scope_var, expr.c_str(), error);
+    };
+    lldb_func = [expr, scope_var]() {
+      return scope_var.EvaluateExpression(expr.c_str());
+    };
+
+  } else {
+    // Evaluate in the frame context.
+    lldb_eval_func = [this, expr](lldb::SBError& error) {
+      return lldb_eval::EvaluateExpression(frame_, expr.c_str(), error);
+    };
+    lldb_func = [this, expr]() {
+      return frame_.EvaluateExpression(expr.c_str());
+    };
   }
 
-  if (!skip_lldb) {
-    SCOPED_TRACE("[Evaluate with LLDB]: " + expr);
-    lldb::SBValue result = frame_.EvaluateExpression(expr.c_str());
+  lldb::SBError error;
+  lldb::SBValue value = lldb_eval_func(error);
 
-    if (expect_error_lldb) {
-      EXPECT_STRNE(result.GetError().GetCString(), NULL);
-      EXPECT_STREQ(result.GetValue(), NULL);
-    } else {
-      EXPECT_STREQ(result.GetError().GetCString(), NULL);
-      EXPECT_STREQ(result.GetValue(), expected_result.c_str());
+  if (!expected_error.empty()) {
+    // Expect an error, check that error message matches the expected text.
+    EXPECT_THAT(error.GetCString(), ::testing::HasSubstr(expected_error));
+  } else {
+    // No error expected, the evaluation should be successful.
+    EXPECT_STREQ(error.GetCString(), NULL);
+
+    if (!expected_value.empty()) {
+      EXPECT_STREQ(value.GetValue(), expected_value.c_str());
+    }
+
+    if (compare_with_lldb) {
+      lldb::SBValue lldb_value = lldb_func();
+      EXPECT_STREQ(lldb_value.GetError().GetCString(), NULL)
+          << "LLDB failed to evaluate '" + expr;
+      EXPECT_STREQ(value.GetValue(), lldb_value.GetValue())
+          << "Values produced by lldb-eval and LLDB don't match";
     }
   }
 }
 
-void InterpreterTest::TestExprOnlyCompare(const std::string& expr) {
-  SCOPED_TRACE("[Compare LLDB and lldb-eval]: " + expr);
-  lldb::SBValue lldb_native_result, lldb_eval_result;
-  EvaluateLldb(expr, lldb_native_result);
-  EvaluateLldbEval(expr, lldb_eval_result);
-  EXPECT_STREQ(lldb_eval_result.GetValue(), lldb_native_result.GetValue());
-}
-
-void InterpreterTest::TestExprErr(const std::string& expr,
-                                  const std::string& msg) {
-  SCOPED_TRACE("[Evaluate with lldb-eval]: " + expr);
-  lldb_eval::Error error;
-  lldb_eval::Value result = EvaluateExpression(frame_, expr, error);
-  EXPECT_THAT(error.message(), ::testing::HasSubstr(msg));
-}
-
 TEST_F(InterpreterTest, TestSymbols) {
-  // No symbols might indicate that the test binary was built incorrectly.
-  EXPECT_GT(frame_.GetModule().GetNumSymbols(), 0);
+  EXPECT_GT(frame_.GetModule().GetNumSymbols(), 0)
+      << "No symbols might indicate that the test binary was built incorrectly";
 }
 
 TEST_F(InterpreterTest, TestArithmetic) {
@@ -781,4 +803,12 @@ TEST_F(InterpreterTest, TestTemplateTypes) {
   TestExpr("(::T_2<T_1<T_1<int> >, T_1<char> >::myint)1.1", "1.10000002");
 }
 
-}  // namespace
+TEST_F(InterpreterTest, TestValueScope) {
+  TestExpr("var", "x_", "1");
+  TestExpr("var", "y_", "2.5");
+  TestExprErr("var", "z_", "use of undeclared identifier 'z_'");
+
+  TestExprErr("x_", "use of undeclared identifier 'x_'");
+  TestExprErr("y_", "use of undeclared identifier 'y_'");
+  TestExpr("z_", "3");
+}

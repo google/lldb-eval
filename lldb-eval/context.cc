@@ -12,21 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "lldb-eval/expression_context.h"
+#include "lldb-eval/context.h"
+
+#include <memory>
 
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceManager.h"
 #include "lldb/API/SBExecutionContext.h"
+#include "lldb/API/SBFrame.h"
 #include "lldb/API/SBTarget.h"
 #include "lldb/API/SBType.h"
+#include "lldb/API/SBValue.h"
+#include "lldb/API/SBValueList.h"
 #include "llvm/Support/FormatVariadic.h"
 
 namespace lldb_eval {
 
-ExpressionContext::ExpressionContext(std::string expr,
-                                     lldb::SBExecutionContext exec_ctx)
-    : expr_(std::move(expr)), exec_ctx_(exec_ctx) {
+Context::Context(std::string expr, lldb::SBExecutionContext ctx,
+                 lldb::SBValue scope)
+    : expr_(std::move(expr)), ctx_(ctx), scope_(scope) {
   // This holds a SourceManager and all of its dependencies.
   smff_ = std::make_unique<clang::SourceManagerForFile>("<expr>", expr_);
 
@@ -36,9 +41,7 @@ ExpressionContext::ExpressionContext(std::string expr,
   de.setClient(new clang::IgnoringDiagConsumer);
 }
 
-lldb::SBType ExpressionContext::ResolveTypeByName(const char* name) {
-  lldb::SBTarget target = exec_ctx_.GetTarget();
-
+lldb::SBType Context::ResolveTypeByName(const char* name) const {
   // TODO(b/163308825): Do scope-aware type lookup. Look for the types defined
   // in the current scope (function, class, namespace) and prioritize them.
 
@@ -55,7 +58,7 @@ lldb::SBType ExpressionContext::ResolveTypeByName(const char* name) {
   // SBTarget::FindTypes will return all matched types, including the ones one
   // in different scopes. I.e. if seaching for "myint", this will also return
   // "ns::myint" and "Foo::myint".
-  lldb::SBTypeList types = target.FindTypes(name_ref.data());
+  lldb::SBTypeList types = ctx_.GetTarget().FindTypes(name_ref.data());
 
   // We've found multiple types, try finding the "correct" one.
   lldb::SBType full_match;
@@ -96,10 +99,7 @@ lldb::SBType ExpressionContext::ResolveTypeByName(const char* name) {
   return lldb::SBType();
 }
 
-lldb::SBValue ExpressionContext::LookupIdentifier(const char* name) {
-  lldb::SBTarget target = exec_ctx_.GetTarget();
-  lldb::SBFrame frame = exec_ctx_.GetFrame();
-
+lldb::SBValue Context::LookupIdentifier(const char* name) const {
   // Internally values don't have global scope qualifier in their names and
   // LLDB doesn't support queries with it too.
   llvm::StringRef name_ref(name);
@@ -115,14 +115,21 @@ lldb::SBValue ExpressionContext::LookupIdentifier(const char* name) {
   // If the identifier doesn't refer to the global scope and doesn't have any
   // other scope qualifiers, try looking among the local and instance variables.
   if (!global_scope && name_ref.find("::") == llvm::StringRef::npos) {
-    // Try looking for a local variable in current scope.
-    if (!value) {
-      value = frame.FindVariable(name_ref.data());
-    }
-    // Try looking for an instance variable (class member).
-    if (!value) {
-      value =
-          frame.FindVariable("this").GetChildMemberWithName(name_ref.data());
+    if (!scope_) {
+      // Lookup in the current frame.
+      lldb::SBFrame frame = ctx_.GetFrame();
+      // Try looking for a local variable in current scope.
+      if (!value) {
+        value = frame.FindVariable(name_ref.data());
+      }
+      // Try looking for an instance variable (class member).
+      if (!value) {
+        value =
+            frame.FindVariable("this").GetChildMemberWithName(name_ref.data());
+      }
+    } else {
+      // Lookup the variable as a member of the current scope value.
+      value = scope_.GetChildMemberWithName(name_ref.data());
     }
   }
 
@@ -135,7 +142,7 @@ lldb::SBValue ExpressionContext::LookupIdentifier(const char* name) {
     // List global variable with the same "basename". There can be many matches
     // from other scopes (namespaces, classes), so we do additional filtering
     // later.
-    lldb::SBValueList values = target.FindGlobalVariables(
+    lldb::SBValueList values = ctx_.GetTarget().FindGlobalVariables(
         name_ref.data(), /*max_matches=*/std::numeric_limits<uint32_t>::max());
 
     // Find the corrent variable by matching the name. lldb::SBValue::GetName()
@@ -155,6 +162,18 @@ lldb::SBValue ExpressionContext::LookupIdentifier(const char* name) {
   }
 
   return value;
+}
+
+std::shared_ptr<Context> Context::Create(std::string expr,
+                                         lldb::SBFrame frame) {
+  return std::shared_ptr<Context>(new Context(
+      std::move(expr), lldb::SBExecutionContext(frame), lldb::SBValue()));
+}
+
+std::shared_ptr<Context> Context::Create(std::string expr,
+                                         lldb::SBValue scope) {
+  return std::shared_ptr<Context>(new Context(
+      std::move(expr), lldb::SBExecutionContext(scope.GetFrame()), scope));
 }
 
 }  // namespace lldb_eval

@@ -41,6 +41,10 @@ LLDB_EVAL_API
 lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
                                  lldb::SBError& error);
 
+LLDB_EVAL_API
+lldb::SBValue EvaluateExpression(lldb::SBValue scope, const char* expression,
+                                 lldb::SBError& error);
+
 }  // namespace lldb_eval
 
 #endif  // LLDB_EVAL_API_H_

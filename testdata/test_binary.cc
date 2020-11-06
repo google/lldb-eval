@@ -380,6 +380,22 @@ static void TestTemplateTypes() {
   // BREAK(TestTemplateTypes)
 }
 
+void TestValueScope() {
+  class Value {
+   public:
+    Value(int x, double y) : x_(x), y_(y) {}
+
+   private:
+    int x_;
+    double y_;
+  };
+
+  Value var(1, 2.5);
+  uint64_t z_ = 3;
+
+  // BREAK(TestValueScope)
+}
+
 namespace test_binary {
 
 void main() {
@@ -400,6 +416,7 @@ void main() {
   TestCStyleCast();
   TestQualifiedId();
   TestTemplateTypes();
+  TestValueScope();
 
   // break here
 }

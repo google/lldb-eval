@@ -17,10 +17,12 @@
 #ifndef LLDB_EVAL_EVAL_H_
 #define LLDB_EVAL_EVAL_H_
 
+#include <memory>
+
 #include "clang/Basic/TokenKinds.h"
 #include "lldb-eval/ast.h"
+#include "lldb-eval/context.h"
 #include "lldb-eval/defines.h"
-#include "lldb-eval/expression_context.h"
 #include "lldb-eval/value.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBProcess.h"
@@ -32,8 +34,8 @@ namespace lldb_eval {
 
 class Interpreter : Visitor {
  public:
-  explicit Interpreter(ExpressionContext& expr_ctx) : expr_ctx_(&expr_ctx) {
-    target_ = expr_ctx_->GetExecutionContext().GetTarget();
+  explicit Interpreter(std::shared_ptr<Context> ctx) : ctx_(std::move(ctx)) {
+    target_ = ctx_->GetExecutionContext().GetTarget();
   }
 
  public:
@@ -90,9 +92,9 @@ class Interpreter : Visitor {
   Value PointerAdd(Value lhs, int64_t offset);
 
  private:
-  // Interpreter doesn't own expression context. The expression is evaluated in
-  // the given context and the produced result may depend on it.
-  ExpressionContext* expr_ctx_;
+  // Interpreter doesn't own the evaluation context. The expression is evaluated
+  // in the given context and the produced result may depend on it.
+  std::shared_ptr<Context> ctx_;
 
   // Convenience references, used by the interpreter to lookup variables and
   // types, create objects, perform casts, etc.

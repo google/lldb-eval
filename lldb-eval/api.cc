@@ -14,10 +14,11 @@
 
 #include "lldb-eval/api.h"
 
+#include <memory>
 #include <string>
 
+#include "lldb-eval/context.h"
 #include "lldb-eval/eval.h"
-#include "lldb-eval/expression_context.h"
 #include "lldb-eval/parser.h"
 #include "lldb-eval/value.h"
 #include "lldb/API/SBError.h"
@@ -28,42 +29,42 @@
 
 namespace lldb_eval {
 
-namespace {
-
-Value EvaluateExpression(lldb::SBFrame frame, const char* expr, Error& error) {
-  ExpressionContext ctx(expr, lldb::SBExecutionContext(frame));
-
-  Parser p(ctx);
-  ExprResult tree = p.Run(error);
-  if (error) {
-    return Value();
-  }
-
-  Interpreter eval(ctx);
-  Value ret = eval.Eval(tree.get(), error);
-  if (error) {
-    return Value();
-  }
-
+static lldb::SBError ConvertError(const Error& error) {
+  lldb::SBError ret;
+  ret.SetError(static_cast<uint32_t>(error.code()), lldb::eErrorTypeGeneric);
+  ret.SetErrorString(error.message().c_str());
   return ret;
 }
 
-}  // namespace
-
-lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
-                                 lldb::SBError& error) {
-  error.Clear();
-
+static lldb::SBValue EvaluateExpressionImpl(std::shared_ptr<Context> ctx,
+                                            lldb::SBError& error) {
   Error err;
-  Value result = EvaluateExpression(frame, expression, err);
-
+  Parser p(ctx);
+  ExprResult tree = p.Run(err);
   if (err) {
-    error.SetError(static_cast<uint32_t>(err.code()), lldb::eErrorTypeGeneric);
-    error.SetErrorString(err.message().c_str());
+    error = ConvertError(err);
     return lldb::SBValue();
   }
 
-  return result.inner_value();
+  Interpreter eval(ctx);
+  Value ret = eval.Eval(tree.get(), err);
+  if (err) {
+    error = ConvertError(err);
+    return lldb::SBValue();
+  }
+
+  error.Clear();
+  return ret.inner_value();
+}
+
+lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
+                                 lldb::SBError& error) {
+  return EvaluateExpressionImpl(Context::Create(expression, frame), error);
+}
+
+lldb::SBValue EvaluateExpression(lldb::SBValue scope, const char* expression,
+                                 lldb::SBError& error) {
+  return EvaluateExpressionImpl(Context::Create(expression, scope), error);
 }
 
 }  // namespace lldb_eval
