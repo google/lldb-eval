@@ -18,8 +18,8 @@
 
 #include "clang/Basic/TokenKinds.h"
 #include "lldb-eval/ast.h"
+#include "lldb-eval/context.h"
 #include "lldb-eval/defines.h"
-#include "lldb-eval/expression_context.h"
 #include "lldb-eval/value.h"
 #include "lldb/API/SBTarget.h"
 #include "lldb/API/SBType.h"
@@ -143,8 +143,7 @@ void Interpreter::Visit(const CStyleCastNode* node) {
   TypeDeclaration type_decl = node->type_decl();
 
   // Resolve the type within the current expression context.
-  lldb::SBType type =
-      expr_ctx_->ResolveTypeByName(type_decl.GetBaseName().c_str());
+  lldb::SBType type = ctx_->ResolveTypeByName(type_decl.GetBaseName().c_str());
 
   if (!type.IsValid()) {
     // TODO(werat): Make sure we don't have false negative errors here.

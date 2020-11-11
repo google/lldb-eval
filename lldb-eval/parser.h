@@ -29,7 +29,7 @@
 #include "clang/Lex/ModuleLoader.h"
 #include "clang/Lex/Preprocessor.h"
 #include "lldb-eval/ast.h"
-#include "lldb-eval/expression_context.h"
+#include "lldb-eval/context.h"
 
 namespace lldb_eval {
 
@@ -38,7 +38,7 @@ namespace lldb_eval {
 // docs/expr-ebnf.txt
 class Parser {
  public:
-  explicit Parser(ExpressionContext& expr_ctx);
+  explicit Parser(std::shared_ptr<Context> ctx);
 
   ExprResult Run(Error& error);
 
@@ -104,10 +104,10 @@ class Parser {
  private:
   friend class TentativeParsingAction;
 
-  // Parser doesn't own expression context. The produced AST may depend on it
-  // (for example, for source locations), so it's expected that expression
+  // Parser doesn't own the evaluation context. The produced AST may depend on
+  // it (for example, for source locations), so it's expected that expression
   // context will outlive the parser.
-  ExpressionContext* expr_ctx_;
+  std::shared_ptr<Context> ctx_;
 
   // Convenience references, used by the interpreter to lookup variables and
   // types, create objects, perform casts, etc.

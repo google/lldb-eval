@@ -22,16 +22,16 @@ cc_library(
     srcs = [
         "api.cc",
         "ast.cc",
+        "context.cc",
         "eval.cc",
-        "expression_context.cc",
         "parser.cc",
         "value.cc",
     ],
     hdrs = [
         "api.h",
         "ast.h",
+        "context.h",
         "eval.h",
-        "expression_context.h",
         "parser.h",
         "traits.h",
         "value.h",

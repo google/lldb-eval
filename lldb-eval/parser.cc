@@ -155,10 +155,10 @@ lldb::BasicType PickIntegerType(const clang::NumericLiteralParser& literal,
 
 namespace lldb_eval {
 
-Parser::Parser(ExpressionContext& expr_ctx) : expr_ctx_(&expr_ctx) {
-  target_ = expr_ctx_->GetExecutionContext().GetTarget();
+Parser::Parser(std::shared_ptr<Context> ctx) : ctx_(std::move(ctx)) {
+  target_ = ctx_->GetExecutionContext().GetTarget();
 
-  clang::SourceManager& sm = expr_ctx_->GetSourceManager();
+  clang::SourceManager& sm = ctx_->GetSourceManager();
   clang::DiagnosticsEngine& de = sm.getDiagnostics();
 
   auto tOpts = std::make_shared<clang::TargetOptions>();
@@ -252,8 +252,7 @@ void Parser::BailOut(ErrorCode code, const std::string& error,
     return;
   }
 
-  error_.Set(code,
-             FormatDiagnostics(expr_ctx_->GetSourceManager(), error, loc));
+  error_.Set(code, FormatDiagnostics(ctx_->GetSourceManager(), error, loc));
   token_.setKind(clang::tok::eof);
 }
 
@@ -627,7 +626,7 @@ ExprResult Parser::ParsePrimaryExpression() {
     // Save the source location for the diagnostics message.
     clang::SourceLocation loc = token_.getLocation();
     auto identifier = ParseIdExpression();
-    auto value = expr_ctx_->LookupIdentifier(identifier.c_str());
+    auto value = ctx_->LookupIdentifier(identifier.c_str());
     if (!value) {
       BailOut(ErrorCode::kUndeclaredIdentifier,
               llvm::formatv("use of undeclared identifier '{0}'", identifier),
@@ -640,7 +639,7 @@ ExprResult Parser::ParsePrimaryExpression() {
     // Save the source location for the diagnostics message.
     clang::SourceLocation loc = token_.getLocation();
     ConsumeToken();
-    auto value = expr_ctx_->LookupIdentifier("this");
+    auto value = ctx_->LookupIdentifier("this");
     if (!value) {
       BailOut(ErrorCode::kUndeclaredIdentifier,
               "invalid use of 'this' outside of a non-static member function",
@@ -1033,8 +1032,7 @@ bool Parser::ResolveTypeFromTypeDecl(const TypeDeclaration& type_decl) {
   }
 
   // Resolve the type in the current expression context.
-  lldb::SBType type =
-      expr_ctx_->ResolveTypeByName(type_decl.GetBaseName().c_str());
+  lldb::SBType type = ctx_->ResolveTypeByName(type_decl.GetBaseName().c_str());
 
   return type.IsValid();
 }

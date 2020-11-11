@@ -17,8 +17,7 @@
 #include <memory>
 #include <string>
 
-#include "lldb-eval/expression_context.h"
-#include "lldb/API/SBExecutionContext.h"
+#include "lldb-eval/context.h"
 
 // DISALLOW_COPY_AND_ASSIGN is also defined in
 // lldb/lldb-defines.h
@@ -29,11 +28,10 @@
 namespace {
 
 lldb_eval::Error ParseExpr(const std::string& expr) {
-  // Use empty lldb::SBExecutionContext for testing. It is used by parser to
-  // resolve ambiguous situations (mostly to resolve types/variables in the
-  // target context), but not required if the expression is unambiguous.
-  lldb_eval::ExpressionContext expr_ctx(expr, lldb::SBExecutionContext());
-  lldb_eval::Parser parser(expr_ctx);
+  // Use empty lldb::SBFrame for testing. Parser uses it to resolve types and
+  // identifiers, but expression in these tests don't have any.
+  auto ctx = lldb_eval::Context::Create(expr, lldb::SBFrame());
+  lldb_eval::Parser parser(ctx);
   lldb_eval::Error error;
   parser.Run(error);
   return error;

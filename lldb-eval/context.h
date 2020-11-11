@@ -17,10 +17,12 @@
 #ifndef LLDB_EVAL_EXPRESSION_CONTEXT_H_
 #define LLDB_EVAL_EXPRESSION_CONTEXT_H_
 
+#include <memory>
 #include <string>
 
 #include "clang/Basic/SourceManager.h"
 #include "lldb/API/SBExecutionContext.h"
+#include "lldb/API/SBFrame.h"
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
 
@@ -54,18 +56,28 @@ class Error {
   std::string message_;
 };
 
-class ExpressionContext {
+class Context {
  public:
-  ExpressionContext(std::string expr, lldb::SBExecutionContext exec_ctx);
+  static std::shared_ptr<Context> Create(std::string expr, lldb::SBFrame frame);
+  static std::shared_ptr<Context> Create(std::string expr, lldb::SBValue scope);
+
+  // This class cannot be safely moved because of the dependency between `expr_`
+  // and `smff_`. Users are supposed to pass around the shared pointer.
+  Context(Context&&) = delete;
+  Context(const Context&) = delete;
+  Context& operator=(Context const&) = delete;
 
   clang::SourceManager& GetSourceManager() const { return smff_->get(); }
-  lldb::SBExecutionContext GetExecutionContext() const { return exec_ctx_; }
+  lldb::SBExecutionContext GetExecutionContext() const { return ctx_; }
 
  public:
-  lldb::SBType ResolveTypeByName(const char* name);
-  lldb::SBValue LookupIdentifier(const char* name);
+  lldb::SBType ResolveTypeByName(const char* name) const;
+  lldb::SBValue LookupIdentifier(const char* name) const;
 
  private:
+  Context(std::string expr, lldb::SBExecutionContext ctx, lldb::SBValue scope);
+
+ public:
   // Store the expression, since SourceManager doesn't take the ownership.
   std::string expr_;
   std::unique_ptr<clang::SourceManagerForFile> smff_;
@@ -73,7 +85,12 @@ class ExpressionContext {
   // The expression exists in the context of an LLDB target. Execution context
   // provides information for semantic analysis (e.g. resolving types, looking
   // up variables, etc).
-  lldb::SBExecutionContext exec_ctx_;
+  lldb::SBExecutionContext ctx_;
+
+  // If set, the expression is evaluated in the scope of this value: `scope_` is
+  // used as `this` pointer and local variables from the current frame are not
+  // available.
+  mutable lldb::SBValue scope_;
 };
 
 }  // namespace lldb_eval
