@@ -41,6 +41,7 @@ static void TestArithmetic() {
   auto fdenorm = 0x0.1p-145f;
 
   // BREAK(TestArithmetic)
+  // BREAK(TestZeroDivision)
 }
 
 static void TestBitwiseOperators() {
