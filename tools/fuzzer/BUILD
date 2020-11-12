@@ -18,15 +18,6 @@ cc_library(
 cc_binary(
     name = "fuzzer",
     srcs = ["main.cc"],
-    copts = select({
-        "@bazel_tools//src/conditions:windows": [
-            # Disable warnings for llvm_project
-            "/external:I external/llvm_project/include",
-            # Disable warnings for cpp-linenoise
-            "/external:I $(BINDIR)/external/io_github_yhirose_cpplinenoise",
-        ],
-        "//conditions:default": [],
-    }),
     data = [
         "//testdata:fuzzer_binary_gen",
         "//testdata:fuzzer_binary_srcs",
