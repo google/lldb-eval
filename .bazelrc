@@ -17,10 +17,20 @@ build:windows --cxxopt=/std:c++17
 build:windows --copt=/W4
 build:windows --copt=/WX
 
-# Don't emit warnings for headers defined as external (similar to gcc's
-# `-isystem` counterpart).
-build:windows --copt=/experimental:external
-build:windows --copt=/external:W0
+# Disable some warnings completely, since in MSVC 19.28.29333 "/external" option doesn't work:
+https://developercommunity.visualstudio.com/content/problem/1252451/clexe-flag-externalw0-doesnt-work-in-msvc-19282933.html
+# Full list of warnings that are disabled for LLVM on Windows:
+https://github.com/llvm/llvm-project/blob/master/llvm/cmake/modules/HandleLLVMOptions.cmake
+build:windows --copt=/wd4100
+build:windows --copt=/wd4146
+build:windows --copt=/wd4244
+build:windows --copt=/wd4245
+build:windows --copt=/wd4267
+build:windows --copt=/wd4324
+build:windows --copt=/wd4389
+build:windows --copt=/wd4456
+build:windows --copt=/wd4458
+build:windows --copt=/wd4624
 
 # On Windows clang.exe tries to find the MSVC toolchain by looking at environmental variables,
 # querying Visual Studio instances via COM (>=2017) and reading Registry keys (<=2015).

@@ -572,7 +572,7 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
     Expr expected = DoubleConstant(0x0.1p-1070, DoubleConstant::Format::Hex,
                                    DoubleConstant::Length::Double);
 
-#ifdef _WIN32
+#if defined(_MSC_VER) && _MSC_VER < 1928
     // Apparently MSVC seems to not be adhering to the C++11 standard properly
     // and it takes into account the precision modifier when printing hex
     // floats (https://en.cppreference.com/w/cpp/locale/num_put/put#Notes).

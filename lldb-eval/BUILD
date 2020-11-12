@@ -4,14 +4,6 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
-COPTS = select({
-    "@bazel_tools//src/conditions:windows": [
-        # Mark the LLVM includes as external
-        "/external:I external/llvm_project/include",
-    ],
-    "//conditions:default": [],
-})
-
 cc_library(
     name = "defines",
     hdrs = ["defines.h"],
@@ -36,7 +28,6 @@ cc_library(
         "traits.h",
         "value.h",
     ],
-    copts = COPTS,
     deps = [
         ":defines",
         "@llvm_project//:clang-basic",
@@ -49,7 +40,6 @@ cc_library(
 cc_test(
     name = "eval_test",
     srcs = ["eval_test.cc"],
-    copts = COPTS,
     tags = [
         # On Linux lldb-server behaves funny in a sandbox ¯\_(ツ)_/¯. This is
         # not necessary on Windows, but "tags" attribute is not configurable
@@ -68,7 +58,6 @@ cc_test(
 cc_test(
     name = "parser_test",
     srcs = ["parser_test.cc"],
-    copts = COPTS,
     deps = [
         ":lldb-eval",
         "@com_google_googletest//:gtest",
@@ -81,7 +70,6 @@ cc_library(
     name = "runner",
     srcs = ["runner.cc"],
     hdrs = ["runner.h"],
-    copts = COPTS,
     data = [
         "//testdata:test_binary_gen",
         "//testdata:test_binary_srcs",
