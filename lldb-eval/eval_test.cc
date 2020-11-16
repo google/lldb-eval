@@ -492,6 +492,40 @@ TEST_F(EvalTest, TestPointerArithmetic) {
                       "'const char *')"));
 }
 
+TEST_F(EvalTest, PointerIntegerComparison) {
+  EXPECT_THAT(Eval("(void*)0 == 0"), IsEqual("true"));
+  EXPECT_THAT(Eval("0 != (void*)0"), IsEqual("false"));
+
+  EXPECT_THAT(Eval("(void*)0 == nullptr"), IsEqual("true"));
+  EXPECT_THAT(Eval("(void*)0 != nullptr"), IsEqual("false"));
+  EXPECT_THAT(Eval("nullptr == (void*)1"), IsEqual("false"));
+  EXPECT_THAT(Eval("nullptr != (void*)1"), IsEqual("true"));
+
+  EXPECT_THAT(Eval("nullptr == nullptr"), IsEqual("true"));
+  EXPECT_THAT(Eval("nullptr != nullptr"), IsEqual("false"));
+  EXPECT_THAT(Eval("nullptr == 0"), IsEqual("true"));
+  EXPECT_THAT(Eval("0 != nullptr"), IsEqual("false"));
+
+  EXPECT_THAT(
+      Eval("(void*)0 > nullptr"),
+      IsError(
+          "invalid operands to binary expression ('void *' and 'nullptr_t')"));
+
+  // These are not allowed by C++, but we support it as an extension.
+  EXPECT_THAT(Eval("(void*)1 == 1"), IsEqual("true"));
+  EXPECT_THAT(Eval("(void*)1 == 0"), IsEqual("false"));
+  EXPECT_THAT(Eval("(void*)1 > 0"), IsEqual("true"));
+  EXPECT_THAT(Eval("(void*)1 < 0"), IsEqual("false"));
+  EXPECT_THAT(Eval("1 > (void*)0"), IsEqual("true"));
+  EXPECT_THAT(Eval("2 < (void*)3"), IsEqual("true"));
+
+  // Integer is converted to uintptr_t, so negative numbers because large
+  // positive numbers.
+  EXPECT_THAT(Eval("(void*)0xffffffffffffffff == -1"), IsEqual("true"));
+  EXPECT_THAT(Eval("(void*)-1 == -1"), IsEqual("true"));
+  EXPECT_THAT(Eval("(void*)1 > -1"), IsEqual("false"));
+}
+
 TEST_F(EvalTest, TestLogicalOperators) {
   EXPECT_THAT(Eval("1 > 2"), IsEqual("false"));
   EXPECT_THAT(Eval("1 == 1"), IsEqual("true"));

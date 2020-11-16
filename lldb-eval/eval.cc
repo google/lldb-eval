@@ -118,13 +118,7 @@ void Interpreter::Visit(const ErrorNode*) {
   error_.Set(ErrorCode::kUnknown, "The AST is not valid.");
 }
 
-void Interpreter::Visit(const BooleanLiteralNode* node) {
-  result_ = node->value();
-}
-
-void Interpreter::Visit(const NumericLiteralNode* node) {
-  result_ = node->value();
-}
+void Interpreter::Visit(const LiteralNode* node) { result_ = node->value(); }
 
 void Interpreter::Visit(const IdentifierNode* node) {
   result_ = node->value();
@@ -552,6 +546,8 @@ Value Interpreter::EvaluateComparison(clang::tok::TokenKind op, Value lhs,
   //
   //  scalar <-> scalar
   //  pointer <-> pointer (if pointee types are compatible)
+  //  pointer <-> integer
+  //  integer <-> pointer
 
   if (lhs.IsScalar() && rhs.IsScalar()) {
     lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
@@ -571,9 +567,26 @@ Value Interpreter::EvaluateComparison(clang::tok::TokenKind op, Value lhs,
     lldb_eval_unreachable("Result of arithmetic conversion is not a scalar");
   }
 
-  if (lhs.IsPointer() && rhs.IsPointer()) {
-    // Comparing pointers to void is always allowed.
-    if (!lhs.IsPointerToVoid() && !rhs.IsPointerToVoid()) {
+  bool is_ordered = op == clang::tok::less || op == clang::tok::lessequal ||
+                    op == clang::tok::greater || op == clang::tok::greaterequal;
+
+  // Check if the value can be compared to a pointer. We allow all pointers,
+  // integers and a nullptr literal if it's an equality/inequality comparison.
+  // For "pointer <-> integer" C++ allows only equality/inequality comparison
+  // against literal zero and nullptr. However in the debugger context it's
+  // often useful to compare a pointer with an integer representing an address.
+  // That said, this also allows comparing nullptr and any integer, not just
+  // literal zero, e.g. "nullptr == 1 -> false". C++ doesn't allow it, but we
+  // implement this for convenience.
+  auto comparable_to_pointer = [&](Value v) {
+    return v.IsPointer() || v.IsInteger() || (!is_ordered && v.IsNullPtrType());
+  };
+
+  if (comparable_to_pointer(lhs) && comparable_to_pointer(rhs)) {
+    // If both are pointers, check if they have comparable types. Comparing
+    // pointers to void is always allowed.
+    if ((lhs.IsPointer() && !lhs.IsPointerToVoid()) &&
+        (rhs.IsPointer() && !rhs.IsPointerToVoid())) {
       auto lhs_type = lhs.type().GetCanonicalType().GetUnqualifiedType();
       auto rhs_type = rhs.type().GetCanonicalType().GetUnqualifiedType();
 
@@ -584,8 +597,12 @@ Value Interpreter::EvaluateComparison(clang::tok::TokenKind op, Value lhs,
       }
     }
 
-    auto lhs_addr = lhs.GetValueAsAddress();
-    auto rhs_addr = rhs.GetValueAsAddress();
+    // Use `GetValueAsAddress()` for pointer operands and `GetInt64` for
+    // integers/nullptr literals. We can't just read an unsigned value, because
+    // the integer might be signed and needs to be promoted to a proper type
+    // (i.e. uintptr_t).
+    auto lhs_addr = lhs.IsPointer() ? lhs.GetValueAsAddress() : lhs.GetInt64();
+    auto rhs_addr = rhs.IsPointer() ? rhs.GetValueAsAddress() : rhs.GetInt64();
 
     return CreateValueFromBool(target_, Compare(op, lhs_addr, rhs_addr));
   }

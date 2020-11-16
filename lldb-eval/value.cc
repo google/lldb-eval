@@ -45,6 +45,10 @@ bool Value::IsPointerToVoid() {
          type_.GetPointeeType().GetBasicType() == lldb::eBasicTypeVoid;
 }
 
+bool Value::IsNullPtrType() {
+  return type_.GetBasicType() == lldb::eBasicTypeNullPtr;
+}
+
 bool Value::IsSigned() { return type_.GetTypeFlags() & lldb::eTypeIsSigned; }
 
 bool Value::GetBool() {
@@ -383,6 +387,11 @@ Value CreateValueFromBool(lldb::SBTarget target, bool value) {
 Value CreateValueZero(lldb::SBTarget target) {
   int zero = 0;
   return CreateValueFromBytes(target, &zero, lldb::eBasicTypeInt);
+}
+
+Value CreateValueNullptr(lldb::SBTarget target) {
+  uintptr_t zero = 0;
+  return CreateValueFromBytes(target, &zero, lldb::eBasicTypeNullPtr);
 }
 
 }  // namespace lldb_eval

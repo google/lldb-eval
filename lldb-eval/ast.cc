@@ -66,9 +66,7 @@ std::string TypeDeclaration::GetBaseName() const {
 
 void ErrorNode::Accept(Visitor* v) const { v->Visit(this); }
 
-void BooleanLiteralNode::Accept(Visitor* v) const { v->Visit(this); }
-
-void NumericLiteralNode::Accept(Visitor* v) const { v->Visit(this); }
+void LiteralNode::Accept(Visitor* v) const { v->Visit(this); }
 
 void IdentifierNode::Accept(Visitor* v) const { v->Visit(this); }
 
