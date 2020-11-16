@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <type_traits>
 
 #include "lldb-eval/api.h"
 #include "lldb-eval/runner.h"
@@ -34,7 +35,187 @@
 
 using bazel::tools::cpp::runfiles::Runfiles;
 
-class InterpreterTest : public ::testing::Test {
+using ::testing::MakeMatcher;
+using ::testing::Matcher;
+using ::testing::MatcherInterface;
+using ::testing::MatchResultListener;
+
+struct EvalResult {
+  lldb::SBError lldb_eval_error;
+  mutable lldb::SBValue lldb_eval_value;
+  mutable std::optional<lldb::SBValue> lldb_value;
+
+  friend std::ostream& operator<<(std::ostream& os, const EvalResult& result) {
+    auto maybe_null = [](const char* str) {
+      return str == nullptr ? "NULL" : str;
+    };
+
+    os << "{ lldb-eval: " << maybe_null(result.lldb_eval_value.GetValue());
+
+    if (result.lldb_value.has_value()) {
+      os << ", lldb: " << maybe_null(result.lldb_value.value().GetValue());
+    }
+    os << " }";
+
+    return os;
+  }
+};
+
+class EvaluatorHelper {
+ public:
+  EvaluatorHelper(lldb::SBFrame frame, bool lldb)
+      : frame_(frame), lldb_(lldb) {}
+  EvaluatorHelper(lldb::SBValue scope, bool lldb)
+      : scope_(scope), lldb_(lldb) {}
+
+ public:
+  EvalResult Eval(std::string expr) {
+    EvalResult ret;
+
+    if (scope_) {
+      // Evaluate in the variable context.
+      ret.lldb_eval_value = lldb_eval::EvaluateExpression(scope_, expr.c_str(),
+                                                          ret.lldb_eval_error);
+
+      if (lldb_) {
+        ret.lldb_value = scope_.EvaluateExpression(expr.c_str());
+      }
+
+    } else {
+      // Evaluate in the frame context.
+      ret.lldb_eval_value = lldb_eval::EvaluateExpression(frame_, expr.c_str(),
+                                                          ret.lldb_eval_error);
+
+      if (lldb_) {
+        ret.lldb_value = frame_.EvaluateExpression(expr.c_str());
+      }
+    }
+
+    return ret;
+  }
+
+ private:
+  lldb::SBFrame frame_;
+  lldb::SBValue scope_;
+  bool lldb_;
+};
+
+void PrintError(::testing::MatchResultListener* listener,
+                const std::string& error) {
+  *listener << "error:";
+  // Print multiline errors on a separate line.
+  if (error.find('\n') != std::string::npos) {
+    *listener << "\n";
+  } else {
+    *listener << " ";
+  }
+  *listener << error;
+}
+
+class IsOkMatcher : public MatcherInterface<EvalResult> {
+ public:
+  bool MatchAndExplain(EvalResult result,
+                       MatchResultListener* listener) const override {
+    if (result.lldb_eval_error.GetError()) {
+      PrintError(listener, result.lldb_eval_error.GetCString());
+      return false;
+    }
+
+    std::string actual = result.lldb_eval_value.GetValue();
+    // Compare only if we tried to evaluate with LLDB.
+    if (result.lldb_value.has_value() &&
+        actual != result.lldb_value.value().GetValue()) {
+      *listener << "values produced by lldb-eval and LLDB don't match\n"
+                << "lldb-eval: " << actual << "\n"
+                << "lldb     : " << result.lldb_value.value().GetValue();
+      return false;
+    }
+
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os) const override {
+    *os << "evaluates without an error and equals to LLDB";
+  }
+};
+
+Matcher<EvalResult> IsOk() { return MakeMatcher(new IsOkMatcher()); }
+
+class IsEqualMatcher : public MatcherInterface<EvalResult> {
+ public:
+  explicit IsEqualMatcher(std::string value) : value_(std::move(value)) {}
+
+ public:
+  bool MatchAndExplain(EvalResult result,
+                       MatchResultListener* listener) const override {
+    if (result.lldb_eval_error.GetError()) {
+      PrintError(listener, result.lldb_eval_error.GetCString());
+      return false;
+    }
+
+    std::string actual = result.lldb_eval_value.GetValue();
+    if (actual != value_) {
+      *listener << "evaluated to '" << actual << "'";
+      return false;
+    }
+
+    // Compare only if we tried to evaluate with LLDB.
+    if (result.lldb_value.has_value() &&
+        actual != result.lldb_value.value().GetValue()) {
+      *listener << "values produced by lldb-eval and LLDB don't match\n"
+                << "lldb-eval: " << actual << "\n"
+                << "lldb     : " << result.lldb_value.value().GetValue();
+      return false;
+    }
+
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os) const override {
+    *os << "evaluates to '" << value_ << "'";
+  }
+
+ private:
+  std::string value_;
+};
+
+Matcher<EvalResult> IsEqual(std::string value) {
+  return MakeMatcher(new IsEqualMatcher(std::move(value)));
+}
+
+class IsErrorMatcher : public MatcherInterface<EvalResult> {
+ public:
+  explicit IsErrorMatcher(std::string value) : value_(std::move(value)) {}
+
+ public:
+  bool MatchAndExplain(EvalResult result,
+                       MatchResultListener* listener) const override {
+    if (!result.lldb_eval_error.GetError()) {
+      *listener << "evaluated to '" << result.lldb_eval_value.GetValue() << "'";
+      return false;
+    }
+    std::string message = result.lldb_eval_error.GetCString();
+    if (message.find(value_) == std::string::npos) {
+      PrintError(listener, message);
+      return false;
+    }
+
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os) const override {
+    *os << "evaluates with an error: '" << value_ << "'";
+  }
+
+ private:
+  std::string value_;
+};
+
+Matcher<EvalResult> IsError(std::string value) {
+  return MakeMatcher(new IsErrorMatcher(std::move(value)));
+}
+
+class EvalTest : public ::testing::Test {
  protected:
   static void SetUpTestSuite() {
     runfiles_ = Runfiles::CreateForTest();
@@ -61,754 +242,655 @@ class InterpreterTest : public ::testing::Test {
     process_ = lldb_eval::LaunchTestProgram(debugger_, source_path, binary_path,
                                             break_line);
     frame_ = process_.GetSelectedThread().GetSelectedFrame();
-
-    // Evaluate expressions with both lldb-eval and LLDB by default.
-    skip_lldb = false;
   }
 
-  void TearDown() { process_.Destroy(); }
+  void TearDown() {
+    process_.Destroy();
+    lldb::SBDebugger::Destroy(debugger_);
+  }
 
-  void TestExpr(const std::string& expr, const std::string& expected_result);
-  void TestExpr(const std::string& scope, const std::string& expr,
-                const std::string& expected_result);
-
-  void TestExprErr(const std::string& expr, const std::string& expected_error);
-  void TestExprErr(const std::string& scope, const std::string& expr,
-                   const std::string& expected_error);
-
-  void TestExprOnlyCompare(const std::string& expr);
-
- private:
-  void TestExprEx(const std::string& scope, const std::string& expr,
-                  const std::string& expected_error,
-                  const std::string& expected_value, bool compare_with_lldb);
+  EvalResult Eval(std::string expr) {
+    return EvaluatorHelper(frame_, compare_with_lldb_).Eval(std::move(expr));
+  }
+  EvaluatorHelper Scope(std::string scope) {
+    // Resolve the scope variable (assume it's a local variable).
+    lldb::SBValue scope_var = frame_.FindVariable(scope.c_str());
+    return EvaluatorHelper(scope_var, compare_with_lldb_);
+  }
 
  protected:
   lldb::SBDebugger debugger_;
   lldb::SBProcess process_;
   lldb::SBFrame frame_;
 
+  // Evaluate with both lldb-eval and LLDB by default.
+  bool compare_with_lldb_ = true;
+
   static Runfiles* runfiles_;
-
- private:
-  friend class SkipLLDB;
-  friend class ExpectErrorLLDB;
-
-  bool skip_lldb;
 };
 
-class SkipLLDB {
- public:
-  SkipLLDB(InterpreterTest* test) : test_(test) { test_->skip_lldb = true; }
+Runfiles* EvalTest::runfiles_ = nullptr;
 
-  ~SkipLLDB() { test_->skip_lldb = false; }
-
- private:
-  InterpreterTest* test_;
-};
-
-Runfiles* InterpreterTest::runfiles_ = nullptr;
-
-void InterpreterTest::TestExpr(const std::string& expr,
-                               const std::string& expected_result) {
-  TestExprEx(/* scope */ "",
-             /* expr */ expr,
-             /* expected_error */ "",
-             /* expected_value */ expected_result,
-             /* compare_with_lldb */ !skip_lldb);
-}
-
-void InterpreterTest::TestExpr(const std::string& scope,
-                               const std::string& expr,
-                               const std::string& expected_result) {
-  TestExprEx(/* scope */ scope,
-             /* expr */ expr,
-             /* expected_error */ "",
-             /* expected_value */ expected_result,
-             /* compare_with_lldb */ !skip_lldb);
-}
-
-void InterpreterTest::TestExprErr(const std::string& expr,
-                                  const std::string& expected_error) {
-  TestExprEx(/* scope */ "",
-             /* expr */ expr,
-             /* expected_error */ expected_error,
-             /* expected_value */ "",
-             /* compare_with_lldb */ true);
-}
-
-void InterpreterTest::TestExprErr(const std::string& scope,
-                                  const std::string& expr,
-                                  const std::string& expected_error) {
-  TestExprEx(/* scope */ scope,
-             /* expr */ expr,
-             /* expected_error */ expected_error,
-             /* expected_value */ "",
-             /* compare_with_lldb */ true);
-}
-
-void InterpreterTest::TestExprOnlyCompare(const std::string& expr) {
-  SCOPED_TRACE("[Compare lldb-eval <-> LLDB]");
-
-  TestExprEx(/* scope */ "",
-             /* expr */ expr,
-             /* expected_error */ "",
-             /* expected_value */ "",
-             /* compare_with_lldb */ true);
-}
-
-void InterpreterTest::TestExprEx(const std::string& scope,
-                                 const std::string& expr,
-                                 const std::string& expected_error,
-                                 const std::string& expected_value,
-                                 bool compare_with_lldb) {
-  std::string scope_msg;
-  if (!scope.empty()) {
-    scope_msg = "[evaluate in scope = '" + scope + "']: " + expr;
-  } else {
-    scope_msg = "[evaluate in frame]: " + expr;
-  }
-  SCOPED_TRACE(scope_msg);
-
-  std::function<lldb::SBValue(lldb::SBError&)> lldb_eval_func;
-  std::function<lldb::SBValue()> lldb_func;
-
-  if (!scope.empty()) {
-    // Resolve the scope variable (assume it's a local variable).
-    lldb::SBValue scope_var = frame_.FindVariable(scope.c_str());
-    ASSERT_TRUE(scope_var.IsValid())
-        << "Failed to resolve the scope variable. Are you sure it's available "
-           "in the current scope?";
-
-    // Evaluate in the variable context.
-    lldb_eval_func = [expr, scope_var](lldb::SBError& error) {
-      return lldb_eval::EvaluateExpression(scope_var, expr.c_str(), error);
-    };
-    lldb_func = [expr, scope_var]() {
-      return scope_var.EvaluateExpression(expr.c_str());
-    };
-
-  } else {
-    // Evaluate in the frame context.
-    lldb_eval_func = [this, expr](lldb::SBError& error) {
-      return lldb_eval::EvaluateExpression(frame_, expr.c_str(), error);
-    };
-    lldb_func = [this, expr]() {
-      return frame_.EvaluateExpression(expr.c_str());
-    };
-  }
-
-  lldb::SBError error;
-  lldb::SBValue value = lldb_eval_func(error);
-
-  if (!expected_error.empty()) {
-    // Expect an error, check that error message matches the expected text.
-    EXPECT_THAT(error.GetCString(), ::testing::HasSubstr(expected_error));
-  } else {
-    // No error expected, the evaluation should be successful.
-    EXPECT_STREQ(error.GetCString(), NULL);
-
-    if (!expected_value.empty()) {
-      EXPECT_STREQ(value.GetValue(), expected_value.c_str());
-    }
-
-    if (compare_with_lldb) {
-      lldb::SBValue lldb_value = lldb_func();
-      EXPECT_STREQ(lldb_value.GetError().GetCString(), NULL)
-          << "LLDB failed to evaluate '" + expr;
-      EXPECT_STREQ(value.GetValue(), lldb_value.GetValue())
-          << "Values produced by lldb-eval and LLDB don't match";
-    }
-  }
-}
-
-TEST_F(InterpreterTest, TestSymbols) {
+TEST_F(EvalTest, TestSymbols) {
   EXPECT_GT(frame_.GetModule().GetNumSymbols(), 0)
       << "No symbols might indicate that the test binary was built incorrectly";
 }
 
-TEST_F(InterpreterTest, TestArithmetic) {
-  TestExpr("1 + 2", "3");
-  TestExpr("1 + 2*3", "7");
-  TestExpr("1 + (2 - 3)", "0");
-  TestExpr("1 == 2", "false");
-  TestExpr("1 == 1", "true");
+TEST_F(EvalTest, TestArithmetic) {
+  EXPECT_THAT(Eval("1 + 2"), IsEqual("3"));
+  EXPECT_THAT(Eval("1 + 2*3"), IsEqual("7"));
+  EXPECT_THAT(Eval("1 + (2 - 3)"), IsEqual("0"));
+  EXPECT_THAT(Eval("1 == 2"), IsEqual("false"));
+  EXPECT_THAT(Eval("1 == 1"), IsEqual("true"));
 
   // Note: Signed overflow is UB.
-  TestExprOnlyCompare("int_max + 1");
-  TestExprOnlyCompare("int_min - 1");
-  TestExprOnlyCompare("2147483647 + 1");
-  TestExprOnlyCompare("-2147483648 - 1");
+  EXPECT_THAT(Eval("int_max + 1"), IsOk());
+  EXPECT_THAT(Eval("int_min - 1"), IsOk());
+  EXPECT_THAT(Eval("2147483647 + 1"), IsOk());
+  EXPECT_THAT(Eval("-2147483648 - 1"), IsOk());
 
-  TestExpr("uint_max + 1", "0");
-  TestExpr("uint_zero - 1", "4294967295");
-  TestExpr("4294967295 + 1", "4294967296");
-  TestExpr("4294967295U + 1", "0");
+  EXPECT_THAT(Eval("uint_max + 1"), IsEqual("0"));
+  EXPECT_THAT(Eval("uint_zero - 1"), IsEqual("4294967295"));
+  EXPECT_THAT(Eval("4294967295 + 1"), IsEqual("4294967296"));
+  EXPECT_THAT(Eval("4294967295U + 1"), IsEqual("0"));
 
   // Note: Signed overflow is UB.
-  TestExprOnlyCompare("ll_max + 1");
-  TestExprOnlyCompare("ll_min - 1");
-  TestExprOnlyCompare("9223372036854775807 + 1");
-  TestExprOnlyCompare("-9223372036854775808 - 1");
+  EXPECT_THAT(Eval("ll_max + 1"), IsOk());
+  EXPECT_THAT(Eval("ll_min - 1"), IsOk());
+  EXPECT_THAT(Eval("9223372036854775807 + 1"), IsOk());
+  EXPECT_THAT(Eval("-9223372036854775808 - 1"), IsOk());
 
-  TestExpr("ull_max + 1", "0");
-  TestExpr("ull_zero - 1", "18446744073709551615");
-  TestExpr("9223372036854775807 + 1", "-9223372036854775808");
-  TestExpr("9223372036854775807LL + 1", "-9223372036854775808");
-  TestExpr("18446744073709551615ULL + 1", "0");
+  EXPECT_THAT(Eval("ull_max + 1"), IsEqual("0"));
+  EXPECT_THAT(Eval("ull_zero - 1"), IsEqual("18446744073709551615"));
+  EXPECT_THAT(Eval("9223372036854775807 + 1"), IsEqual("-9223372036854775808"));
+  EXPECT_THAT(Eval("9223372036854775807LL + 1"),
+              IsEqual("-9223372036854775808"));
+  EXPECT_THAT(Eval("18446744073709551615ULL + 1"), IsEqual("0"));
 
   // Integer literal is too large to be represented in a signed integer type,
   // interpreting as unsigned.
-  TestExpr("-9223372036854775808", "9223372036854775808");
-  TestExpr("-9223372036854775808 - 1", "9223372036854775807");
-  TestExpr("-9223372036854775808 + 1", "9223372036854775809");
-  TestExpr("-9223372036854775808LL / -1", "0");
-  TestExpr("-9223372036854775808LL % -1", "9223372036854775808");
+  EXPECT_THAT(Eval("-9223372036854775808"), IsEqual("9223372036854775808"));
+  EXPECT_THAT(Eval("-9223372036854775808 - 1"), IsEqual("9223372036854775807"));
+  EXPECT_THAT(Eval("-9223372036854775808 + 1"), IsEqual("9223372036854775809"));
+  EXPECT_THAT(Eval("-9223372036854775808LL / -1"), IsEqual("0"));
+  EXPECT_THAT(Eval("-9223372036854775808LL % -1"),
+              IsEqual("9223372036854775808"));
 
-  TestExpr("-20 / 1U", "4294967276");
-  TestExpr("-20LL / 1U", "-20");
-  TestExpr("-20LL / 1ULL", "18446744073709551596");
+  EXPECT_THAT(Eval("-20 / 1U"), IsEqual("4294967276"));
+  EXPECT_THAT(Eval("-20LL / 1U"), IsEqual("-20"));
+  EXPECT_THAT(Eval("-20LL / 1ULL"), IsEqual("18446744073709551596"));
 
   // Unary arithmetic.
-  TestExpr("+0", "0");
-  TestExpr("-0", "0");
-  TestExpr("+1", "1");
-  TestExpr("-1", "-1");
-  TestExpr("c", "'\\n'");
-  TestExpr("+c", "10");
-  TestExpr("-c", "-10");
-  TestExpr("uc", "'\\x01'");
-  TestExpr("-uc", "-1");
-  TestExprOnlyCompare("+p");
-  TestExprErr("-p", "invalid argument type 'int *' to unary expression");
+  EXPECT_THAT(Eval("+0"), IsEqual("0"));
+  EXPECT_THAT(Eval("-0"), IsEqual("0"));
+  EXPECT_THAT(Eval("+1"), IsEqual("1"));
+  EXPECT_THAT(Eval("-1"), IsEqual("-1"));
+  EXPECT_THAT(Eval("c"), IsEqual("'\\n'"));
+  EXPECT_THAT(Eval("+c"), IsEqual("10"));
+  EXPECT_THAT(Eval("-c"), IsEqual("-10"));
+  EXPECT_THAT(Eval("uc"), IsEqual("'\\x01'"));
+  EXPECT_THAT(Eval("-uc"), IsEqual("-1"));
+  EXPECT_THAT(Eval("+p"), IsOk());
+  EXPECT_THAT(Eval("-p"),
+              IsError("invalid argument type 'int *' to unary expression"));
 
   // Floating tricks.
-  TestExpr("+0.0", "0");
-  TestExpr("-0.0", "-0");
-  TestExpr("0.0 / 0", "NaN");
-  TestExpr("0 / 0.0", "NaN");
-  TestExpr("1 / +0.0", "+Inf");
-  TestExpr("1 / -0.0", "-Inf");
-  TestExpr("+0.0 / +0.0  != +0.0 / +0.0", "true");
-  TestExpr("-1.f * 0", "-0");
-  TestExpr("0x0.123p-1", "0.0355224609375");
+  EXPECT_THAT(Eval("+0.0"), IsEqual("0"));
+  EXPECT_THAT(Eval("-0.0"), IsEqual("-0"));
+  EXPECT_THAT(Eval("0.0 / 0"), IsEqual("NaN"));
+  EXPECT_THAT(Eval("0 / 0.0"), IsEqual("NaN"));
+  EXPECT_THAT(Eval("1 / +0.0"), IsEqual("+Inf"));
+  EXPECT_THAT(Eval("1 / -0.0"), IsEqual("-Inf"));
+  EXPECT_THAT(Eval("+0.0 / +0.0  != +0.0 / +0.0"), IsEqual("true"));
+  EXPECT_THAT(Eval("-1.f * 0"), IsEqual("-0"));
+  EXPECT_THAT(Eval("0x0.123p-1"), IsEqual("0.0355224609375"));
 
-  TestExpr("fnan < fnan", "false");
-  TestExpr("fnan <= fnan", "false");
-  TestExpr("fnan == fnan", "false");
-  TestExpr("(unsigned int) fdenorm", "0");
-  TestExpr("(unsigned int) (1.0f + fdenorm)", "1");
-
-  {
-    // Zero division and remainder is UB and LLDB return garbage values. Our
-    // implementation returns zero, but that might change in the future. The
-    // important thing here is to avoid crashing with SIGFPE.
-    SkipLLDB _(this);
-
-    TestExpr("1 / 0", "0");
-    TestExpr("1 / uint_zero", "0");
-    TestExpr("1 % 0", "0");
-    TestExpr("1 % uint_zero", "0");
-  }
+  EXPECT_THAT(Eval("fnan < fnan"), IsEqual("false"));
+  EXPECT_THAT(Eval("fnan <= fnan"), IsEqual("false"));
+  EXPECT_THAT(Eval("fnan == fnan"), IsEqual("false"));
+  EXPECT_THAT(Eval("(unsigned int) fdenorm"), IsEqual("0"));
+  EXPECT_THAT(Eval("(unsigned int) (1.0f + fdenorm)"), IsEqual("1"));
 
   // References and typedefs.
-  TestExpr("r + 1", "3");
-  TestExpr("r - 1", "1");
-  TestExpr("r * 2", "4");
-  TestExpr("r / 2", "1");
-  TestExpr("my_r + 1", "3");
-  TestExpr("my_r - 1", "1");
-  TestExpr("my_r * 2", "4");
-  TestExpr("my_r / 2", "1");
-  TestExpr("r + my_r", "4");
-  TestExpr("r - my_r", "0");
-  TestExpr("r * my_r", "4");
-  TestExpr("r / my_r", "1");
+  EXPECT_THAT(Eval("r + 1"), IsEqual("3"));
+  EXPECT_THAT(Eval("r - 1"), IsEqual("1"));
+  EXPECT_THAT(Eval("r * 2"), IsEqual("4"));
+  EXPECT_THAT(Eval("r / 2"), IsEqual("1"));
+  EXPECT_THAT(Eval("my_r + 1"), IsEqual("3"));
+  EXPECT_THAT(Eval("my_r - 1"), IsEqual("1"));
+  EXPECT_THAT(Eval("my_r * 2"), IsEqual("4"));
+  EXPECT_THAT(Eval("my_r / 2"), IsEqual("1"));
+  EXPECT_THAT(Eval("r + my_r"), IsEqual("4"));
+  EXPECT_THAT(Eval("r - my_r"), IsEqual("0"));
+  EXPECT_THAT(Eval("r * my_r"), IsEqual("4"));
+  EXPECT_THAT(Eval("r / my_r"), IsEqual("1"));
 
   // Some promotions and conversions.
-  TestExpr("(uint8_t)250 + (uint8_t)250", "500");
+  EXPECT_THAT(Eval("(uint8_t)250 + (uint8_t)250"), IsEqual("500"));
 
 #ifdef _WIN32
   // On Windows sizeof(int) == sizeof(long) == 4.
-  TestExpr("(unsigned int)4294967295 + (long)2", "1");
-  TestExpr("((unsigned int)1 + (long)1) - 3", "4294967295");
+  EXPECT_THAT(Eval("(unsigned int)4294967295 + (long)2"), IsEqual("1"));
+  EXPECT_THAT(Eval("((unsigned int)1 + (long)1) - 3"), IsEqual("4294967295"));
 #else
   // On Linux sizeof(int) == 4 and sizeof(long) == 8.
-  TestExpr("(unsigned int)4294967295 + (long)2", "4294967297");
-  TestExpr("((unsigned int)1 + (long)1) - 3", "-1");
+  EXPECT_THAT(Eval("(unsigned int)4294967295 + (long)2"),
+              IsEqual("4294967297"));
+  EXPECT_THAT(Eval("((unsigned int)1 + (long)1) - 3"), IsEqual("-1"));
 #endif
 }
 
-TEST_F(InterpreterTest, TestBitwiseOperators) {
-  TestExpr("~(-1)", "0");
-  TestExpr("~~0", "0");
-  TestExpr("~0", "-1");
-  TestExpr("~1", "-2");
-  TestExpr("~0LL", "-1");
-  TestExpr("~1LL", "-2");
-  TestExpr("~true", "-2");
-  TestExpr("~false", "-1");
-  TestExpr("~var_true", "-2");
-  TestExpr("~var_false", "-1");
-  TestExpr("~ull_max", "0");
-  TestExpr("~ull_zero", "18446744073709551615");
+TEST_F(EvalTest, TestZeroDivision) {
+  // Zero division and remainder is UB and LLDB return garbage values. Our
+  // implementation returns zero, but that might change in the future. The
+  // important thing here is to avoid crashing with SIGFPE.
+  this->compare_with_lldb_ = false;
 
-  TestExprErr("~s", "invalid argument type 'S' to unary expression");
-  TestExprErr("~p", "invalid argument type 'const char *' to unary expression");
-
-  TestExpr("(1 << 5)", "32");
-  TestExpr("(32 >> 2)", "8");
-
-  TestExpr("0b1011 & 0xFF", "11");
-  TestExpr("0b1011 & mask_ff", "11");
-  TestExpr("0b1011 & 0b0111", "3");
-  TestExpr("0b1011 | 0b0111", "15");
-  TestExpr("-0b1011 | 0xFF", "-1");
-  TestExpr("-0b1011 | 0xFFu", "4294967295");
-  TestExpr("0b1011 ^ 0b0111", "12");
-  TestExpr("~0b1011", "-12");
+  EXPECT_THAT(Eval("1 / 0"), IsEqual("0"));
+  EXPECT_THAT(Eval("1 / uint_zero"), IsEqual("0"));
+  EXPECT_THAT(Eval("1 % 0"), IsEqual("0"));
+  EXPECT_THAT(Eval("1 % uint_zero"), IsEqual("0"));
 }
 
-TEST_F(InterpreterTest, TestPointerArithmetic) {
-  TestExprOnlyCompare("p_char1");
-  TestExprOnlyCompare("p_char1 + 1");
-  TestExprOnlyCompare("p_char1 + offset");
+TEST_F(EvalTest, TestBitwiseOperators) {
+  EXPECT_THAT(Eval("~(-1)"), IsEqual("0"));
+  EXPECT_THAT(Eval("~~0"), IsEqual("0"));
+  EXPECT_THAT(Eval("~0"), IsEqual("-1"));
+  EXPECT_THAT(Eval("~1"), IsEqual("-2"));
+  EXPECT_THAT(Eval("~0LL"), IsEqual("-1"));
+  EXPECT_THAT(Eval("~1LL"), IsEqual("-2"));
+  EXPECT_THAT(Eval("~true"), IsEqual("-2"));
+  EXPECT_THAT(Eval("~false"), IsEqual("-1"));
+  EXPECT_THAT(Eval("~var_true"), IsEqual("-2"));
+  EXPECT_THAT(Eval("~var_false"), IsEqual("-1"));
+  EXPECT_THAT(Eval("~ull_max"), IsEqual("0"));
+  EXPECT_THAT(Eval("~ull_zero"), IsEqual("18446744073709551615"));
 
-  TestExprOnlyCompare("my_p_char1");
-  TestExprOnlyCompare("my_p_char1 + 1");
-  TestExprOnlyCompare("my_p_char1 + offset");
+  EXPECT_THAT(Eval("~s"),
+              IsError("invalid argument type 'S' to unary expression"));
+  EXPECT_THAT(
+      Eval("~p"),
+      IsError("invalid argument type 'const char *' to unary expression"));
 
-  TestExpr("*(p_char1 + 0)", "'h'");
-  TestExpr("*(1 + p_char1)", "'e'");
-  TestExpr("*(p_char1 + 2)", "'l'");
-  TestExpr("*(3 + p_char1)", "'l'");
-  TestExpr("*(p_char1 + 4)", "'o'");
-  TestExpr("*(p_char1 + offset - 1)", "'o'");
+  EXPECT_THAT(Eval("(1 << 5)"), IsEqual("32"));
+  EXPECT_THAT(Eval("(32 >> 2)"), IsEqual("8"));
 
-  TestExpr("*p_int0", "0");
-  TestExpr("*cp_int5", "5");
-  TestExpr("*(&*(cp_int5 + 1) - 1)", "5");
-
-  TestExpr("p_int0 - p_int0", "0");
-  TestExpr("cp_int5 - p_int0", "5");
-  TestExpr("cp_int5 - td_int_ptr0", "5");
-  TestExpr("td_int_ptr0 - cp_int5", "-5");
-
-  TestExprErr("-p_char1",
-              "invalid argument type 'const char *' to unary expression");
-  TestExprErr(
-      "cp_int5 - p_char1",
-      "'const int *' and 'const char *' are not pointers to compatible types");
-  TestExprErr(
-      "p_int0 + cp_int5",
-      "invalid operands to binary expression ('int *' and 'const int *')");
-  TestExprErr(
-      "p_int0 > p_char1",
-      "comparison of distinct pointer types ('int *' and 'const char *')");
-
-  TestExpr("cp_int5 > td_int_ptr0", "true");
-  TestExpr("cp_int5 < td_int_ptr0", "false");
-  TestExpr("cp_int5 != td_int_ptr0", "true");
-  TestExpr("cp_int5 == td_int_ptr0 + offset", "true");
-
-  TestExpr("p_void == p_void", "true");
-  TestExpr("p_void == p_char1", "true");
-  TestExpr("p_void != p_char1", "false");
-  TestExpr("p_void > p_char1", "false");
-  TestExpr("p_void >= p_char1", "true");
-  TestExpr("p_void < (p_char1 + 1)", "true");
-  TestExpr("pp_void0 + 1 == pp_void1", "true");
-
-  TestExprErr("p_void + 1", "arithmetic on a pointer to void");
-  TestExprErr("p_void - 1", "arithmetic on a pointer to void");
-  TestExprErr(
-      "p_void - p_char1",
-      "'void *' and 'const char *' are not pointers to compatible types");
-  TestExprErr("p_void - p_void", "arithmetic on pointers to void");
-
-  TestExprErr(
-      "pp_void0 - p_char1",
-      "'void **' and 'const char *' are not pointers to compatible types");
-  TestExprErr(
-      "pp_void0 == p_char1",
-      "comparison of distinct pointer types ('void **' and 'const char *')");
+  EXPECT_THAT(Eval("0b1011 & 0xFF"), IsEqual("11"));
+  EXPECT_THAT(Eval("0b1011 & mask_ff"), IsEqual("11"));
+  EXPECT_THAT(Eval("0b1011 & 0b0111"), IsEqual("3"));
+  EXPECT_THAT(Eval("0b1011 | 0b0111"), IsEqual("15"));
+  EXPECT_THAT(Eval("-0b1011 | 0xFF"), IsEqual("-1"));
+  EXPECT_THAT(Eval("-0b1011 | 0xFFu"), IsEqual("4294967295"));
+  EXPECT_THAT(Eval("0b1011 ^ 0b0111"), IsEqual("12"));
+  EXPECT_THAT(Eval("~0b1011"), IsEqual("-12"));
 }
 
-TEST_F(InterpreterTest, TestLogicalOperators) {
-  TestExpr("1 > 2", "false");
-  TestExpr("1 == 1", "true");
-  TestExpr("1 > 0.1", "true");
-  TestExpr("1 && 2", "true");
-  TestExpr("0 && 1", "false");
-  TestExpr("0 || 1", "true");
-  TestExpr("0 || 0", "false");
+TEST_F(EvalTest, TestPointerArithmetic) {
+  EXPECT_THAT(Eval("p_char1"), IsOk());
+  EXPECT_THAT(Eval("p_char1 + 1"), IsOk());
+  EXPECT_THAT(Eval("p_char1 + offset"), IsOk());
 
-  TestExpr("!1", "false");
-  TestExpr("!!1", "true");
+  EXPECT_THAT(Eval("my_p_char1"), IsOk());
+  EXPECT_THAT(Eval("my_p_char1 + 1"), IsOk());
+  EXPECT_THAT(Eval("my_p_char1 + offset"), IsOk());
 
-  TestExpr("!trueVar", "false");
-  TestExpr("!!trueVar", "true");
-  TestExpr("!falseVar", "true");
-  TestExpr("!!falseVar", "false");
+  EXPECT_THAT(Eval("*(p_char1 + 0)"), IsEqual("'h'"));
+  EXPECT_THAT(Eval("*(1 + p_char1)"), IsEqual("'e'"));
+  EXPECT_THAT(Eval("*(p_char1 + 2)"), IsEqual("'l'"));
+  EXPECT_THAT(Eval("*(3 + p_char1)"), IsEqual("'l'"));
+  EXPECT_THAT(Eval("*(p_char1 + 4)"), IsEqual("'o'"));
+  EXPECT_THAT(Eval("*(p_char1 + offset - 1)"), IsEqual("'o'"));
 
-  TestExpr("trueVar && true", "true");
-  TestExpr("trueVar && (2 > 1)", "true");
-  TestExpr("trueVar && (2 < 1)", "false");
+  EXPECT_THAT(Eval("*p_int0"), IsEqual("0"));
+  EXPECT_THAT(Eval("*cp_int5"), IsEqual("5"));
+  EXPECT_THAT(Eval("*(&*(cp_int5 + 1) - 1)"), IsEqual("5"));
 
-  TestExpr("falseVar || true", "true");
-  TestExpr("falseVar && true", "false");
-  TestExpr("falseVar || (2 > 1)", "true");
-  TestExpr("falseVar || (2 < 1)", "false");
+  EXPECT_THAT(Eval("p_int0 - p_int0"), IsEqual("0"));
+  EXPECT_THAT(Eval("cp_int5 - p_int0"), IsEqual("5"));
+  EXPECT_THAT(Eval("cp_int5 - td_int_ptr0"), IsEqual("5"));
+  EXPECT_THAT(Eval("td_int_ptr0 - cp_int5"), IsEqual("-5"));
 
-  TestExprErr("true || __doesnt_exist",
-              "use of undeclared identifier '__doesnt_exist'");
-  TestExprErr("false && __doesnt_exist",
-              "use of undeclared identifier '__doesnt_exist'");
+  EXPECT_THAT(
+      Eval("-p_char1"),
+      IsError("invalid argument type 'const char *' to unary expression"));
+  EXPECT_THAT(Eval("cp_int5 - p_char1"),
+              IsError("'const int *' and 'const char *' are not pointers to "
+                      "compatible types"));
+  EXPECT_THAT(Eval("p_int0 + cp_int5"),
+              IsError("invalid operands to binary expression ('int *' and "
+                      "'const int *')"));
+  EXPECT_THAT(Eval("p_int0 > p_char1"),
+              IsError("comparison of distinct pointer types ('int *' and "
+                      "'const char *')"));
 
-  TestExpr("!p_ptr", "false");
-  TestExpr("!!p_ptr", "true");
-  TestExpr("p_ptr && true", "true");
-  TestExpr("p_ptr && false", "false");
-  TestExpr("!p_nullptr", "true");
-  TestExpr("!!p_nullptr", "false");
-  TestExpr("p_nullptr || true", "true");
-  TestExpr("p_nullptr || false", "false");
+  EXPECT_THAT(Eval("cp_int5 > td_int_ptr0"), IsEqual("true"));
+  EXPECT_THAT(Eval("cp_int5 < td_int_ptr0"), IsEqual("false"));
+  EXPECT_THAT(Eval("cp_int5 != td_int_ptr0"), IsEqual("true"));
+  EXPECT_THAT(Eval("cp_int5 == td_int_ptr0 + offset"), IsEqual("true"));
 
-  TestExprErr("!s || false",
-              "value of type 'S' is not contextually convertible to 'bool'");
-  TestExprErr("s || false",
-              "value of type 'S' is not contextually convertible to 'bool'");
-  TestExprErr("s ? 1 : 2",
-              "value of type 'S' is not contextually convertible to 'bool'");
+  EXPECT_THAT(Eval("p_void == p_void"), IsEqual("true"));
+  EXPECT_THAT(Eval("p_void == p_char1"), IsEqual("true"));
+  EXPECT_THAT(Eval("p_void != p_char1"), IsEqual("false"));
+  EXPECT_THAT(Eval("p_void > p_char1"), IsEqual("false"));
+  EXPECT_THAT(Eval("p_void >= p_char1"), IsEqual("true"));
+  EXPECT_THAT(Eval("p_void < (p_char1 + 1)"), IsEqual("true"));
+  EXPECT_THAT(Eval("pp_void0 + 1 == pp_void1"), IsEqual("true"));
+
+  EXPECT_THAT(Eval("p_void + 1"), IsError("arithmetic on a pointer to void"));
+  EXPECT_THAT(Eval("p_void - 1"), IsError("arithmetic on a pointer to void"));
+  EXPECT_THAT(Eval("p_void - p_char1"),
+              IsError("'void *' and 'const char *' are not pointers to "
+                      "compatible types"));
+  EXPECT_THAT(Eval("p_void - p_void"),
+              IsError("arithmetic on pointers to void"));
+
+  EXPECT_THAT(Eval("pp_void0 - p_char1"),
+              IsError("'void **' and 'const char *' are not pointers to "
+                      "compatible types"));
+  EXPECT_THAT(Eval("pp_void0 == p_char1"),
+              IsError("comparison of distinct pointer types ('void **' and "
+                      "'const char *')"));
 }
 
-TEST_F(InterpreterTest, TestLocalVariables) {
-  TestExpr("a", "1");
-  TestExpr("b", "2");
-  TestExpr("a + b", "3");
+TEST_F(EvalTest, TestLogicalOperators) {
+  EXPECT_THAT(Eval("1 > 2"), IsEqual("false"));
+  EXPECT_THAT(Eval("1 == 1"), IsEqual("true"));
+  EXPECT_THAT(Eval("1 > 0.1"), IsEqual("true"));
+  EXPECT_THAT(Eval("1 && 2"), IsEqual("true"));
+  EXPECT_THAT(Eval("0 && 1"), IsEqual("false"));
+  EXPECT_THAT(Eval("0 || 1"), IsEqual("true"));
+  EXPECT_THAT(Eval("0 || 0"), IsEqual("false"));
 
-  TestExpr("c + 1", "-2");
-  TestExpr("s + 1", "5");
-  TestExpr("c + s", "1");
+  EXPECT_THAT(Eval("!1"), IsEqual("false"));
+  EXPECT_THAT(Eval("!!1"), IsEqual("true"));
 
-  TestExprErr("__test_non_variable + 1",
-              "use of undeclared identifier '__test_non_variable'");
+  EXPECT_THAT(Eval("!trueVar"), IsEqual("false"));
+  EXPECT_THAT(Eval("!!trueVar"), IsEqual("true"));
+  EXPECT_THAT(Eval("!falseVar"), IsEqual("true"));
+  EXPECT_THAT(Eval("!!falseVar"), IsEqual("false"));
+
+  EXPECT_THAT(Eval("trueVar && true"), IsEqual("true"));
+  EXPECT_THAT(Eval("trueVar && (2 > 1)"), IsEqual("true"));
+  EXPECT_THAT(Eval("trueVar && (2 < 1)"), IsEqual("false"));
+
+  EXPECT_THAT(Eval("falseVar || true"), IsEqual("true"));
+  EXPECT_THAT(Eval("falseVar && true"), IsEqual("false"));
+  EXPECT_THAT(Eval("falseVar || (2 > 1)"), IsEqual("true"));
+  EXPECT_THAT(Eval("falseVar || (2 < 1)"), IsEqual("false"));
+
+  EXPECT_THAT(Eval("true || __doesnt_exist"),
+              IsError("use of undeclared identifier '__doesnt_exist'"));
+  EXPECT_THAT(Eval("false && __doesnt_exist"),
+              IsError("use of undeclared identifier '__doesnt_exist'"));
+
+  EXPECT_THAT(Eval("!p_ptr"), IsEqual("false"));
+  EXPECT_THAT(Eval("!!p_ptr"), IsEqual("true"));
+  EXPECT_THAT(Eval("p_ptr && true"), IsEqual("true"));
+  EXPECT_THAT(Eval("p_ptr && false"), IsEqual("false"));
+  EXPECT_THAT(Eval("!p_nullptr"), IsEqual("true"));
+  EXPECT_THAT(Eval("!!p_nullptr"), IsEqual("false"));
+  EXPECT_THAT(Eval("p_nullptr || true"), IsEqual("true"));
+  EXPECT_THAT(Eval("p_nullptr || false"), IsEqual("false"));
+
+  EXPECT_THAT(
+      Eval("!s || false"),
+      IsError("value of type 'S' is not contextually convertible to 'bool'"));
+  EXPECT_THAT(
+      Eval("s || false"),
+      IsError("value of type 'S' is not contextually convertible to 'bool'"));
+  EXPECT_THAT(
+      Eval("s ? 1 : 2"),
+      IsError("value of type 'S' is not contextually convertible to 'bool'"));
 }
 
-TEST_F(InterpreterTest, TestMemberOf) {
-  TestExpr("s.x", "1");
-  TestExpr("s.r", "2");
-  TestExpr("s.r + 1", "3");
-  TestExpr("sr.x", "1");
-  TestExpr("sr.r", "2");
-  TestExpr("sr.r + 1", "3");
-  TestExpr("sp->x", "1");
-  TestExpr("sp->r", "2");
-  TestExpr("sp->r + 1", "3");
+TEST_F(EvalTest, TestLocalVariables) {
+  EXPECT_THAT(Eval("a"), IsEqual("1"));
+  EXPECT_THAT(Eval("b"), IsEqual("2"));
+  EXPECT_THAT(Eval("a + b"), IsEqual("3"));
 
-  auto msg =
-      "<expr>:1:5: expected 'identifier', got: <'4' (numeric_constant)>\n"
-      "sp->4\n"
-      "    ^";
-  TestExprErr("sp->4", msg);
-  TestExprErr("sp->foo", "no member named 'foo' in 'S'");
-  TestExprErr("sp->r / (void*)0",
-              "invalid operands to binary expression ('int' and 'void *')");
+  EXPECT_THAT(Eval("c + 1"), IsEqual("-2"));
+  EXPECT_THAT(Eval("s + 1"), IsEqual("5"));
+  EXPECT_THAT(Eval("c + s"), IsEqual("1"));
+
+  EXPECT_THAT(Eval("__test_non_variable + 1"),
+              IsError("use of undeclared identifier '__test_non_variable'"));
 }
 
-TEST_F(InterpreterTest, TestInstanceVariables) {
-  TestExpr("this->field_", "1");
-  TestExprErr("this.field_",
-              "member reference type 'TestMethods *' is a pointer; did you "
-              "mean to use '->'?");
+TEST_F(EvalTest, TestMemberOf) {
+  EXPECT_THAT(Eval("s.x"), IsEqual("1"));
+  EXPECT_THAT(Eval("s.r"), IsEqual("2"));
+  EXPECT_THAT(Eval("s.r + 1"), IsEqual("3"));
+  EXPECT_THAT(Eval("sr.x"), IsEqual("1"));
+  EXPECT_THAT(Eval("sr.r"), IsEqual("2"));
+  EXPECT_THAT(Eval("sr.r + 1"), IsEqual("3"));
+  EXPECT_THAT(Eval("sp->x"), IsEqual("1"));
+  EXPECT_THAT(Eval("sp->r"), IsEqual("2"));
+  EXPECT_THAT(Eval("sp->r + 1"), IsEqual("3"));
 
-  TestExpr("c.field_", "-1");
-  TestExpr("c_ref.field_", "-1");
-  TestExpr("c_ptr->field_", "-1");
-  TestExprErr(
-      "c->field_",
-      "member reference type 'C' is not a pointer; did you mean to use '.'?");
+  EXPECT_THAT(
+      Eval("sp->4"),
+      IsError(
+          "<expr>:1:5: expected 'identifier', got: <'4' (numeric_constant)>\n"
+          "sp->4\n"
+          "    ^"));
+  EXPECT_THAT(Eval("sp->foo"), IsError("no member named 'foo' in 'S'"));
+  EXPECT_THAT(
+      Eval("sp->r / (void*)0"),
+      IsError("invalid operands to binary expression ('int' and 'void *')"));
 }
 
-TEST_F(InterpreterTest, TestIndirection) {
-  TestExpr("*p", "1");
-  TestExprOnlyCompare("p");
-  TestExpr("*my_p", "1");
-  TestExprOnlyCompare("my_p");
-  TestExpr("*my_pr", "1");
-  TestExprOnlyCompare("my_pr");
+TEST_F(EvalTest, TestInstanceVariables) {
+  EXPECT_THAT(Eval("this->field_"), IsEqual("1"));
+  EXPECT_THAT(Eval("this.field_"),
+              IsError("member reference type 'TestMethods *' is a pointer; did "
+                      "you mean to use '->'?"));
 
-  TestExprErr("*1", "indirection requires pointer operand. ('int' invalid)");
-  TestExprErr("*val", "indirection requires pointer operand. ('int' invalid)");
+  EXPECT_THAT(Eval("c.field_"), IsEqual("-1"));
+  EXPECT_THAT(Eval("c_ref.field_"), IsEqual("-1"));
+  EXPECT_THAT(Eval("c_ptr->field_"), IsEqual("-1"));
+  EXPECT_THAT(Eval("c->field_"), IsError("member reference type 'C' is not a "
+                                         "pointer; did you mean to use '.'?"));
 }
 
-TEST_F(InterpreterTest, TestAddressOf) {
-  TestExprOnlyCompare("&x");
-  TestExprOnlyCompare("r");
-  TestExprOnlyCompare("&r");
-  TestExprOnlyCompare("pr");
-  TestExprOnlyCompare("&pr");
-  TestExprOnlyCompare("my_pr");
-  TestExprOnlyCompare("&my_pr");
+TEST_F(EvalTest, TestIndirection) {
+  EXPECT_THAT(Eval("*p"), IsEqual("1"));
+  EXPECT_THAT(Eval("p"), IsOk());
+  EXPECT_THAT(Eval("*my_p"), IsEqual("1"));
+  EXPECT_THAT(Eval("my_p"), IsOk());
+  EXPECT_THAT(Eval("*my_pr"), IsEqual("1"));
+  EXPECT_THAT(Eval("my_pr"), IsOk());
 
-  TestExpr("&x == &r", "true");
-  TestExpr("&x != &r", "false");
-
-  TestExpr("&p == &pr", "true");
-  TestExpr("&p != &pr", "false");
-  TestExpr("&p == &my_pr", "true");
-  TestExpr("&p != &my_pr", "false");
-
-  TestExprOnlyCompare("&globalVar");
-  TestExprOnlyCompare("&externGlobalVar");
-  TestExprOnlyCompare("&s_str");
-  TestExprOnlyCompare("&param");
-
-  TestExprErr("&1", "cannot take the address of an rvalue of type 'int'");
-  TestExprErr("&0.1", "cannot take the address of an rvalue of type 'double'");
-
-  TestExprErr("&this",
-              "cannot take the address of an rvalue of type 'TestMethods *'");
-  TestExprErr("&(&s_str)",
-              "cannot take the address of an rvalue of type 'const char **'");
+  EXPECT_THAT(Eval("*1"),
+              IsError("indirection requires pointer operand. ('int' invalid)"));
+  EXPECT_THAT(Eval("*val"),
+              IsError("indirection requires pointer operand. ('int' invalid)"));
 }
 
-TEST_F(InterpreterTest, TestSubscript) {
+TEST_F(EvalTest, TestAddressOf) {
+  EXPECT_THAT(Eval("&x"), IsOk());
+  EXPECT_THAT(Eval("r"), IsOk());
+  EXPECT_THAT(Eval("&r"), IsOk());
+  EXPECT_THAT(Eval("pr"), IsOk());
+  EXPECT_THAT(Eval("&pr"), IsOk());
+  EXPECT_THAT(Eval("my_pr"), IsOk());
+  EXPECT_THAT(Eval("&my_pr"), IsOk());
+
+  EXPECT_THAT(Eval("&x == &r"), IsEqual("true"));
+  EXPECT_THAT(Eval("&x != &r"), IsEqual("false"));
+
+  EXPECT_THAT(Eval("&p == &pr"), IsEqual("true"));
+  EXPECT_THAT(Eval("&p != &pr"), IsEqual("false"));
+  EXPECT_THAT(Eval("&p == &my_pr"), IsEqual("true"));
+  EXPECT_THAT(Eval("&p != &my_pr"), IsEqual("false"));
+
+  EXPECT_THAT(Eval("&globalVar"), IsOk());
+  EXPECT_THAT(Eval("&externGlobalVar"), IsOk());
+  EXPECT_THAT(Eval("&s_str"), IsOk());
+  EXPECT_THAT(Eval("&param"), IsOk());
+
+  EXPECT_THAT(Eval("&1"),
+              IsError("cannot take the address of an rvalue of type 'int'"));
+  EXPECT_THAT(Eval("&0.1"),
+              IsError("cannot take the address of an rvalue of type 'double'"));
+
+  EXPECT_THAT(
+      Eval("&this"),
+      IsError("cannot take the address of an rvalue of type 'TestMethods *'"));
+  EXPECT_THAT(
+      Eval("&(&s_str)"),
+      IsError("cannot take the address of an rvalue of type 'const char **'"));
+}
+
+TEST_F(EvalTest, TestSubscript) {
   // const char*
-  TestExpr("char_ptr[0]", "'l'");
-  TestExpr("1[char_ptr]", "'o'");
+  EXPECT_THAT(Eval("char_ptr[0]"), IsEqual("'l'"));
+  EXPECT_THAT(Eval("1[char_ptr]"), IsEqual("'o'"));
 
   // const char[]
-  TestExpr("char_arr[0]", "'i'");
-  TestExpr("1[char_arr]", "'p'");
+  EXPECT_THAT(Eval("char_arr[0]"), IsEqual("'i'"));
+  EXPECT_THAT(Eval("1[char_arr]"), IsEqual("'p'"));
 
   // Boolean types are integral too!
-  TestExpr("int_arr[false]", "1");
-  TestExpr("true[int_arr]", "2");
+  EXPECT_THAT(Eval("int_arr[false]"), IsEqual("1"));
+  EXPECT_THAT(Eval("true[int_arr]"), IsEqual("2"));
 
   // But floats are not.
-  TestExprErr("int_arr[1.0]", "array subscript is not an integer");
+  EXPECT_THAT(Eval("int_arr[1.0]"),
+              IsError("array subscript is not an integer"));
 
   // Base should be a "pointer to T" and index should be of an integral type.
-  TestExprErr("char_arr[char_ptr]", "array subscript is not an integer");
-  TestExprErr("1[2]", "subscripted value is not an array or pointer");
+  EXPECT_THAT(Eval("char_arr[char_ptr]"),
+              IsError("array subscript is not an integer"));
+  EXPECT_THAT(Eval("1[2]"),
+              IsError("subscripted value is not an array or pointer"));
 
   // Test when base and index are references.
-  TestExpr("c_arr[0].field_", "0");
-  TestExpr("c_arr[idx_1_ref].field_", "1");
-  TestExpr("c_arr_ref[0].field_", "0");
-  TestExpr("c_arr_ref[idx_1_ref].field_", "1");
+  EXPECT_THAT(Eval("c_arr[0].field_"), IsEqual("0"));
+  EXPECT_THAT(Eval("c_arr[idx_1_ref].field_"), IsEqual("1"));
+  EXPECT_THAT(Eval("c_arr_ref[0].field_"), IsEqual("0"));
+  EXPECT_THAT(Eval("c_arr_ref[idx_1_ref].field_"), IsEqual("1"));
 
   // Test when base and index are typedefs.
-  TestExpr("td_int_arr[0]", "1");
-  TestExpr("td_int_arr[td_int_idx_1]", "2");
-  TestExpr("td_int_arr[td_td_int_idx_2]", "3");
-  TestExpr("td_int_ptr[0]", "1");
-  TestExpr("td_int_ptr[td_int_idx_1]", "2");
-  TestExpr("td_int_ptr[td_td_int_idx_2]", "3");
+  EXPECT_THAT(Eval("td_int_arr[0]"), IsEqual("1"));
+  EXPECT_THAT(Eval("td_int_arr[td_int_idx_1]"), IsEqual("2"));
+  EXPECT_THAT(Eval("td_int_arr[td_td_int_idx_2]"), IsEqual("3"));
+  EXPECT_THAT(Eval("td_int_ptr[0]"), IsEqual("1"));
+  EXPECT_THAT(Eval("td_int_ptr[td_int_idx_1]"), IsEqual("2"));
+  EXPECT_THAT(Eval("td_int_ptr[td_td_int_idx_2]"), IsEqual("3"));
   // Both typedefs and refs!
-  TestExpr("td_int_arr_ref[td_int_idx_1_ref]", "2");
+  EXPECT_THAT(Eval("td_int_arr_ref[td_int_idx_1_ref]"), IsEqual("2"));
 
   // Test for index out of bounds.
-  TestExprOnlyCompare("int_arr[42]");
-  TestExprOnlyCompare("int_arr[100]");
+  EXPECT_THAT(Eval("int_arr[42]"), IsOk());
+  EXPECT_THAT(Eval("int_arr[100]"), IsOk());
 
   // Test for negative index.
-  TestExprOnlyCompare("int_arr[-1]");
-  TestExprOnlyCompare("int_arr[-42]");
+  EXPECT_THAT(Eval("int_arr[-1]"), IsOk());
+  EXPECT_THAT(Eval("int_arr[-42]"), IsOk());
 
   // Test for "max unsigned char".
-  TestExpr("uint8_arr[uchar_idx]", "'\\xab'");
+  EXPECT_THAT(Eval("uint8_arr[uchar_idx]"), IsEqual("'\\xab'"));
 
   // Test address-of of the subscripted value.
-  TestExpr("(&c_arr[1])->field_", "1");
+  EXPECT_THAT(Eval("(&c_arr[1])->field_"), IsEqual("1"));
 }
 
-TEST_F(InterpreterTest, TestCStyleCastBasicType) {
+TEST_F(EvalTest, TestCStyleCastBasicType) {
   // Test with integer literals.
-  TestExpr("(char)1", "'\\x01'");
-  TestExpr("(unsigned char)-1", "'\\xff'");
-  TestExpr("(short)-1", "-1");
-  TestExpr("(unsigned short)-1", "65535");
-  TestExpr("(long long)1", "1");
-  TestExpr("(unsigned long long)-1", "18446744073709551615");
-  TestExpr("(short)65534", "-2");
-  TestExpr("(unsigned short)100000", "34464");
-  TestExpr("(float)1", "1");
-  TestExpr("(float)1.1", "1.10000002");
-  TestExpr("(float)1.1f", "1.10000002");
-  TestExpr("(float)-1.1", "-1.10000002");
-  TestExpr("(float)-1.1f", "-1.10000002");
-  TestExpr("(double)1", "1");
-  TestExpr("(double)1.1", "1.1000000000000001");
-  TestExpr("(double)1.1f", "1.1000000238418579");
-  TestExpr("(double)-1.1", "-1.1000000000000001");
-  TestExpr("(double)-1.1f", "-1.1000000238418579");
-  TestExpr("(int)1.1", "1");
-  TestExpr("(int)1.1f", "1");
-  TestExpr("(int)-1.1", "-1");
-  TestExpr("(long)1.1", "1");
-  TestExpr("(long)-1.1f", "-1");
+  EXPECT_THAT(Eval("(char)1"), IsEqual("'\\x01'"));
+  EXPECT_THAT(Eval("(unsigned char)-1"), IsEqual("'\\xff'"));
+  EXPECT_THAT(Eval("(short)-1"), IsEqual("-1"));
+  EXPECT_THAT(Eval("(unsigned short)-1"), IsEqual("65535"));
+  EXPECT_THAT(Eval("(long long)1"), IsEqual("1"));
+  EXPECT_THAT(Eval("(unsigned long long)-1"), IsEqual("18446744073709551615"));
+  EXPECT_THAT(Eval("(short)65534"), IsEqual("-2"));
+  EXPECT_THAT(Eval("(unsigned short)100000"), IsEqual("34464"));
+  EXPECT_THAT(Eval("(float)1"), IsEqual("1"));
+  EXPECT_THAT(Eval("(float)1.1"), IsEqual("1.10000002"));
+  EXPECT_THAT(Eval("(float)1.1f"), IsEqual("1.10000002"));
+  EXPECT_THAT(Eval("(float)-1.1"), IsEqual("-1.10000002"));
+  EXPECT_THAT(Eval("(float)-1.1f"), IsEqual("-1.10000002"));
+  EXPECT_THAT(Eval("(double)1"), IsEqual("1"));
+  EXPECT_THAT(Eval("(double)1.1"), IsEqual("1.1000000000000001"));
+  EXPECT_THAT(Eval("(double)1.1f"), IsEqual("1.1000000238418579"));
+  EXPECT_THAT(Eval("(double)-1.1"), IsEqual("-1.1000000000000001"));
+  EXPECT_THAT(Eval("(double)-1.1f"), IsEqual("-1.1000000238418579"));
+  EXPECT_THAT(Eval("(int)1.1"), IsEqual("1"));
+  EXPECT_THAT(Eval("(int)1.1f"), IsEqual("1"));
+  EXPECT_THAT(Eval("(int)-1.1"), IsEqual("-1"));
+  EXPECT_THAT(Eval("(long)1.1"), IsEqual("1"));
+  EXPECT_THAT(Eval("(long)-1.1f"), IsEqual("-1"));
 
-  TestExprErr("&(int)1", "cannot take the address of an rvalue of type 'int'");
+  EXPECT_THAT(Eval("&(int)1"),
+              IsError("cannot take the address of an rvalue of type 'int'"));
 
   // Test with variables.
-  TestExpr("(char)a", "'\\x01'");
-  TestExpr("(unsigned char)na", "'\\xff'");
-  TestExpr("(short)na", "-1");
-  TestExpr("(unsigned short)-a", "65535");
-  TestExpr("(long long)a", "1");
-  TestExpr("(unsigned long long)-1", "18446744073709551615");
-  TestExpr("(float)a", "1");
-  TestExpr("(float)f", "1.10000002");
-  TestExpr("(double)f", "1.1000000238418579");
-  TestExpr("(int)f", "1");
-  TestExpr("(long)f", "1");
+  EXPECT_THAT(Eval("(char)a"), IsEqual("'\\x01'"));
+  EXPECT_THAT(Eval("(unsigned char)na"), IsEqual("'\\xff'"));
+  EXPECT_THAT(Eval("(short)na"), IsEqual("-1"));
+  EXPECT_THAT(Eval("(unsigned short)-a"), IsEqual("65535"));
+  EXPECT_THAT(Eval("(long long)a"), IsEqual("1"));
+  EXPECT_THAT(Eval("(unsigned long long)-1"), IsEqual("18446744073709551615"));
+  EXPECT_THAT(Eval("(float)a"), IsEqual("1"));
+  EXPECT_THAT(Eval("(float)f"), IsEqual("1.10000002"));
+  EXPECT_THAT(Eval("(double)f"), IsEqual("1.1000000238418579"));
+  EXPECT_THAT(Eval("(int)f"), IsEqual("1"));
+  EXPECT_THAT(Eval("(long)f"), IsEqual("1"));
 
-  TestExprErr(
-      "(int)ns_foo_",
-      "cannot convert 'ns::Foo' to 'int' without a conversion operator");
+  EXPECT_THAT(
+      Eval("(int)ns_foo_"),
+      IsError(
+          "cannot convert 'ns::Foo' to 'int' without a conversion operator"));
 
   // Test with typedefs and namespaces.
-  TestExpr("(myint)1", "1");
-  TestExpr("(myint)1LL", "1");
-  TestExpr("(ns::myint)1", "1");
-  TestExpr("(::ns::myint)1", "1");
-  TestExpr("(::ns::myint)myint_", "1");
+  EXPECT_THAT(Eval("(myint)1"), IsEqual("1"));
+  EXPECT_THAT(Eval("(myint)1LL"), IsEqual("1"));
+  EXPECT_THAT(Eval("(ns::myint)1"), IsEqual("1"));
+  EXPECT_THAT(Eval("(::ns::myint)1"), IsEqual("1"));
+  EXPECT_THAT(Eval("(::ns::myint)myint_"), IsEqual("1"));
 
-  TestExpr("(int)myint_", "1");
-  TestExpr("(int)ns_myint_", "2");
-  TestExpr("(long long)myint_", "1");
-  TestExpr("(long long)ns_myint_", "2");
-  TestExpr("(::ns::myint)myint_", "1");
+  EXPECT_THAT(Eval("(int)myint_"), IsEqual("1"));
+  EXPECT_THAT(Eval("(int)ns_myint_"), IsEqual("2"));
+  EXPECT_THAT(Eval("(long long)myint_"), IsEqual("1"));
+  EXPECT_THAT(Eval("(long long)ns_myint_"), IsEqual("2"));
+  EXPECT_THAT(Eval("(::ns::myint)myint_"), IsEqual("1"));
 
-  TestExpr("(ns::inner::mydouble)1", "1");
-  TestExpr("(::ns::inner::mydouble)1.2", "1.2");
-  TestExpr("(ns::inner::mydouble)myint_", "1");
-  TestExpr("(::ns::inner::mydouble)ns_inner_mydouble_", "1.2");
-  TestExpr("(myint)ns_inner_mydouble_", "1");
+  EXPECT_THAT(Eval("(ns::inner::mydouble)1"), IsEqual("1"));
+  EXPECT_THAT(Eval("(::ns::inner::mydouble)1.2"), IsEqual("1.2"));
+  EXPECT_THAT(Eval("(ns::inner::mydouble)myint_"), IsEqual("1"));
+  EXPECT_THAT(Eval("(::ns::inner::mydouble)ns_inner_mydouble_"),
+              IsEqual("1.2"));
+  EXPECT_THAT(Eval("(myint)ns_inner_mydouble_"), IsEqual("1"));
 
   // Test with pointers.
-  TestExprOnlyCompare("(long long)ap");
-  TestExprOnlyCompare("(unsigned long long)vp");
-  TestExprErr("(char)ap",
-              "cast from pointer to smaller type 'char' loses information");
-  TestExprErr("(float)ap",
-              "C-style cast from 'int *' to 'float' is not allowed");
+  EXPECT_THAT(Eval("(long long)ap"), IsOk());
+  EXPECT_THAT(Eval("(unsigned long long)vp"), IsOk());
+  EXPECT_THAT(
+      Eval("(char)ap"),
+      IsError("cast from pointer to smaller type 'char' loses information"));
+  EXPECT_THAT(Eval("(float)ap"),
+              IsError("C-style cast from 'int *' to 'float' is not allowed"));
 }
 
-TEST_F(InterpreterTest, TestCStyleCastPointer) {
-  TestExprOnlyCompare("(void*)&a");
-  TestExprOnlyCompare("(void*)ap");
-  TestExprOnlyCompare("(long long*)vp");
-  TestExprOnlyCompare("(short int*)vp");
-  TestExprOnlyCompare("(unsigned long long*)vp");
-  TestExprOnlyCompare("(unsigned short int*)vp");
+TEST_F(EvalTest, TestCStyleCastPointer) {
+  EXPECT_THAT(Eval("(void*)&a"), IsOk());
+  EXPECT_THAT(Eval("(void*)ap"), IsOk());
+  EXPECT_THAT(Eval("(long long*)vp"), IsOk());
+  EXPECT_THAT(Eval("(short int*)vp"), IsOk());
+  EXPECT_THAT(Eval("(unsigned long long*)vp"), IsOk());
+  EXPECT_THAT(Eval("(unsigned short int*)vp"), IsOk());
 
-  TestExpr("(void*)0", "0x0000000000000000");
-  TestExpr("(void*)1", "0x0000000000000001");
-  TestExpr("(void*)a", "0x0000000000000001");
-  TestExpr("(void*)na", "0xffffffffffffffff");
+  EXPECT_THAT(Eval("(void*)0"), IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("(void*)1"), IsEqual("0x0000000000000001"));
+  EXPECT_THAT(Eval("(void*)a"), IsEqual("0x0000000000000001"));
+  EXPECT_THAT(Eval("(void*)na"), IsEqual("0xffffffffffffffff"));
 
-  TestExprErr("(char*) 1.0",
-              "cannot cast from type 'double' to pointer type 'char *'");
+  EXPECT_THAT(
+      Eval("(char*) 1.0"),
+      IsError("cannot cast from type 'double' to pointer type 'char *'"));
 
-  TestExpr("*(const int* const)ap", "1");
-  TestExpr("*(volatile int* const)ap", "1");
-  TestExpr("*(const int* const)vp", "1");
-  TestExpr("*(const int* const volatile const)vp", "1");
-  TestExpr("*(int*)(void*)ap", "1");
-  TestExpr("*(int*)(const void* const volatile)ap", "1");
+  EXPECT_THAT(Eval("*(const int* const)ap"), IsEqual("1"));
+  EXPECT_THAT(Eval("*(volatile int* const)ap"), IsEqual("1"));
+  EXPECT_THAT(Eval("*(const int* const)vp"), IsEqual("1"));
+  EXPECT_THAT(Eval("*(const int* const volatile const)vp"), IsEqual("1"));
+  EXPECT_THAT(Eval("*(int*)(void*)ap"), IsEqual("1"));
+  EXPECT_THAT(Eval("*(int*)(const void* const volatile)ap"), IsEqual("1"));
 
-  TestExprOnlyCompare("(ns::Foo*)ns_inner_foo_ptr_");
-  TestExprOnlyCompare("(ns::inner::Foo*)ns_foo_ptr_");
+  EXPECT_THAT(Eval("(ns::Foo*)ns_inner_foo_ptr_"), IsOk());
+  EXPECT_THAT(Eval("(ns::inner::Foo*)ns_foo_ptr_"), IsOk());
 
-  TestExprErr("(int*&)ap",
-              "casting of 'int *' to 'int *&' is not implemented yet");
-  TestExprErr("(int& &)ap", "type name declared as a reference to a reference");
-  TestExprErr(
-      "(int&*)ap",
-      "'type name' declared as a pointer to a reference of type 'int &'");
+  EXPECT_THAT(Eval("(int*&)ap"),
+              IsError("casting of 'int *' to 'int *&' is not implemented yet"));
+  EXPECT_THAT(Eval("(int& &)ap"),
+              IsError("type name declared as a reference to a reference"));
+  EXPECT_THAT(Eval("(int&*)ap"), IsError("'type name' declared as a pointer "
+                                         "to a reference of type 'int &'"));
 }
 
-TEST_F(InterpreterTest, TestQualifiedId) {
-  TestExpr("::ns::i", "1");
-  TestExpr("ns::i", "1");
-  TestExpr("::ns::ns::i", "2");
-  TestExpr("ns::ns::i", "2");
+TEST_F(EvalTest, TestQualifiedId) {
+  EXPECT_THAT(Eval("::ns::i"), IsEqual("1"));
+  EXPECT_THAT(Eval("ns::i"), IsEqual("1"));
+  EXPECT_THAT(Eval("::ns::ns::i"), IsEqual("2"));
+  EXPECT_THAT(Eval("ns::ns::i"), IsEqual("2"));
 
-  TestExpr("::Foo::y", "42");
-  TestExpr("Foo::y", "42");
+  EXPECT_THAT(Eval("::Foo::y"), IsEqual("42"));
+  EXPECT_THAT(Eval("Foo::y"), IsEqual("42"));
 
   // Static consts with no definition can't be looked up by name.
-  TestExprErr("::Foo::x", "use of undeclared identifier '::Foo::x'");
-  TestExprErr("Foo::x", "use of undeclared identifier 'Foo::x'");
+  EXPECT_THAT(Eval("::Foo::x"),
+              IsError("use of undeclared identifier '::Foo::x'"));
+  EXPECT_THAT(Eval("Foo::x"), IsError("use of undeclared identifier 'Foo::x'"));
 }
 
-TEST_F(InterpreterTest, TestTemplateTypes) {
+TEST_F(EvalTest, TestTemplateTypes) {
   // Template types lookup doesn't work well in the upstream LLDB.
-  SkipLLDB _(this);
+  this->compare_with_lldb_ = false;
 
   // Get the pointer value and use it to check the expressions with lldb-eval.
   auto expected = frame_.EvaluateExpression("p").GetValue();
 
   for (std::string arg : {"int", "int*", "int**", "int&", "int*&", "double"}) {
-    TestExpr("(T_1<" + arg + ">*)p", expected);
-    TestExpr("(::T_1<" + arg + ">*)p", expected);
+    EXPECT_THAT(Eval("(T_1<" + arg + ">*)p"), IsEqual(expected));
+    EXPECT_THAT(Eval("(::T_1<" + arg + ">*)p"), IsEqual(expected));
   }
-  TestExpr("(T_2<int, char>*)p", expected);
-  TestExpr("(::T_2<int, char>*)p", expected);
-  TestExpr("(T_2<char, int>*)p", expected);
-  TestExpr("(::T_2<char, int>*)p", expected);
-  TestExpr("(T_2<T_1<int>, T_1<char> >*)p", expected);
-  TestExpr("(::T_2<T_1<int>, T_1<char> >*)p", expected);
-  TestExpr("(T_2<T_1<T_1<int> >, T_1<char> >*)p", expected);
-  TestExpr("(::T_2<T_1<T_1<int> >, T_1<char> >*)p", expected);
+  EXPECT_THAT(Eval("(T_2<int, char>*)p"), IsEqual(expected));
+  EXPECT_THAT(Eval("(::T_2<int, char>*)p"), IsEqual(expected));
+  EXPECT_THAT(Eval("(T_2<char, int>*)p"), IsEqual(expected));
+  EXPECT_THAT(Eval("(::T_2<char, int>*)p"), IsEqual(expected));
+  EXPECT_THAT(Eval("(T_2<T_1<int>, T_1<char> >*)p"), IsEqual(expected));
+  EXPECT_THAT(Eval("(::T_2<T_1<int>, T_1<char> >*)p"), IsEqual(expected));
+  EXPECT_THAT(Eval("(T_2<T_1<T_1<int> >, T_1<char> >*)p"), IsEqual(expected));
+  EXPECT_THAT(Eval("(::T_2<T_1<T_1<int> >, T_1<char> >*)p"), IsEqual(expected));
 
-  TestExpr("(ns::T_1<int>*)p", expected);
-  TestExpr("(::ns::T_1<int>*)p", expected);
-  TestExpr("(ns::T_1<ns::T_1<int> >*)p", expected);
-  TestExpr("(::ns::T_1<ns::T_1<int> >*)p", expected);
-
+  EXPECT_THAT(Eval("(ns::T_1<int>*)p"), IsEqual(expected));
+  EXPECT_THAT(Eval("(::ns::T_1<int>*)p"), IsEqual(expected));
+  EXPECT_THAT(Eval("(ns::T_1<ns::T_1<int> >*)p"), IsEqual(expected));
+  EXPECT_THAT(Eval("(::ns::T_1<ns::T_1<int> >*)p"), IsEqual(expected));
 #ifdef _WIN32
-  TestExprErr("ns::T_1<ns::T_1<int> >::cx",
-              "use of undeclared identifier 'ns::T_1<ns::T_1<int> >::cx'");
+  EXPECT_THAT(
+      Eval("ns::T_1<ns::T_1<int> >::cx"),
+      IsError("use of undeclared identifier 'ns::T_1<ns::T_1<int> >::cx'"));
 #else
-  TestExpr("ns::T_1<ns::T_1<int> >::cx", "46");
+  EXPECT_THAT(Eval("ns::T_1<ns::T_1<int> >::cx"), IsEqual("46"));
 #endif
 
-  TestExpr("T_1<int>::cx", "24");
-  TestExpr("T_1<double>::cx", "42");
-  TestExpr("ns::T_1<int>::cx", "64");
+  EXPECT_THAT(Eval("T_1<int>::cx"), IsEqual("24"));
+  EXPECT_THAT(Eval("T_1<double>::cx"), IsEqual("42"));
+  EXPECT_THAT(Eval("ns::T_1<int>::cx"), IsEqual("64"));
 
   for (std::string arg : {"int", "int*", "int**", "int&", "int*&"}) {
-    TestExpr("(T_1<" + arg + ">::myint)1.2", "1.2");
-    TestExpr("(::T_1<" + arg + ">::myint)1.2", "1.2");
-    TestExpr("(T_1<T_1<" + arg + "> >::myint)1.2", "1.2");
-    TestExpr("(::T_1<T_1<" + arg + "> >::myint)1.2", "1.2");
+    EXPECT_THAT(Eval("(T_1<" + arg + ">::myint)1.2"), IsEqual("1.2"));
+    EXPECT_THAT(Eval("(::T_1<" + arg + ">::myint)1.2"), IsEqual("1.2"));
+    EXPECT_THAT(Eval("(T_1<T_1<" + arg + "> >::myint)1.2"), IsEqual("1.2"));
+    EXPECT_THAT(Eval("(::T_1<T_1<" + arg + "> >::myint)1.2"), IsEqual("1.2"));
 
-    TestExpr("(ns::T_1<" + arg + ">::myint)1.1", "1");
-    TestExpr("(::ns::T_1<" + arg + ">::myint)1.1", "1");
-    TestExpr("(ns::T_1<T_1<" + arg + "> >::myint)1.1", "1");
-    TestExpr("(::ns::T_1<T_1<" + arg + "> >::myint)1.1", "1");
-    TestExpr("(ns::T_1<ns::T_1<" + arg + "> >::myint)1.1", "1");
-    TestExpr("(::ns::T_1<ns::T_1<" + arg + "> >::myint)1.1", "1");
+    EXPECT_THAT(Eval("(ns::T_1<" + arg + ">::myint)1.1"), IsEqual("1"));
+    EXPECT_THAT(Eval("(::ns::T_1<" + arg + ">::myint)1.1"), IsEqual("1"));
+    EXPECT_THAT(Eval("(ns::T_1<T_1<" + arg + "> >::myint)1.1"), IsEqual("1"));
+    EXPECT_THAT(Eval("(::ns::T_1<T_1<" + arg + "> >::myint)1.1"), IsEqual("1"));
+    EXPECT_THAT(Eval("(ns::T_1<ns::T_1<" + arg + "> >::myint)1.1"),
+                IsEqual("1"));
+    EXPECT_THAT(Eval("(::ns::T_1<ns::T_1<" + arg + "> >::myint)1.1"),
+                IsEqual("1"));
   }
 
-  TestExpr("(T_2<int, char>::myint)1.1f", "1.10000002");
-  TestExpr("(::T_2<int, char>::myint)1.1f", "1.10000002");
-  TestExpr("(T_2<int*, char&>::myint)1.1f", "1.10000002");
-  TestExpr("(::T_2<int&, char*>::myint)1.1f", "1.10000002");
-  TestExpr("(T_2<T_1<T_1<int> >, T_1<char> >::myint)1.1", "1.10000002");
-  TestExpr("(::T_2<T_1<T_1<int> >, T_1<char> >::myint)1.1", "1.10000002");
+  EXPECT_THAT(Eval("(T_2<int, char>::myint)1.1f"), IsEqual("1.10000002"));
+  EXPECT_THAT(Eval("(::T_2<int, char>::myint)1.1f"), IsEqual("1.10000002"));
+  EXPECT_THAT(Eval("(T_2<int*, char&>::myint)1.1f"), IsEqual("1.10000002"));
+  EXPECT_THAT(Eval("(::T_2<int&, char*>::myint)1.1f"), IsEqual("1.10000002"));
+  EXPECT_THAT(Eval("(T_2<T_1<T_1<int> >, T_1<char> >::myint)1.1"),
+              IsEqual("1.10000002"));
+  EXPECT_THAT(Eval("(::T_2<T_1<T_1<int> >, T_1<char> >::myint)1.1"),
+              IsEqual("1.10000002"));
 }
 
-TEST_F(InterpreterTest, TestValueScope) {
-  TestExpr("var", "x_", "1");
-  TestExpr("var", "y_", "2.5");
-  TestExprErr("var", "z_", "use of undeclared identifier 'z_'");
+TEST_F(EvalTest, TestValueScope) {
+  EXPECT_THAT(Scope("var").Eval("x_"), IsEqual("1"));
+  EXPECT_THAT(Scope("var").Eval("y_"), IsEqual("2.5"));
+  EXPECT_THAT(Scope("var").Eval("z_"),
+              IsError("use of undeclared identifier 'z_'"));
 
-  TestExprErr("x_", "use of undeclared identifier 'x_'");
-  TestExprErr("y_", "use of undeclared identifier 'y_'");
-  TestExpr("z_", "3");
+  EXPECT_THAT(Eval("x_"), IsError("use of undeclared identifier 'x_'"));
+  EXPECT_THAT(Eval("y_"), IsError("use of undeclared identifier 'y_'"));
+  EXPECT_THAT(Eval("z_"), IsEqual("3"));
 }
