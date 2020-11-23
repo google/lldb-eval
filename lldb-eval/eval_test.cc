@@ -468,14 +468,6 @@ TEST_F(EvalTest, TestPointerArithmetic) {
   EXPECT_THAT(Eval("cp_int5 != td_int_ptr0"), IsEqual("true"));
   EXPECT_THAT(Eval("cp_int5 == td_int_ptr0 + offset"), IsEqual("true"));
 
-  EXPECT_THAT(Eval("p_void == p_void"), IsEqual("true"));
-  EXPECT_THAT(Eval("p_void == p_char1"), IsEqual("true"));
-  EXPECT_THAT(Eval("p_void != p_char1"), IsEqual("false"));
-  EXPECT_THAT(Eval("p_void > p_char1"), IsEqual("false"));
-  EXPECT_THAT(Eval("p_void >= p_char1"), IsEqual("true"));
-  EXPECT_THAT(Eval("p_void < (p_char1 + 1)"), IsEqual("true"));
-  EXPECT_THAT(Eval("pp_void0 + 1 == pp_void1"), IsEqual("true"));
-
   EXPECT_THAT(Eval("p_void + 1"), IsError("arithmetic on a pointer to void"));
   EXPECT_THAT(Eval("p_void - 1"), IsError("arithmetic on a pointer to void"));
   EXPECT_THAT(Eval("p_void - p_char1"),
@@ -490,6 +482,26 @@ TEST_F(EvalTest, TestPointerArithmetic) {
   EXPECT_THAT(Eval("pp_void0 == p_char1"),
               IsError("comparison of distinct pointer types ('void **' and "
                       "'const char *')"));
+}
+
+TEST_F(EvalTest, PointerPointerComparison) {
+  EXPECT_THAT(Eval("p_void == p_void"), IsEqual("true"));
+  EXPECT_THAT(Eval("p_void == p_char1"), IsEqual("true"));
+  EXPECT_THAT(Eval("p_void != p_char1"), IsEqual("false"));
+  EXPECT_THAT(Eval("p_void > p_char1"), IsEqual("false"));
+  EXPECT_THAT(Eval("p_void >= p_char1"), IsEqual("true"));
+  EXPECT_THAT(Eval("p_void < (p_char1 + 1)"), IsEqual("true"));
+  EXPECT_THAT(Eval("pp_void0 + 1 == pp_void1"), IsEqual("true"));
+
+  EXPECT_THAT(Eval("(void*)1 == (void*)1"), IsEqual("true"));
+  EXPECT_THAT(Eval("(void*)1 != (void*)1"), IsEqual("false"));
+  EXPECT_THAT(Eval("(void*)2 > (void*)1"), IsEqual("true"));
+  EXPECT_THAT(Eval("(void*)2 < (void*)1"), IsEqual("false"));
+
+  EXPECT_THAT(Eval("(void*)1 == (char*)1"), IsEqual("true"));
+  EXPECT_THAT(Eval("(char*)1 != (void*)1"), IsEqual("false"));
+  EXPECT_THAT(Eval("(void*)2 > (char*)1"), IsEqual("true"));
+  EXPECT_THAT(Eval("(char*)2 < (void*)1"), IsEqual("false"));
 }
 
 TEST_F(EvalTest, PointerIntegerComparison) {
