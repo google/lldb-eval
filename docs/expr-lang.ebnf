@@ -54,6 +54,7 @@ postfix_expression = primary_expression {"[" expression "]"}
 
 primary_expression = numeric_literal
                    | boolean_literal
+                   | pointer_literal
                    | id_expression
                    | "this"
                    | "(" expression ")" ;
@@ -130,3 +131,5 @@ identifier = ? clang::tok::identifier ? ;
 numeric_literal = ? clang::tok::numeric_constant ? ;
 
 boolean_literal = "true" | "false" ;
+
+pointer_literal = "nullptr" ;

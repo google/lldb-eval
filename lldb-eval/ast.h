@@ -66,21 +66,9 @@ class ErrorNode : public AstNode {
   void Accept(Visitor* v) const override;
 };
 
-class BooleanLiteralNode : public AstNode {
+class LiteralNode : public AstNode {
  public:
-  explicit BooleanLiteralNode(Value value) : value_(std::move(value)) {}
-
-  void Accept(Visitor* v) const override;
-
-  Value value() const { return value_; }
-
- private:
-  Value value_;
-};
-
-class NumericLiteralNode : public AstNode {
- public:
-  NumericLiteralNode(Value value) : value_(std::move(value)) {}
+  LiteralNode(Value value) : value_(std::move(value)) {}
 
   void Accept(Visitor* v) const override;
 
@@ -200,8 +188,7 @@ class Visitor {
  public:
   virtual ~Visitor() {}
   virtual void Visit(const ErrorNode* node) = 0;
-  virtual void Visit(const BooleanLiteralNode* node) = 0;
-  virtual void Visit(const NumericLiteralNode* node) = 0;
+  virtual void Visit(const LiteralNode* node) = 0;
   virtual void Visit(const IdentifierNode* node) = 0;
   virtual void Visit(const CStyleCastNode* node) = 0;
   virtual void Visit(const MemberOfNode* node) = 0;

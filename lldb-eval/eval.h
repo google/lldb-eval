@@ -44,9 +44,7 @@ class Interpreter : Visitor {
  private:
   void Visit(const ErrorNode* node) override;
 
-  void Visit(const BooleanLiteralNode* node) override;
-
-  void Visit(const NumericLiteralNode* node) override;
+  void Visit(const LiteralNode* node) override;
 
   void Visit(const IdentifierNode* node) override;
 

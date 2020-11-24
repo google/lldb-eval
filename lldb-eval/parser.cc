@@ -613,6 +613,7 @@ ExprResult Parser::ParsePostfixExpression() {
 //  primary_expression:
 //    numeric_literal
 //    boolean_literal
+//    pointer_literal
 //    id_expression
 //    "this"
 //    "(" expression ")"
@@ -622,6 +623,8 @@ ExprResult Parser::ParsePrimaryExpression() {
     return ParseNumericLiteral();
   } else if (token_.isOneOf(clang::tok::kw_true, clang::tok::kw_false)) {
     return ParseBooleanLiteral();
+  } else if (token_.is(clang::tok::kw_nullptr)) {
+    return ParsePointerLiteral();
   } else if (token_.isOneOf(clang::tok::coloncolon, clang::tok::identifier)) {
     // Save the source location for the diagnostics message.
     clang::SourceLocation loc = token_.getLocation();
@@ -1138,8 +1141,19 @@ ExprResult Parser::ParseBooleanLiteral() {
   ExpectOneOf(clang::tok::kw_true, clang::tok::kw_false);
   bool literal_value = token_.is(clang::tok::kw_true);
   ConsumeToken();
-  return std::make_unique<BooleanLiteralNode>(
+  return std::make_unique<LiteralNode>(
       CreateValueFromBool(target_, literal_value));
+}
+
+// Parse an pointer_literal.
+//
+//  pointer_literal:
+//    "nullptr"
+//
+ExprResult Parser::ParsePointerLiteral() {
+  Expect(clang::tok::kw_nullptr);
+  ConsumeToken();
+  return std::make_unique<LiteralNode>(CreateValueNullptr(target_));
 }
 
 ExprResult Parser::ParseNumericConstant(clang::Token token) {
@@ -1204,7 +1218,7 @@ ExprResult Parser::ParseFloatingLiteral(clang::NumericLiteralParser& literal,
   Value value =
       CreateValueFromAPFloat(target_, raw_value, target_.GetBasicType(type));
 
-  return std::make_unique<NumericLiteralNode>(std::move(value));
+  return std::make_unique<LiteralNode>(std::move(value));
 }
 
 ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
@@ -1232,7 +1246,7 @@ ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
       CreateValueFromAPInt(target_, llvm::APSInt(raw_value, is_unsigned),
                            target_.GetBasicType(type));
 
-  return std::make_unique<NumericLiteralNode>(std::move(value));
+  return std::make_unique<LiteralNode>(std::move(value));
 }
 
 }  // namespace lldb_eval

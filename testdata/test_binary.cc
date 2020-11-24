@@ -84,6 +84,8 @@ static void TestPointerArithmetic() {
   void** pp_void1 = pp_void0 + 1;
 
   // BREAK(TestPointerArithmetic)
+  // BREAK(PointerPointerComparison)
+  // BREAK(PointerIntegerComparison)
 }
 
 static void TestLogicalOperators() {
