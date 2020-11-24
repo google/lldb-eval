@@ -830,6 +830,7 @@ TEST_F(EvalTest, TestCStyleCastPointer) {
   EXPECT_THAT(Eval("(void*)1"), IsEqual("0x0000000000000001"));
   EXPECT_THAT(Eval("(void*)a"), IsEqual("0x0000000000000001"));
   EXPECT_THAT(Eval("(void*)na"), IsEqual("0xffffffffffffffff"));
+  EXPECT_THAT(Eval("(int*&)ap"), IsOk());
 
   EXPECT_THAT(
       Eval("(char*) 1.0"),

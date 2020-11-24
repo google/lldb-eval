@@ -252,6 +252,13 @@ void Interpreter::Visit(const CStyleCastNode* node) {
     return;
   }
 
+  // If target type is a reference, just do reinterpret_cast.
+  if (type.IsReferenceType()) {
+    result_ = Value(rhs.inner_value().Cast(type.GetDereferencedType()),
+                    /*is_rvalue*/ true);
+    return;
+  }
+
   std::string msg =
       llvm::formatv("casting of '{0}' to '{1}' is not implemented yet",
                     rhs.type().GetName(), type.GetName());

@@ -255,6 +255,20 @@ static void TestCStyleCast() {
   // BREAK(TestCStyleCastPointer)
 }
 
+static void TestCStyleCastToReference() {
+  struct InnerFoo {
+    int a;
+    int b;
+  };
+
+  InnerFoo ifoo;
+  (void)ifoo;
+
+  int arr[] = {1, 2, 3, 4};
+
+  // BREAK(TestCStyleCastReference)
+}
+
 // Referenced by TestQualifiedId.
 namespace ns {
 
@@ -417,6 +431,7 @@ void main() {
   tm.TestAddressOf(42);
   TestSubscript();
   TestCStyleCast();
+  TestCStyleCastToReference();
   TestQualifiedId();
   TestTemplateTypes();
   TestValueScope();
