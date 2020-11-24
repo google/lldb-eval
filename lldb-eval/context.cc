@@ -21,7 +21,9 @@
 #include "clang/Basic/SourceManager.h"
 #include "lldb/API/SBExecutionContext.h"
 #include "lldb/API/SBFrame.h"
+#include "lldb/API/SBProcess.h"
 #include "lldb/API/SBTarget.h"
+#include "lldb/API/SBThread.h"
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
 #include "lldb/API/SBValueList.h"
@@ -172,8 +174,14 @@ std::shared_ptr<Context> Context::Create(std::string expr,
 
 std::shared_ptr<Context> Context::Create(std::string expr,
                                          lldb::SBValue scope) {
+  // SBValues created via SBTarget::CreateValueFromData don't have SBFrame
+  // associated with them. But they still have a process/target, so use that
+  // instead.
   return std::shared_ptr<Context>(new Context(
-      std::move(expr), lldb::SBExecutionContext(scope.GetFrame()), scope));
+      std::move(expr),
+      lldb::SBExecutionContext(
+          scope.GetProcess().GetSelectedThread().GetSelectedFrame()),
+      scope));
 }
 
 }  // namespace lldb_eval
