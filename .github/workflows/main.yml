@@ -16,7 +16,7 @@ jobs:
             tag: 10
           - os: ubuntu-latest
             tag: 11
-          - os: windows-latest
+          - os: windows-2016
             llvm_archive: llvm-11.0.0-x86_64-windows-msvc-release-md
 
     runs-on: ${{ matrix.os }}
@@ -34,7 +34,7 @@ jobs:
           echo "LLVM_INSTALL_PATH=/usr/lib/llvm-${{ matrix.tag }}" >> $GITHUB_ENV
 
       - name: Setup LLVM (Windows)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-2016'
         run: |
           C:\msys64\usr\bin\wget.exe -q "https://github.com/google/lldb-eval/releases/download/llvm-11/${{ matrix.llvm_archive }}.7z"
           7z x -y "${{ matrix.llvm_archive }}.7z"
