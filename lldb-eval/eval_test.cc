@@ -852,6 +852,14 @@ TEST_F(EvalTest, TestCStyleCastPointer) {
                                          "to a reference of type 'int &'"));
 }
 
+TEST_F(EvalTest, TestCStyleCastReference) {
+  EXPECT_THAT(Eval("((InnerFoo&)arr[1]).a"), IsEqual("2"));
+  EXPECT_THAT(Eval("((InnerFoo&)arr[1]).b"), IsEqual("3"));
+
+  EXPECT_THAT(Eval("(int&)arr[0]"), IsEqual("1"));
+  EXPECT_THAT(Eval("(int&)arr[1]"), IsEqual("2"));
+}
+
 TEST_F(EvalTest, TestQualifiedId) {
   EXPECT_THAT(Eval("::ns::i"), IsEqual("1"));
   EXPECT_THAT(Eval("ns::i"), IsEqual("1"));
