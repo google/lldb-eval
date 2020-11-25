@@ -846,8 +846,6 @@ TEST_F(EvalTest, TestCStyleCastPointer) {
   EXPECT_THAT(Eval("(ns::Foo*)ns_inner_foo_ptr_"), IsOk());
   EXPECT_THAT(Eval("(ns::inner::Foo*)ns_foo_ptr_"), IsOk());
 
-  EXPECT_THAT(Eval("(int*&)ap"),
-              IsError("casting of 'int *' to 'int *&' is not implemented yet"));
   EXPECT_THAT(Eval("(int& &)ap"),
               IsError("type name declared as a reference to a reference"));
   EXPECT_THAT(Eval("(int&*)ap"), IsError("'type name' declared as a pointer "
