@@ -54,22 +54,28 @@ void run_repl(lldb::SBFrame& frame) {
     }
 
     auto lldb_value = frame.EvaluateExpression(expr.c_str());
-    printf("lldb yields: `%s`\n", lldb_value.GetValue());
+    auto lldb_err = lldb_value.GetError();
+    printf("expr: `%s`\n", expr.c_str());
+    printf("lldb:      `%s`\n", lldb_value.GetValue());
 
-    lldb::SBError err;
+    lldb::SBError lldb_eval_err;
     auto lldb_eval_value =
-        lldb_eval::EvaluateExpression(frame, expr.c_str(), err);
-    printf("lldb-eval yields: `%s`\n", lldb_eval_value.GetValue());
-    printf("------------------------------------------------------------\n");
+        lldb_eval::EvaluateExpression(frame, expr.c_str(), lldb_eval_err);
+    printf("lldb-eval: `%s`\n", lldb_eval_value.GetValue());
+    printf("======\n");
+
+    printf("lldb error:      `%s`\n", lldb_err.GetCString());
+    printf("lldb-eval error: `%s`\n", lldb_eval_err.GetCString());
+
+    printf("============================================================\n");
 
     linenoise::AddHistory(expr.c_str());
   }
 }
 
-void run_fuzzer(lldb::SBFrame& frame) {
+void run_fuzzer(lldb::SBFrame& frame, const unsigned* seed_ptr) {
   std::random_device rd;
-  unsigned seed = 2399820018;
-  // auto seed = rd();
+  unsigned seed = seed_ptr ? *seed_ptr : rd();
   printf("Seed for this run is: %u\n", seed);
 
   auto rng = std::make_unique<fuzzer::DefaultGeneratorRng>(seed);
@@ -182,7 +188,20 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  bool repl_mode = argc >= 2 && strcmp(argv[1], "--repl") == 0;
+  bool repl_mode = false;
+  bool custom_seed = false;
+  unsigned seed = 0;
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--repl") == 0) {
+      repl_mode = true;
+    }
+    if (strcmp(argv[i], "--seed") == 0 && i < argc - 1) {
+      custom_seed = true;
+
+      i++;
+      seed = std::stoul(argv[i]);
+    }
+  }
 
   lldb_eval::SetupLLDBServerEnv(*runfiles);
 
@@ -200,7 +219,8 @@ int main(int argc, char** argv) {
     if (repl_mode) {
       run_repl(frame);
     } else {
-      run_fuzzer(frame);
+      const unsigned* seed_ptr = custom_seed ? &seed : nullptr;
+      run_fuzzer(frame, seed_ptr);
     }
 
     proc.Destroy();
