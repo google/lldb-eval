@@ -93,8 +93,6 @@ bazel test ...:all
 bazel run tools:exec -- "(1 + 2) * 42 / 4"
 ```
 
-> **Hint:** You can add this option to your `user.bazelrc` !
-
 Depending on your distribution of LLVM, you may also need to provide
 `--@llvm_project//:llvm_build={static,dynamic}` flag. For example, if your
 `liblldb.so` is linked dynamically (this is the case when installing via `apt`),
