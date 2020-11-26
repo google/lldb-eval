@@ -86,6 +86,22 @@ TypeConstraints TypeConstraints::allowed_to_point_to() const {
   return specific_types->allowed_to_point_to();
 }
 
+TypeConstraints TypeConstraints::make_pointer_constraints() const {
+  if (!satisfiable()) {
+    return NoType();
+  }
+
+  if (allows_any()) {
+    return SpecificTypes::make_any_non_void_pointer_constraints();
+  }
+
+  const auto* specific_types = as_specific_types();
+  assert(specific_types != nullptr &&
+         "Should never be null, did you introduce a new alternative?");
+
+  return SpecificTypes::make_pointer_constraints(*specific_types);
+}
+
 bool TypeConstraints::allows_type(const Type& type) const {
   const auto* as_scalar = std::get_if<ScalarType>(&type);
   if (as_scalar != nullptr) {

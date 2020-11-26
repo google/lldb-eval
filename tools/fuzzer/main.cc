@@ -68,7 +68,8 @@ void run_repl(lldb::SBFrame& frame) {
 
 void run_fuzzer(lldb::SBFrame& frame) {
   std::random_device rd;
-  auto seed = rd();
+  unsigned seed = 2399820018;
+  // auto seed = rd();
   printf("Seed for this run is: %u\n", seed);
 
   auto rng = std::make_unique<fuzzer::DefaultGeneratorRng>(seed);
@@ -76,21 +77,59 @@ void run_fuzzer(lldb::SBFrame& frame) {
   // Disable shift and division for now
   cfg.bin_op_mask[fuzzer::BinOp::Shl] = false;
   cfg.bin_op_mask[fuzzer::BinOp::Shr] = false;
-  cfg.bin_op_mask[fuzzer::BinOp::Div] = false;
-  cfg.bin_op_mask[fuzzer::BinOp::Mod] = false;
 
-  cfg.expr_kind_mask[fuzzer::ExprKind::DereferenceExpr] = false;
-  cfg.expr_kind_mask[fuzzer::ExprKind::AddressOf] = false;
-  cfg.expr_kind_mask[fuzzer::ExprKind::ArrayIndex] = false;
   cfg.expr_kind_mask[fuzzer::ExprKind::MemberOf] = false;
   cfg.expr_kind_mask[fuzzer::ExprKind::MemberOfPtr] = false;
 
   cfg.symbol_table.emplace(
-      std::make_pair(fuzzer::Type(fuzzer::ScalarType::SignedInt),
-                     std::vector<std::string>{"x", "int_min", "int_max"}));
+      std::make_pair(fuzzer::Type(fuzzer::ScalarType::Char),
+                     std::vector<std::string>{"char_min", "char_max"}));
+  cfg.symbol_table.emplace(
+      std::make_pair(fuzzer::Type(fuzzer::ScalarType::UnsignedChar),
+                     std::vector<std::string>{"uchar_min", "uchar_max"}));
+  cfg.symbol_table.emplace(
+      std::make_pair(fuzzer::Type(fuzzer::ScalarType::SignedChar),
+                     std::vector<std::string>{"schar_min", "schar_max"}));
+  cfg.symbol_table.emplace(
+      std::make_pair(fuzzer::Type(fuzzer::ScalarType::UnsignedShort),
+                     std::vector<std::string>{"ushort_min", "ushort_max"}));
+  cfg.symbol_table.emplace(
+      std::make_pair(fuzzer::Type(fuzzer::ScalarType::SignedShort),
+                     std::vector<std::string>{"short_min", "short_max"}));
+  cfg.symbol_table.emplace(
+      std::make_pair(fuzzer::Type(fuzzer::ScalarType::UnsignedInt),
+                     std::vector<std::string>{"uint_min", "uint_max"}));
+  cfg.symbol_table.emplace(std::make_pair(
+      fuzzer::Type(fuzzer::ScalarType::SignedInt),
+      std::vector<std::string>{"int_min", "int_max", "x", "ref"}));
+  cfg.symbol_table.emplace(
+      std::make_pair(fuzzer::Type(fuzzer::ScalarType::UnsignedLong),
+                     std::vector<std::string>{"ulong_min", "ulong_max"}));
   cfg.symbol_table.emplace(
       std::make_pair(fuzzer::Type(fuzzer::ScalarType::SignedLong),
                      std::vector<std::string>{"long_min", "long_max"}));
+  cfg.symbol_table.emplace(
+      std::make_pair(fuzzer::Type(fuzzer::ScalarType::UnsignedLongLong),
+                     std::vector<std::string>{"ullong_min", "ullong_max"}));
+  cfg.symbol_table.emplace(
+      std::make_pair(fuzzer::Type(fuzzer::ScalarType::SignedLongLong),
+                     std::vector<std::string>{"llong_min", "llong_max"}));
+
+  cfg.symbol_table.emplace(std::make_pair(
+      fuzzer::Type(fuzzer::ScalarType::Float),
+      std::vector<std::string>{"fnan", "finf", "fsnan", "fmax", "fdenorm"}));
+  cfg.symbol_table.emplace(std::make_pair(
+      fuzzer::Type(fuzzer::ScalarType::Double),
+      std::vector<std::string>{"dnan", "dinf", "dsnan", "dmax", "ddenorm"}));
+  cfg.symbol_table.emplace(
+      std::make_pair(fuzzer::Type(fuzzer::ScalarType::LongDouble),
+                     std::vector<std::string>{"ldnan", "ldinf", "ldsnan",
+                                              "ldmax", "lddenorm"}));
+
+  cfg.symbol_table.emplace(
+      std::make_pair(fuzzer::Type(fuzzer::TaggedType("TestStruct")),
+                     std::vector<std::string>{"ts"}));
+
   cfg.symbol_table.emplace(std::make_pair(
       fuzzer::PointerType(fuzzer::QualifiedType(fuzzer::ScalarType::SignedInt)),
       std::vector<std::string>{"p"}));

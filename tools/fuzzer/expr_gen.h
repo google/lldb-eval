@@ -80,6 +80,8 @@ using UnOpMask = EnumBitset<UnOp>;
 struct GenConfig {
   int num_exprs_to_generate = 8;
 
+  int max_depth = 10;
+
   uint64_t int_const_min = 0;
   uint64_t int_const_max = 1000;
 
@@ -104,9 +106,9 @@ struct GenConfig {
       {1.0f, 0.0f},  // ExprKind::IntegerConstant
       {2.0f, 0.0f},  // ExprKind::DoubleConstant
       {1.0f, 0.0f},  // ExprKind::VariableExpr
-      {7.0f, 0.4f},  // ExprKind::UnaryExpr
+      {3.0f, 0.4f},  // ExprKind::UnaryExpr
       {3.0f, 0.4f},  // ExprKind::BinaryExpr
-      {1.0f, 0.1f},  // ExprKind::AddressOf
+      {2.0f, 0.1f},  // ExprKind::AddressOf
       {1.0f, 0.1f},  // ExprKind::MemberOf
       {1.0f, 0.1f},  // ExprKind::MemberOfPtr
       {1.0f, 0.1f},  // ExprKind::ArrayIndex

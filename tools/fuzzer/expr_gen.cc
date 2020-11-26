@@ -54,9 +54,14 @@ class Weights {
     return type_weights_[(size_t)kind];
   }
 
+  int depth() const { return depth_; }
+  void increment_depth() { depth_++; }
+
  private:
   std::array<float, NUM_GEN_EXPR_KINDS> expr_weights_;
   std::array<float, NUM_GEN_TYPE_KINDS> type_weights_;
+
+  int depth_ = 0;
 };
 
 using ScalarMask = EnumBitset<ScalarType>;
@@ -489,13 +494,27 @@ std::optional<Expr> ExprGenerator::gen_cast_expr(
 }
 
 std::optional<Expr> ExprGenerator::gen_address_of_expr(
-    const Weights&, const ExprConstraints& constraints) {
-  // TODO: Stub implemented in branch `fuzzer-ptrs`
+    const Weights& weights, const ExprConstraints& constraints) {
   if (constraints.must_be_lvalue()) {
     return {};
   }
 
-  return {};
+  TypeConstraints new_type_constraints =
+      constraints.type_constraints().allowed_to_point_to();
+  ExprConstraints new_constraints(std::move(new_type_constraints),
+                                  ExprCategory::Lvalue);
+
+  auto maybe_expr = gen_with_weights(weights, new_constraints);
+  if (!maybe_expr.has_value()) {
+    return {};
+  }
+  Expr expr = std::move(maybe_expr.value());
+
+  if (expr_precedence(expr) > AddressOf::PRECEDENCE) {
+    expr = ParenthesizedExpr(std::move(expr));
+  }
+
+  return AddressOf(std::move(expr));
 }
 
 std::optional<Expr> ExprGenerator::gen_member_of_expr(
@@ -532,30 +551,38 @@ std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
 
 std::optional<Expr> ExprGenerator::gen_array_index_expr(
     const Weights& weights, const ExprConstraints& constraints) {
-  TypeConstraints idx_constraints = SpecificTypes(INT_TYPES);
+  TypeConstraints lhs_constraints =
+      constraints.type_constraints().make_pointer_constraints();
+  TypeConstraints rhs_constraints = SpecificTypes(INT_TYPES);
 
-  auto maybe_expr = gen_with_weights(weights, constraints);
-  if (!maybe_expr.has_value()) {
+  if (rng_->gen_binop_flip_operands(cfg_.binop_flip_operands_prob)) {
+    std::swap(lhs_constraints, rhs_constraints);
+  }
+
+  auto maybe_lhs = gen_with_weights(weights, lhs_constraints);
+  if (!maybe_lhs.has_value()) {
     return {};
   }
-  Expr expr = std::move(maybe_expr.value());
+  Expr lhs = std::move(maybe_lhs.value());
 
-  auto maybe_idx = gen_with_weights(weights, idx_constraints);
-  if (!maybe_idx.has_value()) {
+  auto maybe_rhs = gen_with_weights(weights, rhs_constraints);
+  if (!maybe_rhs.has_value()) {
     return {};
   }
-  Expr idx = std::move(maybe_idx.value());
+  Expr rhs = std::move(maybe_rhs.value());
 
-  if (expr_precedence(expr) > ArrayIndex::PRECEDENCE) {
-    expr = ParenthesizedExpr(std::move(expr));
+  if (expr_precedence(lhs) > ArrayIndex::PRECEDENCE) {
+    lhs = ParenthesizedExpr(std::move(lhs));
   }
 
-  return ArrayIndex(std::move(expr), std::move(idx));
+  return ArrayIndex(std::move(lhs), std::move(rhs));
 }
 
 std::optional<Expr> ExprGenerator::gen_dereference_expr(
     const Weights& weights, const ExprConstraints& constraints) {
-  auto maybe_expr = gen_with_weights(weights, constraints);
+  TypeConstraints new_constraints =
+      constraints.type_constraints().make_pointer_constraints();
+  auto maybe_expr = gen_with_weights(weights, new_constraints);
   if (!maybe_expr.has_value()) {
     return {};
   }
@@ -571,6 +598,10 @@ std::optional<Expr> ExprGenerator::gen_dereference_expr(
 std::optional<Expr> ExprGenerator::gen_with_weights(
     const Weights& weights, const ExprConstraints& constraints) {
   Weights new_weights = weights;
+  new_weights.increment_depth();
+  if (new_weights.depth() == cfg_.max_depth) {
+    return {};
+  }
 
   ExprKindMask mask = cfg_.expr_kind_mask;
   while (mask.any()) {
@@ -671,6 +702,11 @@ std::optional<Type> ExprGenerator::gen_type_impl(
   }
 
   Weights new_weights = weights;
+  new_weights.increment_depth();
+  if (new_weights.depth() == cfg_.max_depth) {
+    return {};
+  }
+
   TypeKindMask mask = TypeKindMask::all_set();
 
   if (type_constraints.allowed_scalar_types().none()) {

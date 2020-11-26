@@ -172,6 +172,7 @@ class TypeConstraints {
   }
 
   TypeConstraints allowed_to_point_to() const;
+  TypeConstraints make_pointer_constraints() const;
 
   bool allows_void_pointer() const {
     if (!satisfiable()) {
