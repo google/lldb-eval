@@ -237,10 +237,8 @@ void Interpreter::Visit(const CStyleCastNode* node) {
     // TODO(b/161677840): Do some error handling here.
     uintptr_t addr;
 
-    if (rhs.IsInteger()) {
-      addr = rhs.ConvertTo<uintptr_t>();
-    } else if (rhs.IsPointer()) {
-      addr = rhs.GetValueAsAddress();
+    if (rhs.IsInteger() || rhs.IsPointer()) {
+      addr = rhs.GetUInt64();
     } else {
       std::string msg = llvm::formatv(
           "cannot cast from type '{{0}' to pointer type '{0}'", type.GetName());
@@ -530,10 +528,10 @@ Value Interpreter::EvaluateSubscript(Value lhs, Value rhs) {
 
   if (base.type().IsArrayType()) {
     item_type = base.type().GetArrayElementType();
-    base_addr = base.AddressOf().GetValueAsAddress();
+    base_addr = base.AddressOf().GetUInt64();
   } else if (base.type().IsPointerType()) {
     item_type = base.type().GetPointeeType();
-    base_addr = static_cast<lldb::addr_t>(base.GetValueAsAddress());
+    base_addr = base.GetUInt64();
   } else {
     lldb_eval_unreachable("Subscripted value must be either array or pointer.");
   }
@@ -604,14 +602,8 @@ Value Interpreter::EvaluateComparison(clang::tok::TokenKind op, Value lhs,
       }
     }
 
-    // Use `GetValueAsAddress()` for pointer operands and `GetInt64` for
-    // integers/nullptr literals. We can't just read an unsigned value, because
-    // the integer might be signed and needs to be promoted to a proper type
-    // (i.e. uintptr_t).
-    auto lhs_addr = lhs.IsPointer() ? lhs.GetValueAsAddress() : lhs.GetInt64();
-    auto rhs_addr = rhs.IsPointer() ? rhs.GetValueAsAddress() : rhs.GetInt64();
-
-    return CreateValueFromBool(target_, Compare(op, lhs_addr, rhs_addr));
+    return CreateValueFromBool(target_,
+                               Compare(op, lhs.GetUInt64(), rhs.GetUInt64()));
   }
 
   ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
@@ -752,8 +744,7 @@ Value Interpreter::EvaluateBinarySubtraction(Value lhs, Value rhs) {
 
     // Pointer difference is technically ptrdiff_t, but the important part is
     // that it is signed.
-    int64_t diff = static_cast<ptrdiff_t>(lhs.GetValueAsAddress() -
-                                          rhs.GetValueAsAddress()) /
+    int64_t diff = static_cast<ptrdiff_t>(lhs.GetUInt64() - rhs.GetUInt64()) /
                    static_cast<int64_t>(item_size);
 
     return CreateValueFromBytes(target_, &diff, lldb::eBasicTypeLongLong);
@@ -898,8 +889,8 @@ void Interpreter::ReportTypeError(const char* fmt, Value lhs, Value rhs) {
 }
 
 Value Interpreter::PointerAdd(Value lhs, int64_t offset) {
-  uintptr_t addr = lhs.GetValueAsAddress() +
-                   offset * lhs.type().GetPointeeType().GetByteSize();
+  uintptr_t addr =
+      lhs.GetUInt64() + offset * lhs.type().GetPointeeType().GetByteSize();
 
   return CreateValueFromPointer(target_, addr, lhs.type());
 }

@@ -126,6 +126,12 @@ lldb::SBProcess LaunchTestProgram(lldb::SBDebugger debugger,
       continue;
     }
 
+    if (state == lldb::eStateExited) {
+      std::cerr << "Process exited: " << process.GetExitStatus() << std::endl;
+      process.Destroy();
+      exit(1);
+    }
+
     if (state != lldb::eStateStopped) {
       continue;
     }

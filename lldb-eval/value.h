@@ -18,11 +18,7 @@
 #define LLDB_EVAL_VALUE_H_
 
 #include <cstdint>
-#include <iosfwd>
-#include <string>
-#include <type_traits>
 
-#include "lldb-eval/traits.h"
 #include "lldb/API/SBTarget.h"
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
@@ -59,7 +55,7 @@ class Value {
 
   bool GetBool();
   int64_t GetInt64();
-  uintptr_t GetValueAsAddress();
+  uint64_t GetUInt64();
   Value GetRvalueRef() const;
 
   Value AddressOf();
@@ -67,35 +63,6 @@ class Value {
 
   llvm::APSInt GetInteger();
   llvm::APFloat GetFloat();
-
-  template <typename T>
-  T ReadValue() {
-    static_assert(std::is_scalar<T>::value, "T must be scalar");
-
-    lldb::SBError ignore;
-    T ret = 0;
-    value_.GetData().ReadRawData(ignore, 0, &ret, sizeof(T));
-
-    return ret;
-  }
-
-  template <typename T>
-  T ConvertTo() {
-    static_assert(std::is_scalar<T>::value, "T must be scalar");
-
-    switch (type_.GetCanonicalType().GetBasicType()) {
-#define CASE(basic_type, builtin_type)                \
-  case basic_type: {                                  \
-    return static_cast<T>(ReadValue<builtin_type>()); \
-  }
-
-      LLDB_TYPE_BUILTIN(CASE)
-#undef CASE
-
-      default:
-        return T();
-    }
-  }
 
  private:
   lldb::SBValue value_;

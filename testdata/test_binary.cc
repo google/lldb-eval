@@ -413,6 +413,33 @@ void TestValueScope() {
   // BREAK(TestValueScope)
 }
 
+void TestBitField() {
+  struct BitFieldStruct {
+    uint16_t a : 10;
+    uint32_t b : 4;
+    bool c : 1;
+    bool d : 1;
+  };
+
+  BitFieldStruct bf;
+  bf.a = 0b1111111111;
+  bf.b = 0b1001;
+  bf.c = 0b0;
+  bf.d = 0b1;
+
+  struct AlignedBitFieldStruct {
+    uint16_t a : 10;
+    uint8_t b : 4;
+    unsigned char : 0;
+    uint16_t c : 2;
+  };
+
+  uint32_t data = ~0;
+  AlignedBitFieldStruct abf = (AlignedBitFieldStruct&)data;
+
+  // BREAK(TestBitField)
+}
+
 namespace test_binary {
 
 void main() {
@@ -435,6 +462,7 @@ void main() {
   TestQualifiedId();
   TestTemplateTypes();
   TestValueScope();
+  TestBitField();
 
   // break here
 }
