@@ -438,7 +438,7 @@ class TernaryExpr {
 
 class CastExpr {
  public:
-  static constexpr int PRECEDENCE = 2;
+  static constexpr int PRECEDENCE = 3;
 
   CastExpr() = default;
   CastExpr(Type type, Expr expr);

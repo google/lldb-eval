@@ -486,7 +486,7 @@ std::optional<Expr> ExprGenerator::gen_cast_expr(
   }
   Expr expr = std::move(maybe_expr.value());
 
-  if (expr_precedence(expr) >= CastExpr::PRECEDENCE) {
+  if (expr_precedence(expr) > CastExpr::PRECEDENCE) {
     expr = ParenthesizedExpr(std::move(expr));
   }
 
@@ -510,7 +510,7 @@ std::optional<Expr> ExprGenerator::gen_address_of_expr(
   }
   Expr expr = std::move(maybe_expr.value());
 
-  if (expr_precedence(expr) >= AddressOf::PRECEDENCE) {
+  if (expr_precedence(expr) > AddressOf::PRECEDENCE) {
     expr = ParenthesizedExpr(std::move(expr));
   }
 
@@ -525,7 +525,7 @@ std::optional<Expr> ExprGenerator::gen_member_of_expr(
   }
   Expr expr = maybe_expr.value();
 
-  if (expr_precedence(expr) >= MemberOf::PRECEDENCE) {
+  if (expr_precedence(expr) > MemberOf::PRECEDENCE) {
     expr = ParenthesizedExpr(std::move(expr));
   }
 
@@ -541,7 +541,7 @@ std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
   }
   Expr expr = std::move(maybe_expr.value());
 
-  if (expr_precedence(expr) >= MemberOfPtr::PRECEDENCE) {
+  if (expr_precedence(expr) > MemberOfPtr::PRECEDENCE) {
     expr = ParenthesizedExpr(std::move(expr));
   }
 
@@ -571,7 +571,7 @@ std::optional<Expr> ExprGenerator::gen_array_index_expr(
   }
   Expr rhs = std::move(maybe_rhs.value());
 
-  if (expr_precedence(lhs) >= ArrayIndex::PRECEDENCE) {
+  if (expr_precedence(lhs) > ArrayIndex::PRECEDENCE) {
     lhs = ParenthesizedExpr(std::move(lhs));
   }
 
@@ -588,7 +588,7 @@ std::optional<Expr> ExprGenerator::gen_dereference_expr(
   }
   Expr expr = std::move(maybe_expr.value());
 
-  if (expr_precedence(expr) >= DereferenceExpr::PRECEDENCE) {
+  if (expr_precedence(expr) > DereferenceExpr::PRECEDENCE) {
     expr = ParenthesizedExpr(std::move(expr));
   }
 

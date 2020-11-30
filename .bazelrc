@@ -74,7 +74,7 @@ build:ubsan --copt=-fsanitize=undefined
 build:ubsan --copt=-DUNDEFINED_BEHAVIOR_SANITIZER
 build:ubsan --copt=-fno-omit-frame-pointer
 build:ubsan --copt=-DNDEBUG
-build:ubsan --copt=-fno-sanitize=function,vptr
+build:ubsan --copt=-fno-sanitize=vptr
 build:ubsan --linkopt=-fsanitize=undefined
 
 # Config for running under Valgrind
