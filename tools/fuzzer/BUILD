@@ -6,12 +6,14 @@ cc_library(
         "ast.cc",
         "constraints.cc",
         "expr_gen.cc",
+        "symbol_table.cc",
     ],
     hdrs = [
         "ast.h",
         "constraints.h",
         "enum_bitset.h",
         "expr_gen.h",
+        "symbol_table.h",
     ],
     deps = [
         "//lldb-eval:defines",

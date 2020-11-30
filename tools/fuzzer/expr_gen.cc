@@ -122,19 +122,18 @@ std::optional<Expr> ExprGenerator::gen_variable_expr(
   // TODO: This is a stub, which is addressed by the `fuzzer-ptrs` branch
   const auto& type_constraints = constraints.type_constraints();
 
-  for (const auto& type : cfg_.symbol_table) {
-    if (!type_constraints.allows_type(type.first)) {
-      continue;
+  std::vector<std::reference_wrapper<const VariableExpr>> vars;
+  for (const auto& type : symtab_.vars()) {
+    if (type_constraints.allows_type(type.first)) {
+      vars.insert(vars.end(), type.second.begin(), type.second.end());
     }
-
-    if (type.second.empty()) {
-      continue;
-    }
-
-    return VariableExpr(type.second[0]);
   }
 
-  return {};
+  if (vars.empty()) {
+    return {};
+  }
+
+  return rng_->pick_variable(vars);
 }
 
 std::optional<Expr> ExprGenerator::gen_binary_expr(
@@ -960,6 +959,14 @@ CvQualifiers DefaultGeneratorRng::gen_cv_qualifiers(float const_prob,
   retval[CvQualifier::Volatile] = volatile_distr(rng_);
 
   return retval;
+}
+
+VariableExpr DefaultGeneratorRng::pick_variable(
+    const std::vector<std::reference_wrapper<const VariableExpr>>& vars) {
+  assert(!vars.empty() && "No variables to pick");
+  std::uniform_int_distribution<size_t> distr(0, vars.size() - 1);
+
+  return vars[distr(rng_)];
 }
 
 bool DefaultGeneratorRng::gen_binop_ptr_expr(float probability) {

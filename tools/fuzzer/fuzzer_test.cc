@@ -94,6 +94,15 @@ class FakeGeneratorRng : public GeneratorRng {
     return constant;
   }
 
+  virtual VariableExpr pick_variable(
+      const std::vector<std::reference_wrapper<const VariableExpr>>&) override {
+    assert(!vars_.empty());
+    VariableExpr var = vars_.back();
+    vars_.pop_back();
+
+    return var;
+  }
+
   bool gen_binop_ptr_expr(float) override { return false; }
 
   bool gen_binop_flip_operands(float) override { return false; }
@@ -121,6 +130,7 @@ class FakeGeneratorRng : public GeneratorRng {
     std::reverse(rng.double_constants_.begin(), rng.double_constants_.end());
     std::reverse(rng.expr_kinds_.begin(), rng.expr_kinds_.end());
     std::reverse(rng.cv_qualifiers_.begin(), rng.cv_qualifiers_.end());
+    std::reverse(rng.vars_.begin(), rng.vars_.end());
 
     return rng;
   }
@@ -138,8 +148,9 @@ class FakeGeneratorRng : public GeneratorRng {
     std::visit(*this, e.rhs());
   }
 
-  void operator()(const VariableExpr&) {
+  void operator()(const VariableExpr& e) {
     expr_kinds_.push_back(ExprKind::VariableExpr);
+    vars_.push_back(e);
   }
 
   void operator()(const IntegerConstant& e) {
@@ -229,6 +240,7 @@ class FakeGeneratorRng : public GeneratorRng {
   std::vector<CvQualifiers> cv_qualifiers_;
   std::vector<ScalarType> scalar_types_;
   std::vector<std::string> tagged_types_;
+  std::vector<VariableExpr> vars_;
 };
 
 struct Mismatch {
@@ -416,7 +428,7 @@ TEST_P(OperatorPrecedence, CorrectAst) {
   auto fake_rng = std::make_unique<FakeGeneratorRng>(
       FakeGeneratorRng::from_expr(*param.expr));
 
-  ExprGenerator gen(std::move(fake_rng), GenConfig());
+  ExprGenerator gen(std::move(fake_rng), GenConfig(), SymbolTable());
   auto maybe_expr = gen.generate();
   auto& expr = maybe_expr.value();
   std::ostringstream os;
