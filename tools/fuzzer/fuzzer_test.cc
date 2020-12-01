@@ -49,23 +49,30 @@ class FakeGeneratorRng : public GeneratorRng {
     return kind;
   }
 
-  TypeKind gen_type_kind(const Weights&, const TypeKindMask&) override {
-    if (type_kinds_.empty()) {
-      return TypeKind::ScalarType;
+  TypeKind gen_type_kind(const Weights&, const TypeKindMask&,
+                         GenTypePurpose purpose) override {
+    auto& vec =
+        purpose == GenTypePurpose::Ast ? type_kinds_ : implicit_type_kinds_;
+
+    if (vec.empty()) {
+      assert(false);
     }
 
-    TypeKind kind = type_kinds_.back();
-    type_kinds_.pop_back();
+    assert(!vec.empty());
+    TypeKind kind = vec.back();
+    vec.pop_back();
 
     return kind;
   }
 
-  ScalarType gen_scalar_type(EnumBitset<ScalarType>) override {
-    if (scalar_types_.empty()) {
-      return ScalarType::SignedInt;
-    }
-    ScalarType type = scalar_types_.back();
-    scalar_types_.pop_back();
+  ScalarType gen_scalar_type(EnumBitset<ScalarType>,
+                             GenTypePurpose purpose) override {
+    auto& vec =
+        purpose == GenTypePurpose::Ast ? scalar_types_ : implicit_scalar_types_;
+
+    assert(!vec.empty());
+    ScalarType type = vec.back();
+    vec.pop_back();
 
     return type;
   }
@@ -105,32 +112,67 @@ class FakeGeneratorRng : public GeneratorRng {
 
   bool gen_binop_ptr_expr(float) override { return false; }
 
-  bool gen_binop_flip_operands(float) override { return false; }
+  bool gen_binop_flip_operands(float) override {
+    assert(!flip_operands_.empty());
+    bool flip = flip_operands_.back();
+    flip_operands_.pop_back();
+
+    return flip;
+  }
 
   bool gen_binop_ptrdiff_expr(float) override { return false; }
 
-  CvQualifiers gen_cv_qualifiers(float, float) override {
-    assert(!cv_qualifiers_.empty());
-    CvQualifiers cv = cv_qualifiers_.back();
-    cv_qualifiers_.pop_back();
+  CvQualifiers gen_cv_qualifiers(float, float,
+                                 GenTypePurpose purpose) override {
+    auto& vec = purpose == GenTypePurpose::Ast ? cv_qualifiers_
+                                               : implicit_cv_qualifiers_;
+
+    assert(!vec.empty());
+    CvQualifiers cv = vec.back();
+    vec.pop_back();
 
     return cv;
   }
 
   bool gen_parenthesize(float) override { return false; }
 
-  static FakeGeneratorRng from_expr(const Expr& expr) {
+  static FakeGeneratorRng from_expr(const Expr& expr,
+                                    const std::vector<Type>& implicit_types,
+                                    const std::vector<bool>& flip_operands) {
     FakeGeneratorRng rng;
+    for (const auto& type : implicit_types) {
+      std::visit(rng, type);
+    }
+    std::swap(rng.type_kinds_, rng.implicit_type_kinds_);
+    std::swap(rng.scalar_types_, rng.implicit_scalar_types_);
+    std::swap(rng.tagged_types_, rng.implicit_tagged_types_);
+    std::swap(rng.cv_qualifiers_, rng.implicit_cv_qualifiers_);
+
     std::visit(rng, expr);
 
     std::reverse(rng.un_ops_.begin(), rng.un_ops_.end());
     std::reverse(rng.bin_ops_.begin(), rng.bin_ops_.end());
-    std::reverse(rng.bools_.begin(), rng.bools_.end());
     std::reverse(rng.int_constants_.begin(), rng.int_constants_.end());
     std::reverse(rng.double_constants_.begin(), rng.double_constants_.end());
+    std::reverse(rng.bools_.begin(), rng.bools_.end());
     std::reverse(rng.expr_kinds_.begin(), rng.expr_kinds_.end());
+
+    std::reverse(rng.type_kinds_.begin(), rng.type_kinds_.end());
     std::reverse(rng.cv_qualifiers_.begin(), rng.cv_qualifiers_.end());
+    std::reverse(rng.scalar_types_.begin(), rng.scalar_types_.end());
+    std::reverse(rng.tagged_types_.begin(), rng.tagged_types_.end());
+
+    std::reverse(rng.implicit_type_kinds_.begin(),
+                 rng.implicit_type_kinds_.end());
+    std::reverse(rng.implicit_cv_qualifiers_.begin(),
+                 rng.implicit_cv_qualifiers_.end());
+    std::reverse(rng.implicit_scalar_types_.begin(),
+                 rng.implicit_scalar_types_.end());
+    std::reverse(rng.implicit_tagged_types_.begin(),
+                 rng.implicit_tagged_types_.end());
+
     std::reverse(rng.vars_.begin(), rng.vars_.end());
+    rng.flip_operands_.assign(flip_operands.rbegin(), flip_operands.rend());
 
     return rng;
   }
@@ -187,6 +229,7 @@ class FakeGeneratorRng : public GeneratorRng {
 
   void operator()(const ArrayIndex& e) {
     expr_kinds_.push_back(ExprKind::ArrayIndex);
+
     std::visit(*this, e.expr());
     std::visit(*this, e.idx());
   }
@@ -236,11 +279,20 @@ class FakeGeneratorRng : public GeneratorRng {
   std::vector<DoubleConstant> double_constants_;
   std::vector<bool> bools_;
   std::vector<ExprKind> expr_kinds_;
+
   std::vector<TypeKind> type_kinds_;
   std::vector<CvQualifiers> cv_qualifiers_;
   std::vector<ScalarType> scalar_types_;
   std::vector<std::string> tagged_types_;
+
+  std::vector<TypeKind> implicit_type_kinds_;
+  std::vector<CvQualifiers> implicit_cv_qualifiers_;
+  std::vector<ScalarType> implicit_scalar_types_;
+  std::vector<std::string> implicit_tagged_types_;
+
   std::vector<VariableExpr> vars_;
+
+  std::vector<bool> flip_operands_;
 };
 
 struct Mismatch {
@@ -410,10 +462,17 @@ MATCHER_P(MatchesAst, expected,
 
 struct PrecedenceTestParam {
   std::string str;
-  std::shared_ptr<Expr> expr;
+  Expr expr;
+  std::vector<Type> implicit_types;
+  std::vector<bool> flip_operands;
 
-  PrecedenceTestParam(std::string str, Expr expr)
-      : str(std::move(str)), expr(std::make_shared<Expr>(std::move(expr))) {}
+  PrecedenceTestParam(std::string str, Expr expr,
+                      std::vector<Type> implicit_types = std::vector<Type>(),
+                      std::vector<bool> flip_operands = std::vector<bool>())
+      : str(std::move(str)),
+        expr(std::move(expr)),
+        implicit_types(std::move(implicit_types)),
+        flip_operands(std::move(flip_operands)) {}
 };
 
 std::ostream& operator<<(std::ostream& os, const PrecedenceTestParam& param) {
@@ -425,8 +484,9 @@ class OperatorPrecedence : public TestWithParam<PrecedenceTestParam> {};
 TEST_P(OperatorPrecedence, CorrectAst) {
   const auto& param = GetParam();
 
-  auto fake_rng = std::make_unique<FakeGeneratorRng>(
-      FakeGeneratorRng::from_expr(*param.expr));
+  auto fake_rng =
+      std::make_unique<FakeGeneratorRng>(FakeGeneratorRng::from_expr(
+          param.expr, param.implicit_types, param.flip_operands));
 
   ExprGenerator gen(std::move(fake_rng), GenConfig(), SymbolTable());
   auto maybe_expr = gen.generate();
@@ -434,7 +494,7 @@ TEST_P(OperatorPrecedence, CorrectAst) {
   std::ostringstream os;
   os << expr;
 
-  EXPECT_THAT(expr, MatchesAst(std::cref(*param.expr)));
+  EXPECT_THAT(expr, MatchesAst(std::cref(param.expr)));
   EXPECT_THAT(os.str(), StrEq(param.str));
 }
 
@@ -536,7 +596,9 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
     // clang-format on
 
     std::string str = "~(1 ? 2 : 3)";
-    params.emplace_back(std::move(str), std::move(expected));
+    std::vector<Type> implicit_types = {ScalarType::SignedInt};
+    params.emplace_back(std::move(str), std::move(expected),
+                        std::move(implicit_types));
   }
   {
     // clang-format off
@@ -554,7 +616,10 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
     // clang-format on
 
     std::string str = "1 * (true ? 0 : false ? 1 : 2)";
-    params.emplace_back(std::move(str), std::move(expected));
+    std::vector<Type> implicit_types = {ScalarType::SignedInt,
+                                        ScalarType::SignedInt};
+    params.emplace_back(std::move(str), std::move(expected),
+                        std::move(implicit_types));
   }
   {
     // clang-format off
@@ -571,7 +636,26 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
     // clang-format on
 
     std::string str = "4 * ((1 == 2 ? false : true) ? 1 : 0)";
-    params.emplace_back(std::move(str), std::move(expected));
+    std::vector<Type> implicit_types = {ScalarType::SignedInt,
+                                        ScalarType::Bool};
+    params.emplace_back(std::move(str), std::move(expected),
+                        std::move(implicit_types));
+  }
+  {
+    // clang-format off
+    Expr expected = AddressOf(
+        ArrayIndex(
+            ParenthesizedExpr(
+                CastExpr(ScalarType::SignedInt, BooleanConstant(true))),
+            CastExpr(
+                PointerType(QualifiedType(ScalarType::Char)),
+                IntegerConstant(0))));
+    // clang-format on
+
+    std::string str = "&((int) true)[(char*) 0]";
+    std::vector<bool> flip_operands = {true};
+    params.emplace_back(std::move(str), std::move(expected),
+                        std::vector<Type>(), std::move(flip_operands));
   }
   {
     Expr expected = UnaryExpr(UnOp::Neg, DoubleConstant(1.5));
@@ -628,10 +712,10 @@ INSTANTIATE_TEST_SUITE_P(AstGen, OperatorPrecedence,
 
 struct TypePrintTestParam {
   std::string str;
-  std::shared_ptr<Type> type;
+  Type type;
 
   TypePrintTestParam(std::string str, Type type)
-      : str(std::move(str)), type(std::make_shared<Type>(std::move(type))) {}
+      : str(std::move(str)), type(std::move(type)) {}
 };
 
 std::ostream& operator<<(std::ostream& os, const TypePrintTestParam& param) {
@@ -644,7 +728,7 @@ TEST_P(TypePrinting, CorrectStrType) {
   const auto& param = GetParam();
 
   std::ostringstream os;
-  os << *param.type;
+  os << param.type;
   EXPECT_THAT(os.str(), StrEq(param.str));
 }
 
