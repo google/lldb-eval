@@ -115,6 +115,6 @@ build --config=linux
 build --@llvm_project//:llvm_build=static
 ```
 
-## Disclamer
+## Disclaimer
 
 This is not an officially supported Google product.
