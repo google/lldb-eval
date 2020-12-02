@@ -110,17 +110,35 @@ class FakeGeneratorRng : public GeneratorRng {
     return var;
   }
 
-  bool gen_binop_ptr_expr(float) override { return false; }
+  bool gen_binop_ptr_expr(float) override {
+    bool gen = false;
+    if (!gen_binop_ptr_expr_.empty()) {
+      gen = gen_binop_ptr_expr_.back();
+      gen_binop_ptr_expr_.pop_back();
+    }
+
+    return gen;
+  }
 
   bool gen_binop_flip_operands(float) override {
-    assert(!flip_operands_.empty());
-    bool flip = flip_operands_.back();
-    flip_operands_.pop_back();
+    bool flip = false;
+    if (!flip_operands_.empty()) {
+      flip = flip_operands_.back();
+      flip_operands_.pop_back();
+    }
 
     return flip;
   }
 
-  bool gen_binop_ptrdiff_expr(float) override { return false; }
+  bool gen_binop_ptrdiff_expr(float) override {
+    bool gen = false;
+    if (!gen_binop_ptrdiff_expr_.empty()) {
+      gen = gen_binop_ptrdiff_expr_.back();
+      gen_binop_ptrdiff_expr_.pop_back();
+    }
+
+    return gen;
+  }
 
   CvQualifiers gen_cv_qualifiers(float, float,
                                  GenTypePurpose purpose) override {
@@ -136,9 +154,11 @@ class FakeGeneratorRng : public GeneratorRng {
 
   bool gen_parenthesize(float) override { return false; }
 
-  static FakeGeneratorRng from_expr(const Expr& expr,
-                                    const std::vector<Type>& implicit_types,
-                                    const std::vector<bool>& flip_operands) {
+  static FakeGeneratorRng from_expr(
+      const Expr& expr, const std::vector<Type>& implicit_types,
+      const std::vector<bool>& flip_operands,
+      const std::vector<bool>& gen_binop_ptr_expr,
+      const std::vector<bool>& gen_binop_ptrdiff_expr) {
     FakeGeneratorRng rng;
     for (const auto& type : implicit_types) {
       std::visit(rng, type);
@@ -172,7 +192,12 @@ class FakeGeneratorRng : public GeneratorRng {
                  rng.implicit_tagged_types_.end());
 
     std::reverse(rng.vars_.begin(), rng.vars_.end());
+
     rng.flip_operands_.assign(flip_operands.rbegin(), flip_operands.rend());
+    rng.gen_binop_ptr_expr_.assign(gen_binop_ptr_expr.rbegin(),
+                                   gen_binop_ptr_expr.rend());
+    rng.gen_binop_ptrdiff_expr_.assign(gen_binop_ptrdiff_expr.rbegin(),
+                                       gen_binop_ptrdiff_expr.rend());
 
     return rng;
   }
@@ -293,6 +318,8 @@ class FakeGeneratorRng : public GeneratorRng {
   std::vector<VariableExpr> vars_;
 
   std::vector<bool> flip_operands_;
+  std::vector<bool> gen_binop_ptr_expr_;
+  std::vector<bool> gen_binop_ptrdiff_expr_;
 };
 
 struct Mismatch {
@@ -465,14 +492,21 @@ struct PrecedenceTestParam {
   Expr expr;
   std::vector<Type> implicit_types;
   std::vector<bool> flip_operands;
+  std::vector<bool> gen_binop_ptr_expr;
+  std::vector<bool> gen_binop_ptrdiff_expr;
 
-  PrecedenceTestParam(std::string str, Expr expr,
-                      std::vector<Type> implicit_types = std::vector<Type>(),
-                      std::vector<bool> flip_operands = std::vector<bool>())
+  PrecedenceTestParam(
+      std::string str, Expr expr,
+      std::vector<Type> implicit_types = std::vector<Type>(),
+      std::vector<bool> flip_operands = std::vector<bool>(),
+      std::vector<bool> gen_binop_ptr_expr = std::vector<bool>(),
+      std::vector<bool> gen_binop_ptrdiff_expr = std::vector<bool>())
       : str(std::move(str)),
         expr(std::move(expr)),
         implicit_types(std::move(implicit_types)),
-        flip_operands(std::move(flip_operands)) {}
+        flip_operands(std::move(flip_operands)),
+        gen_binop_ptr_expr(std::move(gen_binop_ptr_expr)),
+        gen_binop_ptrdiff_expr(std::move(gen_binop_ptrdiff_expr)) {}
 };
 
 std::ostream& operator<<(std::ostream& os, const PrecedenceTestParam& param) {
@@ -486,7 +520,8 @@ TEST_P(OperatorPrecedence, CorrectAst) {
 
   auto fake_rng =
       std::make_unique<FakeGeneratorRng>(FakeGeneratorRng::from_expr(
-          param.expr, param.implicit_types, param.flip_operands));
+          param.expr, param.implicit_types, param.flip_operands,
+          param.gen_binop_ptr_expr, param.gen_binop_ptrdiff_expr));
 
   ExprGenerator gen(std::move(fake_rng), GenConfig(), SymbolTable());
   auto maybe_expr = gen.generate();
