@@ -3,6 +3,10 @@ load("@rules_cc//cc:defs.bzl", "cc_binary")
 cc_binary(
     name = "exec",
     srcs = ["exec.cc"],
+    data = [
+        "//testdata:test_binary_gen",
+        "//testdata:test_binary_srcs",
+    ],
     deps = [
         "//lldb-eval",
         "//lldb-eval:runner",

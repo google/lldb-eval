@@ -40,6 +40,10 @@ cc_library(
 cc_test(
     name = "eval_test",
     srcs = ["eval_test.cc"],
+    data = [
+        "//testdata:test_binary_gen",
+        "//testdata:test_binary_srcs",
+    ],
     tags = [
         # On Linux lldb-server behaves funny in a sandbox ¯\_(ツ)_/¯. This is
         # not necessary on Windows, but "tags" attribute is not configurable
@@ -71,8 +75,6 @@ cc_library(
     srcs = ["runner.cc"],
     hdrs = ["runner.h"],
     data = [
-        "//testdata:test_binary_gen",
-        "//testdata:test_binary_srcs",
         "@llvm_project//:lldb-server",
     ],
     deps = [

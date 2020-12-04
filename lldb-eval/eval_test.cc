@@ -947,3 +947,39 @@ TEST_F(EvalTest, TestValueScope) {
   EXPECT_THAT(Eval("y_"), IsError("use of undeclared identifier 'y_'"));
   EXPECT_THAT(Eval("z_"), IsEqual("3"));
 }
+
+TEST_F(EvalTest, TestBitField) {
+  EXPECT_THAT(Eval("bf.a"), IsEqual("1023"));
+  EXPECT_THAT(Eval("bf.b"), IsEqual("9"));
+  EXPECT_THAT(Eval("bf.c"), IsEqual("false"));
+  EXPECT_THAT(Eval("bf.d"), IsEqual("true"));
+  EXPECT_THAT(Scope("bf").Eval("a"), IsEqual("1023"));
+  EXPECT_THAT(Scope("bf").Eval("b"), IsEqual("9"));
+  EXPECT_THAT(Scope("bf").Eval("c"), IsEqual("false"));
+  EXPECT_THAT(Scope("bf").Eval("d"), IsEqual("true"));
+
+  // Perform an operation to ensure we actually read the value.
+  EXPECT_THAT(Eval("0 + bf.a"), IsEqual("1023"));
+  EXPECT_THAT(Eval("0 + bf.b"), IsEqual("9"));
+  EXPECT_THAT(Eval("0 + bf.c"), IsEqual("0"));
+  EXPECT_THAT(Eval("0 + bf.d"), IsEqual("1"));
+  EXPECT_THAT(Scope("bf").Eval("0 + a"), IsEqual("1023"));
+  EXPECT_THAT(Scope("bf").Eval("0 + b"), IsEqual("9"));
+  EXPECT_THAT(Scope("bf").Eval("0 + c"), IsEqual("0"));
+  EXPECT_THAT(Scope("bf").Eval("0 + d"), IsEqual("1"));
+
+  EXPECT_THAT(Eval("abf.a"), IsEqual("1023"));
+  EXPECT_THAT(Eval("abf.b"), IsEqual("'\\x0f'"));
+  EXPECT_THAT(Eval("abf.c"), IsEqual("3"));
+  EXPECT_THAT(Scope("abf").Eval("a"), IsEqual("1023"));
+  EXPECT_THAT(Scope("abf").Eval("b"), IsEqual("'\\x0f'"));
+  EXPECT_THAT(Scope("abf").Eval("c"), IsEqual("3"));
+
+  // Perform an operation to ensure we actually read the value.
+  EXPECT_THAT(Eval("abf.a + 0"), IsEqual("1023"));
+  EXPECT_THAT(Eval("abf.b + 0"), IsEqual("15"));
+  EXPECT_THAT(Eval("abf.c + 0"), IsEqual("3"));
+  EXPECT_THAT(Scope("abf").Eval("0 + a"), IsEqual("1023"));
+  EXPECT_THAT(Scope("abf").Eval("0 + b"), IsEqual("15"));
+  EXPECT_THAT(Scope("abf").Eval("0 + c"), IsEqual("3"));
+}

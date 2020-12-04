@@ -17,12 +17,50 @@
 #include <variant>
 
 #include "lldb-eval/defines.h"
+#include "lldb-eval/traits.h"
 #include "lldb/API/SBTarget.h"
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
 #include "lldb/lldb-enumerations.h"
 
 namespace lldb_eval {
+
+template <typename T>
+static T ReadValue(lldb::SBValue value) {
+  static_assert(std::is_scalar_v<T>, "T must be scalar");
+
+  // For integral type just use GetValueAsUnsigned, it will get the correct
+  // value regardless of the value byte size (and it also handles bitfields).
+  if constexpr (std::is_integral_v<T>) {
+    return static_cast<T>(value.GetValueAsUnsigned());
+  }
+
+  // For floating point type read raw bytes directly.
+  if constexpr (std::is_floating_point_v<T>) {
+    lldb::SBError ignore;
+    T ret = 0;
+    value.GetData().ReadRawData(ignore, 0, &ret, sizeof(T));
+    return ret;
+  }
+}
+
+template <typename T>
+static T ConvertTo(lldb::SBValue value) {
+  static_assert(std::is_scalar_v<T>, "T must be scalar");
+
+  switch (value.GetType().GetCanonicalType().GetBasicType()) {
+#define CASE(basic_type, builtin_type)                     \
+  case basic_type: {                                       \
+    return static_cast<T>(ReadValue<builtin_type>(value)); \
+  }
+
+    LLDB_TYPE_BUILTIN(CASE)
+#undef CASE
+
+    default:
+      return T();
+  }
+}
 
 bool Value::IsScalar() {
   return type_.GetCanonicalType().GetTypeFlags() & lldb::eTypeIsScalar;
@@ -52,11 +90,11 @@ bool Value::IsNullPtrType() {
 bool Value::IsSigned() { return type_.GetTypeFlags() & lldb::eTypeIsSigned; }
 
 bool Value::GetBool() {
-  if (IsScalar()) {
-    return ConvertTo<bool>();
+  if (IsInteger() || IsPointer()) {
+    return GetInteger().getBoolValue();
   }
-  if (IsPointer()) {
-    return GetValueAsAddress() != 0;
+  if (IsFloat()) {
+    return GetFloat().isNonZero();
   }
   // Either invalid value, or some complex SbValue (e.g. struct or class).
   return false;
@@ -64,7 +102,12 @@ bool Value::GetBool() {
 
 int64_t Value::GetInt64() { return value_.GetValueAsSigned(); }
 
-uintptr_t Value::GetValueAsAddress() { return value_.GetValueAsUnsigned(); }
+uint64_t Value::GetUInt64() {
+  // GetValueAsUnsigned performs overflow according to the underlying type. For
+  // example, if the underlying type is `int32_t` and the value is `-1`,
+  // GetValueAsUnsigned will return 4294967295.
+  return IsSigned() ? value_.GetValueAsSigned() : value_.GetValueAsUnsigned();
+}
 
 Value Value::AddressOf() {
   return Value(value_.AddressOf(), /* is_rvalue */ true);
@@ -89,9 +132,9 @@ llvm::APFloat Value::GetFloat() {
 
   switch (basic_type) {
     case lldb::eBasicTypeFloat:
-      return llvm::APFloat(ReadValue<float>());
+      return llvm::APFloat(ReadValue<float>(value_));
     case lldb::eBasicTypeDouble:
-      return llvm::APFloat(ReadValue<double>());
+      return llvm::APFloat(ReadValue<double>(value_));
     default:
       return llvm::APFloat(NAN);
   }
@@ -110,9 +153,9 @@ Value IntegralPromotion(lldb::SBTarget target, Value value) {
   IntegralPromotionResult ipr;
 
   switch (value.type().GetCanonicalType().GetBasicType()) {
-#define CASE(basic_type, builtin_type)     \
-  case basic_type:                         \
-    ipr = value.ReadValue<builtin_type>(); \
+#define CASE(basic_type, builtin_type)                  \
+  case basic_type:                                      \
+    ipr = ReadValue<builtin_type>(value.inner_value()); \
     break;
 
     LLDB_TYPE_BUILTIN_PROMOTABLE_INTEGER(CASE)
@@ -303,11 +346,11 @@ Value CastScalarToBasicType(lldb::SBTarget target, Value val,
   Value ret;
 
   switch (type.GetCanonicalType().GetBasicType()) {
-#define CASE(basic_type, builtin_type)            \
-  case basic_type: {                              \
-    auto v = val.ConvertTo<builtin_type>();       \
-    ret = CreateValueFromBytes(target, &v, type); \
-    break;                                        \
+#define CASE(basic_type, builtin_type)                   \
+  case basic_type: {                                     \
+    auto v = ConvertTo<builtin_type>(val.inner_value()); \
+    ret = CreateValueFromBytes(target, &v, type);        \
+    break;                                               \
   }
 
     LLDB_TYPE_BUILTIN(CASE)
@@ -323,15 +366,14 @@ Value CastScalarToBasicType(lldb::SBTarget target, Value val,
 
 Value CastPointerToBasicType(lldb::SBTarget target, Value val,
                              lldb::SBType type) {
-  uintptr_t addr = val.GetValueAsAddress();
   Value ret;
 
   switch (type.GetCanonicalType().GetBasicType()) {
-#define CASE(basic_type, builtin_type)            \
-  case basic_type: {                              \
-    auto v = static_cast<builtin_type>(addr);     \
-    ret = CreateValueFromBytes(target, &v, type); \
-    break;                                        \
+#define CASE(basic_type, builtin_type)                   \
+  case basic_type: {                                     \
+    auto v = static_cast<builtin_type>(val.GetUInt64()); \
+    ret = CreateValueFromBytes(target, &v, type);        \
+    break;                                               \
   }
 
     LLDB_TYPE_BUILTIN_INTEGRAL(CASE)
