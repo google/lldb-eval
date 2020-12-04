@@ -24,7 +24,7 @@ def binary_gen(name, srcs):
 
     build_cmd = """
         $(location @llvm_project//:clang) \
-        -x c++ -std=c++14 -O0 -gdwarf -fuse-ld=lld \
+        -x c++ -std=c++17 -O0 -gdwarf -fuse-ld=lld \
         {platform_opts} \
         $(SRCS) -o $@
     """
