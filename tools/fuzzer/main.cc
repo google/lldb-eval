@@ -41,8 +41,99 @@
 
 using bazel::tools::cpp::runfiles::Runfiles;
 
-constexpr char SOURCE_PATH_KEY[] = "lldb_eval/testdata/fuzzer_binary.cc";
-constexpr char BINARY_PATH_KEY[] = "lldb_eval/testdata/fuzzer_binary";
+static constexpr char SOURCE_PATH_KEY[] = "lldb_eval/testdata/fuzzer_binary.cc";
+static constexpr char BINARY_PATH_KEY[] = "lldb_eval/testdata/fuzzer_binary";
+
+enum Verbosity {
+  ShowMismatchesOrErrors,
+  ShowEverything,
+};
+
+void eval_and_print_expr(lldb::SBFrame& frame, const std::string& expr,
+                         Verbosity verbosity) {
+  auto lldb_value = frame.EvaluateExpression(expr.c_str());
+  auto lldb_err = lldb_value.GetError();
+
+  lldb::SBError lldb_eval_err;
+  auto lldb_eval_value =
+      lldb_eval::EvaluateExpression(frame, expr.c_str(), lldb_eval_err);
+
+  bool value_mismatch;
+  if (lldb_value.GetValue() != nullptr &&
+      lldb_eval_value.GetValue() != nullptr) {
+    value_mismatch =
+        strcmp(lldb_value.GetValue(), lldb_eval_value.GetValue()) != 0;
+  } else {
+    // Pointer comparison: Mismatch if one value is null and the other is not
+    value_mismatch = lldb_value.GetValue() != lldb_eval_value.GetValue();
+  }
+
+  bool type_mismatch;
+  if (lldb_value.GetTypeName() != nullptr &&
+      lldb_eval_value.GetTypeName() != nullptr) {
+    type_mismatch =
+        strcmp(lldb_value.GetTypeName(), lldb_eval_value.GetTypeName()) != 0;
+  } else {
+    // Pointer comparison: Mismatch if one type is null and the other is not
+    type_mismatch = lldb_value.GetTypeName() != lldb_eval_value.GetTypeName();
+  }
+  bool has_error =
+      lldb_err.GetCString() != nullptr || lldb_eval_err.GetCString() != nullptr;
+
+  bool must_print = value_mismatch || type_mismatch || has_error ||
+                    verbosity == Verbosity::ShowEverything;
+  if (!must_print) {
+    return;
+  }
+  printf("expr : `%s`\n", expr.c_str());
+
+  if (value_mismatch) {
+    if (lldb_value.GetValue() != nullptr) {
+      printf("lldb value     : `%s`\n", lldb_value.GetValue());
+    } else {
+      printf("lldb value     : No value returned\n");
+    }
+    if (lldb_eval_value.GetValue() != nullptr) {
+      printf("lldb-eval value: `%s`\n", lldb_eval_value.GetValue());
+    } else {
+      printf("lldb-eval value: No value returned\n");
+    }
+  } else if (verbosity == Verbosity::ShowEverything) {
+    printf("value: `%s`\n", lldb_value.GetValue());
+  }
+
+  if (type_mismatch) {
+    if (lldb_value.GetTypeName() != nullptr) {
+      printf("lldb type     : `%s`\n", lldb_value.GetTypeName());
+    } else {
+      printf("lldb type     : No type name\n");
+    }
+    if (lldb_eval_value.GetTypeName() != nullptr) {
+      printf("lldb-eval type: `%s`\n", lldb_eval_value.GetTypeName());
+    } else {
+      printf("lldb-eval type: No type name\n");
+    }
+  } else if (verbosity == Verbosity::ShowEverything) {
+    printf("type: `%s`\n", lldb_value.GetTypeName());
+  }
+
+  if (has_error) {
+    printf("== Reported errors ==\n");
+    if (lldb_err.GetCString() != nullptr) {
+      printf("lldb     : %s\n", lldb_err.GetCString());
+    } else {
+      printf("lldb     : No error reported\n");
+    }
+
+    if (lldb_eval_err.GetCString() != nullptr) {
+      printf("lldb-eval: %s\n", lldb_eval_err.GetCString());
+    } else {
+      printf("lldb-eval: No error reported\n");
+    }
+  }
+
+  printf("============================================================\n");
+}
 
 void run_repl(lldb::SBFrame& frame) {
   linenoise::SetMultiLine(true);
@@ -53,15 +144,7 @@ void run_repl(lldb::SBFrame& frame) {
       break;
     }
 
-    auto lldb_value = frame.EvaluateExpression(expr.c_str());
-    printf("lldb yields: `%s`\n", lldb_value.GetValue());
-
-    lldb::SBError err;
-    auto lldb_eval_value =
-        lldb_eval::EvaluateExpression(frame, expr.c_str(), err);
-    printf("lldb-eval yields: `%s`\n", lldb_eval_value.GetValue());
-    printf("------------------------------------------------------------\n");
-
+    eval_and_print_expr(frame, expr, Verbosity::ShowEverything);
     linenoise::AddHistory(expr.c_str());
   }
 }
@@ -69,7 +152,7 @@ void run_repl(lldb::SBFrame& frame) {
 void run_fuzzer(lldb::SBFrame& frame) {
   std::random_device rd;
   auto seed = rd();
-  printf("Seed for this run is: %u\n", seed);
+  printf("==== Seed for this run is: %u ====\n", seed);
 
   auto rng = std::make_unique<fuzzer::DefaultGeneratorRng>(seed);
   auto cfg = fuzzer::GenConfig();
@@ -117,21 +200,7 @@ void run_fuzzer(lldb::SBFrame& frame) {
   }
 
   for (const auto& e : exprs) {
-    auto lldb_value = frame.EvaluateExpression(e.c_str());
-    auto lldb_err = lldb_value.GetError();
-    printf("expr: `%s`\n", e.c_str());
-    printf("lldb:      `%s`\n", lldb_value.GetValue());
-
-    lldb::SBError lldb_eval_err;
-    auto lldb_eval_value =
-        lldb_eval::EvaluateExpression(frame, e.c_str(), lldb_eval_err);
-    printf("lldb-eval: `%s`\n", lldb_eval_value.GetValue());
-    printf("======\n");
-
-    printf("lldb error:      `%s`\n", lldb_err.GetCString());
-    printf("lldb-eval error: `%s`\n", lldb_eval_err.GetCString());
-
-    printf("============================================================\n");
+    eval_and_print_expr(frame, e, Verbosity::ShowMismatchesOrErrors);
   }
 }
 
