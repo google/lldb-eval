@@ -69,12 +69,12 @@ std::optional<Expr> ExprGenerator::gen_boolean_constant(
     const ExprConstraints& constraints) {
   const auto& type_constraints = constraints.type_constraints();
 
-  if (!constraints.must_be_lvalue() &&
-      type_constraints.allows_any_of(INT_TYPES | FLOAT_TYPES)) {
-    return BooleanConstant(rng_->gen_boolean());
+  if (constraints.must_be_lvalue() ||
+      !type_constraints.allows_any_of(INT_TYPES | FLOAT_TYPES)) {
+    return {};
   }
 
-  return {};
+  return BooleanConstant(rng_->gen_boolean());
 }
 
 std::optional<Expr> ExprGenerator::gen_integer_constant(
@@ -114,6 +114,7 @@ std::optional<Expr> ExprGenerator::gen_double_constant(
 
 std::optional<Expr> ExprGenerator::gen_variable_expr(
     const ExprConstraints& constraints) {
+  // TODO: This is a stub, which is addressed by the `fuzzer-ptrs` branch
   const auto& type_constraints = constraints.type_constraints();
 
   for (const auto& type : cfg_.symbol_table) {
@@ -489,6 +490,7 @@ std::optional<Expr> ExprGenerator::gen_cast_expr(
 
 std::optional<Expr> ExprGenerator::gen_address_of_expr(
     const Weights&, const ExprConstraints& constraints) {
+  // TODO: Stub implemented in branch `fuzzer-ptrs`
   if (constraints.must_be_lvalue()) {
     return {};
   }
@@ -508,6 +510,7 @@ std::optional<Expr> ExprGenerator::gen_member_of_expr(
     expr = ParenthesizedExpr(std::move(expr));
   }
 
+  // TODO: Stub
   return MemberOf(std::move(expr), "f1");
 }
 
@@ -523,6 +526,7 @@ std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
     expr = ParenthesizedExpr(std::move(expr));
   }
 
+  // TODO: Stub
   return MemberOfPtr(std::move(expr), "f1");
 }
 

@@ -37,6 +37,16 @@ cc_binary(
 )
 
 cc_test(
+    name = "constraints_test",
+    srcs = ["constraints_test.cc"],
+    deps = [
+        ":fuzzer_lib",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "fuzzer_test",
     srcs = ["fuzzer_test.cc"],
     deps = [
