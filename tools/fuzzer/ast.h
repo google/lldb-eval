@@ -22,17 +22,19 @@
 #include <iosfwd>
 #include <memory>
 #include <string>
+#include <typeindex>  // forward references `std::hash`
 #include <variant>
+
+#include "tools/fuzzer/enum_bitset.h"
 
 namespace fuzzer {
 
 enum class ScalarType : unsigned char;
 class TaggedType;
 class PointerType;
-class ReferenceType;
 
-using QualifiableType = std::variant<ScalarType, TaggedType, PointerType>;
-std::ostream& operator<<(std::ostream& os, const QualifiableType& type);
+using Type = std::variant<ScalarType, TaggedType, PointerType>;
+std::ostream& operator<<(std::ostream& os, const Type& type);
 
 enum class CvQualifier : unsigned char {
   EnumFirst,
@@ -40,14 +42,13 @@ enum class CvQualifier : unsigned char {
   Volatile,
   EnumLast = Volatile,
 };
-inline constexpr size_t NUM_CV_QUALIFIERS = (size_t)CvQualifier::EnumLast + 1;
-using CvQualifiers = std::bitset<NUM_CV_QUALIFIERS>;
+using CvQualifiers = EnumBitset<CvQualifier>;
 
 std::ostream& operator<<(std::ostream& os, CvQualifiers qualifiers);
 
 enum class ScalarType : unsigned char {
-  EnumMin,
-  Void = EnumMin,
+  EnumFirst,
+  Void = EnumFirst,
   Bool,
   // Have `char` explicitly because it is implementation dependent whether
   // `char` maps to `signed char` or `unsigned char`.
@@ -62,18 +63,31 @@ enum class ScalarType : unsigned char {
   UnsignedLong,
   SignedLongLong,
   UnsignedLongLong,
-  EnumMax = UnsignedLongLong,
+  Float,
+  Double,
+  LongDouble,
+  EnumLast = LongDouble,
 };
-inline constexpr size_t NUM_SCALAR_TYPES = (size_t)ScalarType::EnumMax + 1;
+inline constexpr size_t NUM_SCALAR_TYPES = (size_t)ScalarType::EnumLast + 1;
 std::ostream& operator<<(std::ostream& os, ScalarType type);
+
+inline constexpr bool is_int_scalar_type(ScalarType type) {
+  return ScalarType::Bool <= type && type <= ScalarType::UnsignedLongLong;
+}
+inline constexpr bool is_float_scalar_type(ScalarType type) {
+  return ScalarType::Float <= type && type <= ScalarType::LongDouble;
+}
 
 class TaggedType {
  public:
+  TaggedType() = default;
   explicit TaggedType(std::string name);
 
   const std::string& name() const;
 
   friend std::ostream& operator<<(std::ostream& os, const TaggedType& type);
+  bool operator==(const TaggedType& rhs) const;
+  bool operator!=(const TaggedType& rhs) const;
 
  private:
   std::string name_;
@@ -81,44 +95,36 @@ class TaggedType {
 
 class QualifiedType {
  public:
-  explicit QualifiedType(QualifiableType type, CvQualifiers cv_qualifiers = 0);
+  QualifiedType() = default;
+  explicit QualifiedType(Type type,
+                         CvQualifiers cv_qualifiers = CvQualifiers());
 
-  const QualifiableType& type() const;
+  const Type& type() const;
   CvQualifiers cv_qualifiers() const;
 
   friend std::ostream& operator<<(std::ostream& os, const QualifiedType& type);
+  bool operator==(const QualifiedType& type) const;
+  bool operator!=(const QualifiedType& type) const;
 
  private:
-  std::unique_ptr<QualifiableType> type_;
+  std::shared_ptr<Type> type_;
   CvQualifiers cv_qualifiers_;
 };
 
 class PointerType {
  public:
+  PointerType() = default;
   explicit PointerType(QualifiedType type);
 
   const QualifiedType& type() const;
 
   friend std::ostream& operator<<(std::ostream& os, const PointerType& type);
+  bool operator==(const PointerType& type) const;
+  bool operator!=(const PointerType& type) const;
 
  private:
   QualifiedType type_;
 };
-
-class ReferenceType {
- public:
-  explicit ReferenceType(QualifiedType type);
-
-  const QualifiedType& type() const;
-
-  friend std::ostream& operator<<(std::ostream& os, const ReferenceType& type);
-
- private:
-  QualifiedType type_;
-};
-
-using Type = std::variant<QualifiedType, ReferenceType>;
-std::ostream& operator<<(std::ostream& os, const Type& type);
 
 class BinaryExpr;
 class UnaryExpr;
@@ -132,6 +138,7 @@ class MemberOfPtr;
 class ArrayIndex;
 class TernaryExpr;
 class CastExpr;
+class DereferenceExpr;
 class BooleanConstant;
 
 enum class UnOp : unsigned char {
@@ -175,17 +182,19 @@ enum class BinOp : unsigned char {
   EnumLast = Ge,
 };
 inline constexpr size_t NUM_BIN_OPS = (size_t)BinOp::EnumLast + 1;
+int bin_op_precedence(BinOp op);
 
-using Expr =
-    std::variant<IntegerConstant, DoubleConstant, VariableExpr, UnaryExpr,
-                 BinaryExpr, AddressOf, MemberOf, MemberOfPtr, ArrayIndex,
-                 TernaryExpr, CastExpr, BooleanConstant, ParenthesizedExpr>;
+using Expr = std::variant<IntegerConstant, DoubleConstant, VariableExpr,
+                          UnaryExpr, BinaryExpr, AddressOf, MemberOf,
+                          MemberOfPtr, ArrayIndex, TernaryExpr, CastExpr,
+                          DereferenceExpr, BooleanConstant, ParenthesizedExpr>;
 inline constexpr size_t NUM_EXPR_KINDS = std::variant_size_v<Expr>;
-
+void dump_expr(const Expr& expr);
 std::ostream& operator<<(std::ostream& os, const Expr& expr);
 
 class BinaryExpr {
  public:
+  BinaryExpr() = default;
   BinaryExpr(Expr lhs, BinOp op, Expr rhs);
 
   const Expr& lhs() const;
@@ -196,15 +205,16 @@ class BinaryExpr {
   friend std::ostream& operator<<(std::ostream& os, const BinaryExpr& expr);
 
  private:
-  std::unique_ptr<Expr> lhs_;
-  std::unique_ptr<Expr> rhs_;
-  BinOp op_;
+  std::shared_ptr<Expr> lhs_;
+  std::shared_ptr<Expr> rhs_;
+  BinOp op_ = BinOp::Plus;  // Just pick one for the default ctor
 };
 
 class UnaryExpr {
  public:
   static constexpr int PRECEDENCE = 3;
 
+  UnaryExpr() = default;
   UnaryExpr(UnOp op, Expr expr);
 
   UnOp op() const;
@@ -214,14 +224,15 @@ class UnaryExpr {
   friend std::ostream& operator<<(std::ostream& os, const UnaryExpr& expr);
 
  private:
-  std::unique_ptr<Expr> expr_;
-  UnOp op_;
+  std::shared_ptr<Expr> expr_;
+  UnOp op_ = UnOp::Plus;  // Just pick one for the default ctor
 };
 
 class VariableExpr {
  public:
   static constexpr int PRECEDENCE = 0;
 
+  VariableExpr() = default;
   explicit VariableExpr(std::string name);
 
   const std::string& name() const;
@@ -260,6 +271,7 @@ class IntegerConstant {
 
   static constexpr int PRECEDENCE = 0;
 
+  IntegerConstant() = default;
   explicit IntegerConstant(uint64_t value) : value_(value) {}
   IntegerConstant(uint64_t value, Base base, Length length,
                   Signedness signedness)
@@ -301,6 +313,7 @@ class DoubleConstant {
 
   static constexpr int PRECEDENCE = 0;
 
+  DoubleConstant() = default;
   explicit DoubleConstant(double value) : value_(value) {}
   DoubleConstant(double value, Format format, Length length)
       : value_(value), format_(format), length_(length) {}
@@ -320,6 +333,7 @@ class ParenthesizedExpr {
  public:
   static constexpr int PRECEDENCE = 0;
 
+  ParenthesizedExpr() = default;
   explicit ParenthesizedExpr(Expr expr);
 
   const Expr& expr() const;
@@ -329,13 +343,14 @@ class ParenthesizedExpr {
                                   const ParenthesizedExpr& expr);
 
  private:
-  std::unique_ptr<Expr> expr_;
+  std::shared_ptr<Expr> expr_;
 };
 
 class AddressOf {
  public:
   static constexpr int PRECEDENCE = 3;
 
+  AddressOf() = default;
   explicit AddressOf(Expr expr);
 
   const Expr& expr() const;
@@ -344,13 +359,14 @@ class AddressOf {
   friend std::ostream& operator<<(std::ostream& os, const AddressOf& expr);
 
  private:
-  std::unique_ptr<Expr> expr_;
+  std::shared_ptr<Expr> expr_;
 };
 
 class MemberOf {
  public:
   static constexpr int PRECEDENCE = 2;
 
+  MemberOf() = default;
   MemberOf(Expr expr, std::string field);
 
   const Expr& expr() const;
@@ -360,7 +376,7 @@ class MemberOf {
   friend std::ostream& operator<<(std::ostream& os, const MemberOf& expr);
 
  private:
-  std::unique_ptr<Expr> expr_;
+  std::shared_ptr<Expr> expr_;
   std::string field_;
 };
 
@@ -368,6 +384,7 @@ class MemberOfPtr {
  public:
   static constexpr int PRECEDENCE = 2;
 
+  MemberOfPtr() = default;
   MemberOfPtr(Expr expr, std::string field);
 
   const Expr& expr() const;
@@ -377,7 +394,7 @@ class MemberOfPtr {
   friend std::ostream& operator<<(std::ostream& os, const MemberOfPtr& expr);
 
  private:
-  std::unique_ptr<Expr> expr_;
+  std::shared_ptr<Expr> expr_;
   std::string field_;
 };
 
@@ -385,6 +402,7 @@ class ArrayIndex {
  public:
   static constexpr int PRECEDENCE = 2;
 
+  ArrayIndex() = default;
   ArrayIndex(Expr expr, Expr idx);
 
   const Expr& expr() const;
@@ -394,14 +412,15 @@ class ArrayIndex {
   friend std::ostream& operator<<(std::ostream& os, const ArrayIndex& expr);
 
  private:
-  std::unique_ptr<Expr> expr_;
-  std::unique_ptr<Expr> idx_;
+  std::shared_ptr<Expr> expr_;
+  std::shared_ptr<Expr> idx_;
 };
 
 class TernaryExpr {
  public:
   static constexpr int PRECEDENCE = 16;
 
+  TernaryExpr() = default;
   TernaryExpr(Expr cond, Expr lhs, Expr rhs);
 
   const Expr& cond() const;
@@ -412,15 +431,16 @@ class TernaryExpr {
   friend std::ostream& operator<<(std::ostream& os, const TernaryExpr& expr);
 
  private:
-  std::unique_ptr<Expr> cond_;
-  std::unique_ptr<Expr> lhs_;
-  std::unique_ptr<Expr> rhs_;
+  std::shared_ptr<Expr> cond_;
+  std::shared_ptr<Expr> lhs_;
+  std::shared_ptr<Expr> rhs_;
 };
 
 class CastExpr {
  public:
   static constexpr int PRECEDENCE = 2;
 
+  CastExpr() = default;
   CastExpr(Type type, Expr expr);
 
   const Type& type() const;
@@ -431,13 +451,31 @@ class CastExpr {
 
  private:
   Type type_;
-  std::unique_ptr<Expr> expr_;
+  std::shared_ptr<Expr> expr_;
+};
+
+class DereferenceExpr {
+ public:
+  static constexpr int PRECEDENCE = 3;
+
+  DereferenceExpr() = default;
+  explicit DereferenceExpr(Expr expr);
+
+  const Expr& expr() const;
+  int precedence() const { return PRECEDENCE; }
+
+  friend std::ostream& operator<<(std::ostream& os,
+                                  const DereferenceExpr& expr);
+
+ private:
+  std::shared_ptr<Expr> expr_;
 };
 
 class BooleanConstant {
  public:
   static constexpr int PRECEDENCE = 0;
 
+  BooleanConstant() = default;
   explicit BooleanConstant(bool value) : value_(value) {}
 
   friend std::ostream& operator<<(std::ostream& os,
@@ -447,13 +485,29 @@ class BooleanConstant {
   int precedence() const { return PRECEDENCE; }
 
  private:
-  bool value_;
+  bool value_ = false;
 };
 
-void dump_expr(const Expr& expr);
-
-int bin_op_precedence(BinOp op);
-
 }  // namespace fuzzer
+
+// Forward declarations of hash specializations
+namespace std {
+
+template <>
+struct hash<fuzzer::PointerType> {
+  size_t operator()(const fuzzer::PointerType& type) const;
+};
+
+template <>
+struct hash<fuzzer::QualifiedType> {
+  size_t operator()(const fuzzer::QualifiedType& type) const;
+};
+
+template <>
+struct hash<fuzzer::TaggedType> {
+  size_t operator()(const fuzzer::TaggedType& type) const;
+};
+
+}  // namespace std
 
 #endif  // INCLUDE_AST_H

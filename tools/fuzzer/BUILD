@@ -4,10 +4,13 @@ cc_library(
     name = "fuzzer_lib",
     srcs = [
         "ast.cc",
+        "constraints.cc",
         "expr_gen.cc",
     ],
     hdrs = [
         "ast.h",
+        "constraints.h",
+        "enum_bitset.h",
         "expr_gen.h",
     ],
     deps = [
@@ -30,6 +33,16 @@ cc_binary(
         "@bazel_tools//tools/cpp/runfiles",
         "@io_github_yhirose_cpplinenoise//:cpp_linenoise",
         "@llvm_project//:lldb-api",
+    ],
+)
+
+cc_test(
+    name = "constraints_test",
+    srcs = ["constraints_test.cc"],
+    deps = [
+        ":fuzzer_lib",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

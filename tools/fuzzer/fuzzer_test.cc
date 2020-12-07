@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <sstream>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -40,7 +41,7 @@ class FakeGeneratorRng : public GeneratorRng {
     return op;
   }
 
-  ExprKind gen_expr_kind(const Weights&) override {
+  ExprKind gen_expr_kind(const Weights&, const ExprKindMask&) override {
     assert(!expr_kinds_.empty());
     ExprKind kind = expr_kinds_.back();
     expr_kinds_.pop_back();
@@ -48,16 +49,21 @@ class FakeGeneratorRng : public GeneratorRng {
     return kind;
   }
 
-  TypeKind gen_type_kind(const Weights&) override {
-    assert(!type_kinds_.empty());
+  TypeKind gen_type_kind(const Weights&, const TypeKindMask&) override {
+    if (type_kinds_.empty()) {
+      return TypeKind::ScalarType;
+    }
+
     TypeKind kind = type_kinds_.back();
     type_kinds_.pop_back();
 
     return kind;
   }
 
-  ScalarType gen_scalar_type() override {
-    assert(!scalar_types_.empty());
+  ScalarType gen_scalar_type(EnumBitset<ScalarType>) override {
+    if (scalar_types_.empty()) {
+      return ScalarType::SignedInt;
+    }
     ScalarType type = scalar_types_.back();
     scalar_types_.pop_back();
 
@@ -87,6 +93,12 @@ class FakeGeneratorRng : public GeneratorRng {
 
     return constant;
   }
+
+  bool gen_binop_ptr_expr(float) override { return false; }
+
+  bool gen_binop_flip_operands(float) override { return false; }
+
+  bool gen_binop_ptrdiff_expr(float) override { return false; }
 
   CvQualifiers gen_cv_qualifiers(float, float) override {
     assert(!cv_qualifiers_.empty());
@@ -181,6 +193,11 @@ class FakeGeneratorRng : public GeneratorRng {
     std::visit(*this, e.expr());
   }
 
+  void operator()(const DereferenceExpr& e) {
+    expr_kinds_.push_back(ExprKind::DereferenceExpr);
+    std::visit(*this, e.expr());
+  }
+
   void operator()(const QualifiedType& e) {
     cv_qualifiers_.push_back(e.cv_qualifiers());
     std::visit(*this, e.type());
@@ -188,11 +205,6 @@ class FakeGeneratorRng : public GeneratorRng {
 
   void operator()(const PointerType& e) {
     type_kinds_.push_back(TypeKind::PointerType);
-    (*this)(e.type());
-  }
-
-  void operator()(const ReferenceType& e) {
-    type_kinds_.push_back(TypeKind::ReferenceType);
     (*this)(e.type());
   }
 
@@ -265,6 +277,10 @@ class AstComparator {
     }
   }
 
+  void operator()(const DereferenceExpr& lhs, const DereferenceExpr& rhs) {
+    std::visit(*this, lhs.expr(), rhs.expr());
+  }
+
   void operator()(const ParenthesizedExpr& lhs, const ParenthesizedExpr& rhs) {
     std::visit(*this, lhs.expr(), rhs.expr());
   }
@@ -312,10 +328,6 @@ class AstComparator {
     if (lhs.cv_qualifiers() != rhs.cv_qualifiers()) {
       add_mismatch(lhs.cv_qualifiers(), rhs.cv_qualifiers());
     }
-  }
-
-  void operator()(const ReferenceType& lhs, const ReferenceType& rhs) {
-    (*this)(lhs.type(), rhs.type());
   }
 
   void operator()(const PointerType& lhs, const PointerType& rhs) {
@@ -405,7 +417,8 @@ TEST_P(OperatorPrecedence, CorrectAst) {
       FakeGeneratorRng::from_expr(*param.expr));
 
   ExprGenerator gen(std::move(fake_rng), GenConfig());
-  auto expr = gen.generate();
+  auto maybe_expr = gen.generate();
+  auto& expr = maybe_expr.value();
   std::ostringstream os;
   os << expr;
 
@@ -473,7 +486,7 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
   {
     // clang-format off
     Expr expected =
-        CastExpr(QualifiedType(ScalarType::SignedInt), IntegerConstant(50));
+        CastExpr(ScalarType::SignedInt, IntegerConstant(50));
     // clang-format on
 
     std::string str = "(int) 50";
@@ -482,7 +495,7 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
   {
     // clang-format off
     Expr expected = BinaryExpr(
-        CastExpr(QualifiedType(ScalarType::SignedInt), IntegerConstant(50)),
+        CastExpr(ScalarType::SignedInt, IntegerConstant(50)),
         BinOp::Plus,
         IntegerConstant(1));
     // clang-format on
@@ -492,7 +505,7 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
   }
   {
     // clang-format off
-    Expr expected = CastExpr(QualifiedType(ScalarType::SignedInt),
+    Expr expected = CastExpr(ScalarType::SignedInt,
         ParenthesizedExpr(
             BinaryExpr(IntegerConstant(50), BinOp::Plus, IntegerConstant(1))));
     // clang-format on
@@ -502,41 +515,50 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
   }
   {
     // clang-format off
-    Expr expected = CastExpr(
-        QualifiedType(ScalarType::SignedInt),
+    Expr expected = UnaryExpr(
+        UnOp::BitNot,
         ParenthesizedExpr(TernaryExpr(
-            IntegerConstant(1), IntegerConstant(2), IntegerConstant(3))));
+            IntegerConstant(1),
+            IntegerConstant(2),
+            IntegerConstant(3))));
     // clang-format on
 
-    std::string str = "(int) (1 ? 2 : 3)";
+    std::string str = "~(1 ? 2 : 3)";
     params.emplace_back(std::move(str), std::move(expected));
   }
   {
     // clang-format off
-    Expr expected = TernaryExpr(
-            BooleanConstant(true),
-            IntegerConstant(0),
-            TernaryExpr(
-                BooleanConstant(false),
-                IntegerConstant(1),
-                IntegerConstant(2)));
-    // clang-format on
-
-    std::string str = "true ? 0 : false ? 1 : 2";
-    params.emplace_back(std::move(str), std::move(expected));
-  }
-  {
-    // clang-format off
-    Expr expected = TernaryExpr(
-        ParenthesizedExpr( TernaryExpr(
-            BinaryExpr(IntegerConstant(1), BinOp::Eq, IntegerConstant(2)),
-            BooleanConstant(false),
-            BooleanConstant(true))),
+    Expr expected = BinaryExpr(
         IntegerConstant(1),
-        IntegerConstant(0));
+        BinOp::Mult,
+        ParenthesizedExpr(
+            TernaryExpr(
+                BooleanConstant(true),
+                IntegerConstant(0),
+                TernaryExpr(
+                    BooleanConstant(false),
+                    IntegerConstant(1),
+                    IntegerConstant(2)))));
     // clang-format on
 
-    std::string str = "(1 == 2 ? false : true) ? 1 : 0";
+    std::string str = "1 * (true ? 0 : false ? 1 : 2)";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    // clang-format off
+    Expr expected = BinaryExpr(
+        IntegerConstant(4),
+        BinOp::Mult,
+        ParenthesizedExpr(
+            TernaryExpr(ParenthesizedExpr(TernaryExpr(
+                BinaryExpr(IntegerConstant(1), BinOp::Eq, IntegerConstant(2)),
+                BooleanConstant(false),
+                BooleanConstant(true))),
+        IntegerConstant(1),
+        IntegerConstant(0))));
+    // clang-format on
+
+    std::string str = "4 * ((1 == 2 ? false : true) ? 1 : 0)";
     params.emplace_back(std::move(str), std::move(expected));
   }
   {
@@ -589,7 +611,7 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
   return params;
 }
 
-INSTANTIATE_TEST_SUITE_P(Fuzzer, OperatorPrecedence,
+INSTANTIATE_TEST_SUITE_P(AstGen, OperatorPrecedence,
                          ValuesIn(gen_precedence_params()));
 
 struct TypePrintTestParam {
@@ -618,55 +640,40 @@ std::vector<TypePrintTestParam> gen_typing_params() {
   std::vector<TypePrintTestParam> params;
 
   {
-    Type type = QualifiedType(ScalarType::SignedInt);
+    auto type = ScalarType::SignedInt;
     std::string str = "int";
-
     params.emplace_back(std::move(str), std::move(type));
   }
 
-  CvQualifiers const_qual;
-  const_qual.set((size_t)CvQualifier::Const);
-
-  CvQualifiers volatile_qual;
-  volatile_qual.set((size_t)CvQualifier::Volatile);
-
   {
-    Type type(QualifiedType(PointerType(QualifiedType(
-        PointerType(QualifiedType(ScalarType::Char, const_qual))))));
+    Type type(PointerType(QualifiedType(
+        PointerType(QualifiedType(ScalarType::Char, CvQualifier::Const)))));
     std::string str = "const char**";
 
     params.emplace_back(std::move(str), std::move(type));
   }
 
   {
-    Type type(ReferenceType(QualifiedType(
-        PointerType(QualifiedType(ScalarType::SignedInt, const_qual)),
-        volatile_qual)));
-    std::string str = "const int* volatile&";
+    PointerType type(QualifiedType(
+        PointerType(QualifiedType(ScalarType::SignedInt, CvQualifier::Const)),
+        CvQualifier::Volatile));
+    std::string str = "const int* volatile*";
 
     params.emplace_back(std::move(str), std::move(type));
   }
 
   {
-    Type type(QualifiedType(
-        PointerType(QualifiedType(TaggedType("TestStruct"), const_qual))));
+    PointerType type(
+        QualifiedType(TaggedType("TestStruct"), CvQualifier::Const));
     std::string str = "const TestStruct*";
 
     params.emplace_back(std::move(str), std::move(type));
   }
 
   {
-    Type type(QualifiedType(
-        PointerType(QualifiedType(ScalarType::Void, const_qual))));
-    std::string str = "const void*";
-
-    params.emplace_back(std::move(str), std::move(type));
-  }
-
-  {
-    Type type(QualifiedType(PointerType(QualifiedType(ScalarType::Void)),
-                            const_qual));
-    std::string str = "void* const";
+    PointerType type(QualifiedType(PointerType(QualifiedType(ScalarType::Void)),
+                                   CvQualifier::Const));
+    std::string str = "void* const*";
 
     params.emplace_back(std::move(str), std::move(type));
   }
@@ -674,4 +681,4 @@ std::vector<TypePrintTestParam> gen_typing_params() {
   return params;
 }
 
-INSTANTIATE_TEST_SUITE_P(Fuzzer, TypePrinting, ValuesIn(gen_typing_params()));
+INSTANTIATE_TEST_SUITE_P(AstGen, TypePrinting, ValuesIn(gen_typing_params()));

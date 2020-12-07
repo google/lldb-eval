@@ -17,91 +17,469 @@
 #include "tools/fuzzer/expr_gen.h"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
+#include <optional>
 #include <random>
 #include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
 #include <variant>
 
 #include "lldb-eval/defines.h"
 #include "tools/fuzzer/ast.h"
+#include "tools/fuzzer/constraints.h"
+#include "tools/fuzzer/enum_bitset.h"
 
 namespace fuzzer {
+
+class Weights {
+ public:
+  using ExprWeightsArray = std::array<float, NUM_GEN_EXPR_KINDS>;
+  using TypeWeightsArray = std::array<float, NUM_GEN_TYPE_KINDS>;
+
+  ExprWeightsArray& expr_weights() { return expr_weights_; }
+  const ExprWeightsArray& expr_weights() const { return expr_weights_; }
+
+  TypeWeightsArray& type_weights() { return type_weights_; }
+  const TypeWeightsArray& type_weights() const { return type_weights_; }
+
+  float& operator[](ExprKind kind) { return expr_weights_[(size_t)kind]; }
+  float& operator[](TypeKind kind) { return type_weights_[(size_t)kind]; }
+
+  const float& operator[](ExprKind kind) const {
+    return expr_weights_[(size_t)kind];
+  }
+  const float& operator[](TypeKind kind) const {
+    return type_weights_[(size_t)kind];
+  }
+
+ private:
+  std::array<float, NUM_GEN_EXPR_KINDS> expr_weights_;
+  std::array<float, NUM_GEN_TYPE_KINDS> type_weights_;
+};
+
+using ScalarMask = EnumBitset<ScalarType>;
 
 int expr_precedence(const Expr& e) {
   return std::visit([](const auto& e) { return e.precedence(); }, e);
 }
 
-BooleanConstant ExprGenerator::gen_boolean_constant() {
+std::optional<Expr> ExprGenerator::gen_boolean_constant(
+    const ExprConstraints& constraints) {
+  const auto& type_constraints = constraints.type_constraints();
+
+  if (constraints.must_be_lvalue() ||
+      !type_constraints.allows_any_of(INT_TYPES | FLOAT_TYPES)) {
+    return {};
+  }
+
   return BooleanConstant(rng_->gen_boolean());
 }
 
-VariableExpr ExprGenerator::gen_variable_expr() { return VariableExpr(VAR); }
-
-BinaryExpr ExprGenerator::gen_binary_expr(const Weights& weights) {
-  auto op = rng_->gen_bin_op(cfg_.bin_op_mask);
-
-  auto lhs = gen_with_weights(weights);
-  auto rhs = gen_with_weights(weights);
-
-  // Rules for parenthesising the left hand side:
-  // 1. If the left hand side has a strictly lower precedence than ours,
-  //    then we will have to emit parens.
-  //    Example: We emit `(3 + 4) * 5` instead of `3 + 4 * 5`.
-  // 2. If the left hand side has the same precedence as we do, then we
-  //    don't have to emit any parens. This is because all lldb-eval
-  //    binary operators have left-to-right associativity.
-  //    Example: We do not have to emit `(3 - 4) + 5`, `3 - 4 + 5` will also
-  //    do.
-  auto lhs_precedence = expr_precedence(lhs);
-  if (lhs_precedence > bin_op_precedence(op)) {
-    lhs = ParenthesizedExpr(std::move(lhs));
+std::optional<Expr> ExprGenerator::gen_integer_constant(
+    const ExprConstraints& constraints) {
+  if (constraints.must_be_lvalue()) {
+    return {};
   }
 
-  // Rules for parenthesising the right hand side:
-  // 1. If the right hand side has a strictly lower precedence than ours,
-  //    then we will have to emit parens.
-  //    Example: We emit `5 * (3 + 4)` instead of `5 * 3 + 4`.
-  // 2. If the right hand side has the same precedence as we do, then we
-  //    should emit parens for good measure. This is because all lldb-eval
-  //    binary operators have left-to-right associativity and we do not
-  //    want to violate this with respect to the generated AST.
-  //    Example: We emit `3 - (4 + 5)` instead of `3 - 4 + 5`. We also
-  //    emit `3 + (4 + 5)` instead of `3 + 4 + 5`, even though both
-  //    expressions are equivalent.
-  auto rhs_precedence = expr_precedence(rhs);
-  if (rhs_precedence >= bin_op_precedence(op)) {
-    rhs = ParenthesizedExpr(std::move(rhs));
+  const auto& type_constraints = constraints.type_constraints();
+
+  // Integers can be generated in place of floats
+  if (type_constraints.allows_any_of(INT_TYPES | FLOAT_TYPES)) {
+    return rng_->gen_integer_constant(cfg_.int_const_min, cfg_.int_const_max);
   }
 
-  return BinaryExpr(std::move(lhs), op, std::move(rhs));
+  if (type_constraints.allows_void_pointer()) {
+    return IntegerConstant(0);
+  }
+
+  return {};
 }
 
-UnaryExpr ExprGenerator::gen_unary_expr(const Weights& weights) {
-  auto expr = gen_with_weights(weights);
-  auto op = (UnOp)rng_->gen_un_op(cfg_.un_op_mask);
-
-  if (expr_precedence(expr) > UnaryExpr::PRECEDENCE) {
-    expr = ParenthesizedExpr(std::move(expr));
+std::optional<Expr> ExprGenerator::gen_double_constant(
+    const ExprConstraints& constraints) {
+  if (constraints.must_be_lvalue()) {
+    return {};
   }
 
-  return UnaryExpr(op, std::move(expr));
+  const auto& type_constraints = constraints.type_constraints();
+  if (type_constraints.allows_any_of(FLOAT_TYPES)) {
+    return rng_->gen_double_constant(cfg_.double_constant_min,
+                                     cfg_.double_constant_max);
+  }
+
+  return {};
 }
 
-TernaryExpr ExprGenerator::gen_ternary_expr(const Weights& weights) {
-  auto cond = gen_with_weights(weights);
-  auto lhs = gen_with_weights(weights);
-  auto rhs = gen_with_weights(weights);
+std::optional<Expr> ExprGenerator::gen_variable_expr(
+    const ExprConstraints& constraints) {
+  // TODO: This is a stub, which is addressed by the `fuzzer-ptrs` branch
+  const auto& type_constraints = constraints.type_constraints();
+
+  for (const auto& type : cfg_.symbol_table) {
+    if (!type_constraints.allows_type(type.first)) {
+      continue;
+    }
+
+    if (type.second.empty()) {
+      continue;
+    }
+
+    return VariableExpr(type.second[0]);
+  }
+
+  return {};
+}
+
+std::optional<Expr> ExprGenerator::gen_binary_expr(
+    const Weights& weights, const ExprConstraints& constraints) {
+  if (constraints.must_be_lvalue()) {
+    return {};
+  }
+
+  const auto& type_constraints = constraints.type_constraints();
+
+  BinOpMask mask = cfg_.bin_op_mask;
+
+  ScalarMask default_type_mask;
+  if (type_constraints.allows_any_of(INT_TYPES)) {
+    default_type_mask |= INT_TYPES;
+  }
+  if (type_constraints.allows_any_of(FLOAT_TYPES)) {
+    default_type_mask |= FLOAT_TYPES;
+  }
+
+  if (default_type_mask.none()) {
+    constexpr BinOpMask PTR_OPS = {BinOp::Plus, BinOp::Minus};
+    mask &= PTR_OPS;
+  }
+
+  while (mask.any()) {
+    auto op = rng_->gen_bin_op(mask);
+
+    SpecificTypes lhs_types;
+    SpecificTypes rhs_types;
+
+    switch (op) {
+      case BinOp::Mult:
+      case BinOp::Div:
+        lhs_types = default_type_mask;
+        rhs_types = default_type_mask;
+        break;
+
+      case BinOp::BitAnd:
+      case BinOp::BitOr:
+      case BinOp::BitXor:
+      case BinOp::Shl:
+      case BinOp::Shr:
+      case BinOp::Mod:
+        lhs_types = INT_TYPES;
+        rhs_types = INT_TYPES;
+        break;
+
+      case BinOp::LogicalAnd:
+      case BinOp::LogicalOr:
+        lhs_types = SpecificTypes::all_in_bool_ctx();
+        rhs_types = SpecificTypes::all_in_bool_ctx();
+        break;
+
+      case BinOp::Eq:
+      case BinOp::Ne:
+      case BinOp::Lt:
+      case BinOp::Le:
+      case BinOp::Gt:
+      case BinOp::Ge: {
+        lhs_types = INT_TYPES | FLOAT_TYPES;
+        rhs_types = INT_TYPES | FLOAT_TYPES;
+
+        // Try and see if we can generate a pointer type. If not, we'll just
+        // compare scalars.
+        bool gen_ptr_exprs =
+            rng_->gen_binop_ptr_expr(cfg_.binop_gen_ptr_expr_prob);
+        if (gen_ptr_exprs) {
+          auto maybe_type =
+              gen_type(weights, SpecificTypes::make_any_pointer_constraints());
+          if (maybe_type.has_value()) {
+            const auto& type = maybe_type.value();
+            lhs_types = SpecificTypes(type);
+            rhs_types = SpecificTypes(type);
+          }
+        }
+      } break;
+
+      case BinOp::Plus:
+      case BinOp::Minus: {
+        bool allows_scalars = default_type_mask.any();
+        bool allows_pointers = type_constraints.allows_pointer();
+
+        if (allows_scalars && allows_pointers) {
+          if (rng_->gen_binop_ptr_expr(cfg_.binop_gen_ptr_expr_prob)) {
+            allows_scalars = false;
+          } else {
+            allows_pointers = false;
+          }
+        }
+
+        if (!allows_scalars && !allows_pointers) {
+          mask[op] = false;
+          continue;
+        }
+
+        if (allows_pointers) {
+          auto maybe_type = gen_type(weights, type_constraints);
+          if (!maybe_type.has_value()) {
+            mask[op] = false;
+            continue;
+          }
+          const auto& type = maybe_type.value();
+          const auto* ptr_type = std::get_if<PointerType>(&type);
+          if (ptr_type == nullptr) {
+            mask[op] = false;
+            continue;
+          }
+          const auto* scalar_type =
+              std::get_if<ScalarType>(&ptr_type->type().type());
+          if (scalar_type != nullptr && *scalar_type == ScalarType::Void) {
+            mask[op] = false;
+            continue;
+          }
+
+          lhs_types = SpecificTypes(type);
+          rhs_types = INT_TYPES;
+
+          if (op == BinOp::Plus &&
+              rng_->gen_binop_flip_operands(cfg_.binop_flip_operands_prob)) {
+            std::swap(lhs_types, rhs_types);
+          }
+        } else {
+          if (op == BinOp::Minus &&
+              rng_->gen_binop_ptrdiff_expr(cfg_.binop_gen_ptrdiff_expr_prob)) {
+            auto maybe_type = gen_type(weights, type_constraints);
+            if (!maybe_type.has_value()) {
+              mask[op] = false;
+              continue;
+            }
+            const auto& type = maybe_type.value();
+            const auto* ptr_type = std::get_if<PointerType>(&type);
+            if (ptr_type == nullptr) {
+              mask[op] = false;
+              continue;
+            }
+            const auto* scalar_type =
+                std::get_if<ScalarType>(&ptr_type->type().type());
+            if (scalar_type != nullptr && *scalar_type == ScalarType::Void) {
+              mask[op] = false;
+              continue;
+            }
+
+            lhs_types = SpecificTypes(type);
+            rhs_types = SpecificTypes(type);
+          } else {
+            lhs_types = default_type_mask;
+            rhs_types = default_type_mask;
+          }
+        }
+      } break;
+
+      default:
+        lldb_eval_unreachable(
+            "Unhandled switch case, did you introduce a new binary "
+            "operator?");
+    }
+
+    TypeConstraints lhs_constraints = std::move(lhs_types);
+    TypeConstraints rhs_constraints = std::move(rhs_types);
+
+    auto maybe_lhs = gen_with_weights(weights, std::move(lhs_constraints));
+    if (!maybe_lhs.has_value()) {
+      mask[op] = false;
+      continue;
+    }
+    Expr lhs = std::move(maybe_lhs.value());
+
+    auto maybe_rhs = gen_with_weights(weights, std::move(rhs_constraints));
+    if (!maybe_rhs.has_value()) {
+      mask[op] = false;
+      continue;
+    }
+    Expr rhs = std::move(maybe_rhs.value());
+
+    // Rules for parenthesising the left hand side:
+    // 1. If the left hand side has a strictly lower precedence than ours,
+    //    then we will have to emit parens.
+    //    Example: We emit `(3 + 4) * 5` instead of `3 + 4 * 5`.
+    // 2. If the left hand side has the same precedence as we do, then we
+    //    don't have to emit any parens. This is because all lldb-eval
+    //    binary operators have left-to-right associativity.
+    //    Example: We do not have to emit `(3 - 4) + 5`, `3 - 4 + 5` will
+    //    also do.
+    if (expr_precedence(lhs) > bin_op_precedence(op)) {
+      lhs = ParenthesizedExpr(std::move(lhs));
+    }
+
+    // Rules for parenthesising the right hand side:
+    // 1. If the right hand side has a strictly lower precedence than
+    // ours,
+    //    then we will have to emit parens.
+    //    Example: We emit `5 * (3 + 4)` instead of `5 * 3 + 4`.
+    // 2. If the right hand side has the same precedence as we do, then we
+    //    should emit parens for good measure. This is because all
+    //    lldb-eval binary operators have left-to-right associativity and
+    //    we do not want to violate this with respect to the generated
+    //    AST. Example: We emit `3 - (4 + 5)` instead of `3 - 4 + 5`. We
+    //    also emit `3 + (4 + 5)` instead of `3 + 4 + 5`, even though both
+    //    expressions are equivalent.
+    if (expr_precedence(rhs) >= bin_op_precedence(op)) {
+      rhs = ParenthesizedExpr(std::move(rhs));
+    }
+
+    return BinaryExpr(std::move(lhs), op, std::move(rhs));
+  }
+
+  return {};
+}
+
+std::optional<Expr> ExprGenerator::gen_unary_expr(
+    const Weights& weights, const ExprConstraints& constraints) {
+  if (constraints.must_be_lvalue()) {
+    return {};
+  }
+
+  const auto& type_constraints = constraints.type_constraints();
+
+  ScalarMask default_type_mask;
+  if (type_constraints.allows_any_of(INT_TYPES)) {
+    default_type_mask |= INT_TYPES;
+  }
+  if (type_constraints.allows_any_of(FLOAT_TYPES)) {
+    default_type_mask |= FLOAT_TYPES;
+  }
+
+  if (default_type_mask.none()) {
+    return {};
+  }
+
+  UnOpMask mask = cfg_.un_op_mask;
+  while (mask.any()) {
+    auto op = (UnOp)rng_->gen_un_op(mask);
+
+    SpecificTypes expr_types;
+    switch (op) {
+      case UnOp::Plus:
+      case UnOp::Neg:
+        expr_types = default_type_mask;
+        break;
+
+      case UnOp::BitNot:
+        expr_types = INT_TYPES;
+        break;
+
+      case UnOp::LogicalNot:
+        expr_types = SpecificTypes::all_in_bool_ctx();
+        break;
+
+      default:
+        lldb_eval_unreachable(
+            "Unhandled switch case, did you introduce a new unary "
+            "operator?");
+    }
+
+    auto maybe_expr =
+        gen_with_weights(weights, TypeConstraints(std::move(expr_types)));
+    if (!maybe_expr.has_value()) {
+      mask[op] = false;
+      continue;
+    }
+    Expr expr = std::move(maybe_expr.value());
+
+    if (expr_precedence(expr) > UnaryExpr::PRECEDENCE) {
+      expr = ParenthesizedExpr(expr);
+    }
+
+    return UnaryExpr(op, std::move(expr));
+  }
+
+  return {};
+}
+
+std::optional<Expr> ExprGenerator::gen_ternary_expr(
+    const Weights& weights, const ExprConstraints& constraints) {
+  auto maybe_cond = gen_with_weights(
+      weights, TypeConstraints(SpecificTypes::all_in_bool_ctx()));
+  if (!maybe_cond.has_value()) {
+    return {};
+  }
+  Expr cond = std::move(maybe_cond.value());
+
+  const auto& type_constraints = constraints.type_constraints();
+  auto maybe_type = gen_type(weights, type_constraints);
+  if (!maybe_type.has_value()) {
+    return {};
+  }
+  auto& type = maybe_type.value();
+
+  ExprConstraints new_constraints;
+  if (constraints.must_be_lvalue()) {
+    new_constraints =
+        ExprConstraints(SpecificTypes(type), ExprCategory::Lvalue);
+  } else if (std::holds_alternative<ScalarType>(type)) {
+    ScalarMask mask = INT_TYPES;
+    if (type_constraints.allows_any_of(FLOAT_TYPES)) {
+      mask |= FLOAT_TYPES;
+    }
+
+    new_constraints = TypeConstraints(SpecificTypes(mask));
+  } else {
+    new_constraints = TypeConstraints(SpecificTypes(type));
+  }
+
+  auto maybe_lhs = gen_with_weights(weights, new_constraints);
+  if (!maybe_lhs.has_value()) {
+    return {};
+  }
+  Expr lhs = std::move(maybe_lhs.value());
+
+  auto maybe_rhs = gen_with_weights(weights, new_constraints);
+  if (!maybe_rhs.has_value()) {
+    return {};
+  }
+  Expr rhs = std::move(maybe_rhs.value());
 
   if (expr_precedence(cond) == TernaryExpr::PRECEDENCE) {
-    cond = ParenthesizedExpr(std::move(cond));
+    cond = ParenthesizedExpr(cond);
   }
 
   return TernaryExpr(std::move(cond), std::move(lhs), std::move(rhs));
 }
 
-CastExpr ExprGenerator::gen_cast_expr(const Weights& weights) {
-  auto type = gen_type(weights);
-  auto expr = gen_with_weights(weights);
+std::optional<Expr> ExprGenerator::gen_cast_expr(
+    const Weights& weights, const ExprConstraints& constraints) {
+  if (constraints.must_be_lvalue()) {
+    return {};
+  }
+
+  auto maybe_type = gen_type(weights, constraints.type_constraints());
+  if (!maybe_type.has_value()) {
+    return {};
+  }
+  Type type = std::move(maybe_type.value());
+
+  SpecificTypes expr_types;
+  if (std::holds_alternative<TaggedType>(type)) {
+    return {};
+  } else if (std::holds_alternative<PointerType>(type)) {
+    expr_types = SpecificTypes::make_any_pointer_constraints();
+  } else {
+    expr_types = INT_TYPES | FLOAT_TYPES;
+  }
+
+  auto maybe_expr =
+      gen_with_weights(weights, TypeConstraints(std::move(expr_types)));
+  if (!maybe_expr.has_value()) {
+    return {};
+  }
+  Expr expr = std::move(maybe_expr.value());
 
   if (expr_precedence(expr) > CastExpr::PRECEDENCE) {
     expr = ParenthesizedExpr(std::move(expr));
@@ -110,54 +488,167 @@ CastExpr ExprGenerator::gen_cast_expr(const Weights& weights) {
   return CastExpr(std::move(type), std::move(expr));
 }
 
-Expr ExprGenerator::gen_with_weights(const Weights& weights) {
-  Weights new_weights = weights;
-
-  auto kind = rng_->gen_expr_kind(new_weights);
-  auto idx = (size_t)kind;
-  new_weights[kind] *= cfg_.expr_kind_weights[idx].dampening_factor;
-
-  // Dummy value for initialization
-  Expr expr(BooleanConstant(false));
-  switch (kind) {
-    case ExprKind::IntegerConstant:
-      expr = rng_->gen_integer_constant(cfg_.int_const_min, cfg_.int_const_max);
-      break;
-
-    case ExprKind::DoubleConstant:
-      expr = rng_->gen_double_constant(cfg_.double_constant_min,
-                                       cfg_.double_constant_max);
-      break;
-
-    case ExprKind::VariableExpr:
-      expr = gen_variable_expr();
-      break;
-
-    case ExprKind::BinaryExpr:
-      expr = gen_binary_expr(new_weights);
-      break;
-
-    case ExprKind::UnaryExpr:
-      expr = gen_unary_expr(new_weights);
-      break;
-
-    case ExprKind::TernaryExpr:
-      expr = gen_ternary_expr(new_weights);
-      break;
-
-    case ExprKind::BooleanConstant:
-      expr = gen_boolean_constant();
-      break;
-
-    case ExprKind::CastExpr:
-      expr = gen_cast_expr(new_weights);
-      break;
-
-    default:
-      lldb_eval_unreachable("Unhandled expression generation case");
+std::optional<Expr> ExprGenerator::gen_address_of_expr(
+    const Weights&, const ExprConstraints& constraints) {
+  // TODO: Stub implemented in branch `fuzzer-ptrs`
+  if (constraints.must_be_lvalue()) {
+    return {};
   }
 
-  return maybe_parenthesized(std::move(expr));
+  return {};
+}
+
+std::optional<Expr> ExprGenerator::gen_member_of_expr(
+    const Weights& weights, const ExprConstraints& constraints) {
+  auto maybe_expr = gen_with_weights(weights, constraints);
+  if (!maybe_expr.has_value()) {
+    return {};
+  }
+  Expr expr = maybe_expr.value();
+
+  if (expr_precedence(expr) > MemberOf::PRECEDENCE) {
+    expr = ParenthesizedExpr(std::move(expr));
+  }
+
+  // TODO: Stub
+  return MemberOf(std::move(expr), "f1");
+}
+
+std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
+    const Weights& weights, const ExprConstraints& constraints) {
+  auto maybe_expr = gen_with_weights(weights, constraints);
+  if (!maybe_expr.has_value()) {
+    return {};
+  }
+  Expr expr = std::move(maybe_expr.value());
+
+  if (expr_precedence(expr) > MemberOfPtr::PRECEDENCE) {
+    expr = ParenthesizedExpr(std::move(expr));
+  }
+
+  // TODO: Stub
+  return MemberOfPtr(std::move(expr), "f1");
+}
+
+std::optional<Expr> ExprGenerator::gen_array_index_expr(
+    const Weights& weights, const ExprConstraints& constraints) {
+  TypeConstraints idx_constraints = SpecificTypes(INT_TYPES);
+
+  auto maybe_expr = gen_with_weights(weights, constraints);
+  if (!maybe_expr.has_value()) {
+    return {};
+  }
+  Expr expr = std::move(maybe_expr.value());
+
+  auto maybe_idx = gen_with_weights(weights, idx_constraints);
+  if (!maybe_idx.has_value()) {
+    return {};
+  }
+  Expr idx = std::move(maybe_idx.value());
+
+  if (expr_precedence(expr) > ArrayIndex::PRECEDENCE) {
+    expr = ParenthesizedExpr(std::move(expr));
+  }
+
+  return ArrayIndex(std::move(expr), std::move(idx));
+}
+
+std::optional<Expr> ExprGenerator::gen_dereference_expr(
+    const Weights& weights, const ExprConstraints& constraints) {
+  auto maybe_expr = gen_with_weights(weights, constraints);
+  if (!maybe_expr.has_value()) {
+    return {};
+  }
+  Expr expr = std::move(maybe_expr.value());
+
+  if (expr_precedence(expr) > DereferenceExpr::PRECEDENCE) {
+    expr = ParenthesizedExpr(std::move(expr));
+  }
+
+  return DereferenceExpr(std::move(expr));
+}
+
+std::optional<Expr> ExprGenerator::gen_with_weights(
+    const Weights& weights, const ExprConstraints& constraints) {
+  Weights new_weights = weights;
+
+  ExprKindMask mask = cfg_.expr_kind_mask;
+  while (mask.any()) {
+    auto kind = rng_->gen_expr_kind(new_weights, mask);
+    auto idx = (size_t)kind;
+
+    auto old_weight = new_weights[kind];
+    new_weights[kind] *= cfg_.expr_kind_weights[idx].dampening_factor;
+
+    std::optional<Expr> maybe_expr;
+    switch (kind) {
+      case ExprKind::IntegerConstant:
+        maybe_expr = gen_integer_constant(constraints);
+        break;
+
+      case ExprKind::DoubleConstant:
+        maybe_expr = gen_double_constant(constraints);
+        break;
+
+      case ExprKind::VariableExpr:
+        maybe_expr = gen_variable_expr(constraints);
+        break;
+
+      case ExprKind::BinaryExpr:
+        maybe_expr = gen_binary_expr(new_weights, constraints);
+        break;
+
+      case ExprKind::UnaryExpr:
+        maybe_expr = gen_unary_expr(new_weights, constraints);
+        break;
+
+      case ExprKind::TernaryExpr:
+        maybe_expr = gen_ternary_expr(new_weights, constraints);
+        break;
+
+      case ExprKind::BooleanConstant:
+        maybe_expr = gen_boolean_constant(constraints);
+        break;
+
+      case ExprKind::CastExpr:
+        maybe_expr = gen_cast_expr(new_weights, constraints);
+        break;
+
+      case ExprKind::DereferenceExpr:
+        maybe_expr = gen_dereference_expr(new_weights, constraints);
+        break;
+
+      case ExprKind::AddressOf:
+        maybe_expr = gen_address_of_expr(new_weights, constraints);
+        break;
+
+      case ExprKind::MemberOf:
+        maybe_expr = gen_member_of_expr(new_weights, constraints);
+        break;
+
+      case ExprKind::MemberOfPtr:
+        maybe_expr = gen_member_of_ptr_expr(new_weights, constraints);
+        break;
+
+      case ExprKind::ArrayIndex:
+        maybe_expr = gen_array_index_expr(new_weights, constraints);
+        break;
+
+      default:
+        lldb_eval_unreachable("Unhandled expression generation case");
+    }
+
+    if (!maybe_expr.has_value()) {
+      new_weights[kind] = old_weight;
+      mask[kind] = false;
+
+      continue;
+    }
+
+    return maybe_parenthesized(std::move(maybe_expr.value()));
+  }
+
+  return {};
 }
 
 Expr ExprGenerator::maybe_parenthesized(Expr expr) {
@@ -168,87 +659,142 @@ Expr ExprGenerator::maybe_parenthesized(Expr expr) {
   return expr;
 }
 
-Type ExprGenerator::gen_type(const Weights& weights) {
+std::optional<Type> ExprGenerator::gen_type(
+    const Weights& weights, const TypeConstraints& constraints) {
+  return gen_type_impl(weights, constraints);
+}
+
+std::optional<Type> ExprGenerator::gen_type_impl(
+    const Weights& weights, const TypeConstraints& type_constraints) {
+  if (!type_constraints.satisfiable()) {
+    return {};
+  }
+
   Weights new_weights = weights;
-  auto choice = rng_->gen_type_kind(new_weights);
-  auto idx = (size_t)choice;
+  TypeKindMask mask = TypeKindMask::all_set();
 
-  auto& new_type_weights = new_weights.type_weights();
-  new_type_weights[idx] *= cfg_.type_kind_weights[idx].dampening_factor;
+  if (type_constraints.allowed_scalar_types().none()) {
+    mask[TypeKind::ScalarType] = false;
+  }
+  if (!type_constraints.allows_tagged_types()) {
+    mask[TypeKind::TaggedType] = false;
+  }
+  if (!type_constraints.allows_pointer() &&
+      !type_constraints.allows_void_pointer()) {
+    mask[TypeKind::TaggedType] = false;
+  }
 
-  QualifiableType type;
-  switch (choice) {
-    case TypeKind::ScalarType:
-      type = gen_scalar_type();
-      break;
+  while (mask.any()) {
+    auto choice = rng_->gen_type_kind(new_weights, mask);
+    auto idx = (size_t)choice;
 
-    case TypeKind::TaggedType:
-      type = gen_tagged_type();
-      break;
+    auto& new_type_weights = new_weights.type_weights();
+    auto old_weight = new_type_weights[idx];
+    new_type_weights[idx] *= cfg_.type_kind_weights[idx].dampening_factor;
 
-    case TypeKind::PointerType:
-      type = gen_pointer_type(new_weights);
-      break;
+    std::optional<Type> maybe_type;
+    switch (choice) {
+      case TypeKind::ScalarType:
+        maybe_type = gen_scalar_type(type_constraints);
+        break;
 
-    case TypeKind::ReferenceType: {
-      auto qualified_type = gen_qualified_type(new_weights);
-      return ReferenceType(std::move(qualified_type));
+      case TypeKind::TaggedType:
+        maybe_type = gen_tagged_type(type_constraints);
+        break;
+
+      case TypeKind::PointerType:
+        maybe_type = gen_pointer_type(new_weights, type_constraints);
+        break;
+
+      case TypeKind::VoidPointerType:
+        maybe_type = gen_void_pointer_type(type_constraints);
+        break;
     }
+
+    if (maybe_type.has_value()) {
+      return maybe_type;
+    }
+
+    new_type_weights[idx] = old_weight;
+    mask[choice] = false;
   }
 
-  auto qualifiers = gen_cv_qualifiers();
-  return QualifiedType(std::move(type), qualifiers);
+  return {};
 }
 
-PointerType ExprGenerator::gen_pointer_type(const Weights& weights) {
-  auto type = gen_qualified_type(weights);
-
-  return PointerType(std::move(type));
-}
-
-QualifiedType ExprGenerator::gen_qualified_type(const Weights& weights) {
-  Weights new_weights = weights;
-  auto& new_type_weights = new_weights.type_weights();
-  // Reference types are not qualified types, hence don't generate any
-  new_type_weights[(size_t)TypeKind::ReferenceType] = 0;
-
-  auto choice = rng_->gen_type_kind(new_weights);
-  auto idx = (size_t)choice;
-
-  new_type_weights[idx] *= cfg_.type_kind_weights[idx].dampening_factor;
-
-  QualifiableType type;
-  switch (choice) {
-    case TypeKind::ScalarType:
-      type = gen_scalar_type();
-      break;
-
-    case TypeKind::TaggedType:
-      type = gen_tagged_type();
-      break;
-
-    case TypeKind::PointerType:
-      type = gen_pointer_type(weights);
-      break;
-
-    default:
-      assert(false && "Unreachable");
-      return QualifiedType(ScalarType::Void);
+std::optional<QualifiedType> ExprGenerator::gen_qualified_type(
+    const Weights& weights, const TypeConstraints& constraints) {
+  auto maybe_type = gen_type_impl(weights, constraints);
+  if (!maybe_type.has_value()) {
+    return {};
   }
+  Type type = std::move(maybe_type.value());
   auto qualifiers = gen_cv_qualifiers();
 
   return QualifiedType(std::move(type), qualifiers);
 }
 
-TaggedType ExprGenerator::gen_tagged_type() { return TaggedType("TestStruct"); }
+std::optional<Type> ExprGenerator::gen_pointer_type(
+    const Weights& weights, const TypeConstraints& constraints) {
+  if (!constraints.allows_pointer() && !constraints.allows_void_pointer()) {
+    return {};
+  }
 
-ScalarType ExprGenerator::gen_scalar_type() { return rng_->gen_scalar_type(); }
+  auto maybe_type =
+      gen_qualified_type(weights, constraints.allowed_to_point_to());
+  if (!maybe_type.has_value()) {
+    return {};
+  }
+
+  return PointerType(std::move(maybe_type.value()));
+}
+
+std::optional<Type> ExprGenerator::gen_void_pointer_type(
+    const TypeConstraints& constraints) {
+  if (!constraints.allows_void_pointer()) {
+    return {};
+  }
+
+  auto cv_qualifiers =
+      rng_->gen_cv_qualifiers(cfg_.const_prob, cfg_.volatile_prob);
+
+  return PointerType(QualifiedType(ScalarType::Void, cv_qualifiers));
+}
+
+std::optional<Type> ExprGenerator::gen_tagged_type(
+    const TypeConstraints& constraints) {
+  if (!constraints.allows_tagged_types()) {
+    return {};
+  }
+
+  const auto* tagged_types = constraints.allowed_tagged_types();
+  if (tagged_types == nullptr) {
+    return TaggedType("TestStruct");
+  }
+
+  auto it = tagged_types->begin();
+  if (it != tagged_types->end()) {
+    return *it;
+  }
+
+  return {};
+}
+
+std::optional<Type> ExprGenerator::gen_scalar_type(
+    const TypeConstraints& constraints) {
+  ScalarMask mask = constraints.allowed_scalar_types();
+  if (mask.none()) {
+    return {};
+  }
+
+  return rng_->gen_scalar_type(mask);
+}
 
 CvQualifiers ExprGenerator::gen_cv_qualifiers() {
   return rng_->gen_cv_qualifiers(cfg_.const_prob, cfg_.volatile_prob);
 }
 
-Expr ExprGenerator::generate() {
+std::optional<Expr> ExprGenerator::generate() {
   Weights weights;
 
   auto& expr_weights = weights.expr_weights();
@@ -261,11 +807,12 @@ Expr ExprGenerator::generate() {
     type_weights[i] = cfg_.type_kind_weights[i].initial_weight;
   }
 
-  return gen_with_weights(weights);
+  return gen_with_weights(weights,
+                          TypeConstraints(SpecificTypes::all_in_bool_ctx()));
 }
 
-template <size_t N, typename Rng>
-size_t pick_nth_set_bit(std::bitset<N> mask, Rng& rng) {
+template <typename Enum, typename Rng>
+Enum pick_nth_set_bit(const EnumBitset<Enum> mask, Rng& rng) {
   // At least one bit needs to be set
   assert(mask.any() && "Mask must not be empty");
 
@@ -279,27 +826,27 @@ size_t pick_nth_set_bit(std::bitset<N> mask, Rng& rng) {
     }
 
     if (running_ones == choice) {
-      return i;
+      return (Enum)i;
     }
   }
 
   // `choice` lies in the range `[1, mask.count()]`, `running_ones` will
-  // always lie in the range `[0, mask.count()]` and is incremented at most once
-  // per loop iteration.
-  // The only way for this assertion to fire is for `mask` to be empty (which
-  // we have asserted beforehand).
+  // always lie in the range `[0, mask.count()]` and is incremented at most
+  // once per loop iteration. The only way for this assertion to fire is for
+  // `mask` to be empty (which we have asserted beforehand).
   lldb_eval_unreachable("Mask has no bits set");
 }
 
-template <size_t N, typename Rng, typename RealType>
-size_t weighted_pick(const std::array<RealType, N>& array, Rng& rng) {
-  static_assert(N != 0, "Array must have at least 1 element");
+template <typename Enum, typename Rng, typename RealType>
+Enum weighted_pick(
+    const std::array<RealType, (size_t)Enum::EnumLast + 1>& array,
+    const EnumBitset<Enum>& mask, Rng& rng) {
   static_assert(std::is_floating_point_v<RealType>,
                 "Must be a floating point type");
 
   RealType sum = 0;
-  for (const auto& e : array) {
-    sum += e;
+  for (size_t i = 0; i < array.size(); i++) {
+    sum += mask[i] ? array[i] : 0;
   }
 
   std::uniform_real_distribution<RealType> distr(0, sum);
@@ -307,22 +854,21 @@ size_t weighted_pick(const std::array<RealType, N>& array, Rng& rng) {
 
   RealType running_sum = 0;
   for (size_t i = 0; i < array.size(); i++) {
-    running_sum += array[i];
+    running_sum += mask[i] ? array[i] : 0;
     if (choice < running_sum) {
-      return i;
+      return (Enum)i;
     }
   }
 
-  // Just in case we get here due to e.g. floating point inaccuracies, etc.
-  return array.size() - 1;
+  lldb_eval_unreachable("Could not pick an element; maybe sum is 0?");
 }
 
 BinOp DefaultGeneratorRng::gen_bin_op(BinOpMask mask) {
-  return (BinOp)pick_nth_set_bit(mask, rng_);
+  return pick_nth_set_bit(mask, rng_);
 }
 
 UnOp DefaultGeneratorRng::gen_un_op(UnOpMask mask) {
-  return (UnOp)pick_nth_set_bit(mask, rng_);
+  return pick_nth_set_bit(mask, rng_);
 }
 
 IntegerConstant DefaultGeneratorRng::gen_integer_constant(uint64_t min,
@@ -373,15 +919,26 @@ CvQualifiers DefaultGeneratorRng::gen_cv_qualifiers(float const_prob,
   std::bernoulli_distribution const_distr(const_prob);
   std::bernoulli_distribution volatile_distr(volatile_prob);
 
-  CvQualifiers retval = 0;
-  if (const_distr(rng_)) {
-    retval.set((size_t)CvQualifier::Const);
-  }
-  if (volatile_distr(rng_)) {
-    retval.set((size_t)CvQualifier::Volatile);
-  }
+  CvQualifiers retval;
+  retval[CvQualifier::Const] = const_distr(rng_);
+  retval[CvQualifier::Volatile] = volatile_distr(rng_);
 
   return retval;
+}
+
+bool DefaultGeneratorRng::gen_binop_ptr_expr(float probability) {
+  std::bernoulli_distribution distr(probability);
+  return distr(rng_);
+}
+
+bool DefaultGeneratorRng::gen_binop_flip_operands(float probability) {
+  std::bernoulli_distribution distr(probability);
+  return distr(rng_);
+}
+
+bool DefaultGeneratorRng::gen_binop_ptrdiff_expr(float probability) {
+  std::bernoulli_distribution distr(probability);
+  return distr(rng_);
 }
 
 bool DefaultGeneratorRng::gen_parenthesize(float probability) {
@@ -394,18 +951,18 @@ bool DefaultGeneratorRng::gen_boolean() {
   return distr(rng_);
 }
 
-ExprKind DefaultGeneratorRng::gen_expr_kind(const Weights& weights) {
-  return (ExprKind)weighted_pick(weights.expr_weights(), rng_);
+ExprKind DefaultGeneratorRng::gen_expr_kind(const Weights& weights,
+                                            const ExprKindMask& mask) {
+  return weighted_pick(weights.expr_weights(), mask, rng_);
 }
 
-TypeKind DefaultGeneratorRng::gen_type_kind(const Weights& weights) {
-  return (TypeKind)weighted_pick(weights.type_weights(), rng_);
+TypeKind DefaultGeneratorRng::gen_type_kind(const Weights& weights,
+                                            const TypeKindMask& mask) {
+  return weighted_pick(weights.type_weights(), mask, rng_);
 }
 
-ScalarType DefaultGeneratorRng::gen_scalar_type() {
-  std::uniform_int_distribution<int> distr((int)ScalarType::EnumMin,
-                                           (int)ScalarType::EnumMax);
-  return (ScalarType)distr(rng_);
+ScalarType DefaultGeneratorRng::gen_scalar_type(ScalarMask mask) {
+  return pick_nth_set_bit(mask, rng_);
 }
 
 }  // namespace fuzzer
