@@ -282,16 +282,48 @@ int i = 2;
 
 }  // namespace ns
 
-class Foo {
- public:
-  static const int x = 42;
-  static const int y;
-};
-
-const int Foo::y = 42;
-
 static void TestQualifiedId() {
   // BREAK(TestQualifiedId)
+}
+
+namespace outer {
+
+namespace inner {
+
+class Vars {
+ public:
+  inline static double inline_static = 1.5;
+  static constexpr int static_constexpr = 2;
+  static const unsigned int static_const;
+};
+
+const unsigned int Vars::static_const = 3;
+
+}  // namespace inner
+
+class Vars {
+ public:
+  inline static double inline_static = 4.5;
+  static constexpr int static_constexpr = 5;
+  static const unsigned int static_const;
+};
+
+const unsigned int Vars::static_const = 6;
+
+}  // namespace outer
+
+class Vars {
+ public:
+  inline static double inline_static = 7.5;
+  static constexpr int static_constexpr = 8;
+  static const unsigned int static_const;
+};
+
+const unsigned int Vars::static_const = 9;
+
+static void TestStaticConst() {
+  // BREAK(TestStaticConstDeclaredInline)
+  // BREAK(TestStaticConstDeclaredOutsideTheClass)
 }
 
 // Referenced by TestTemplateTypes.
@@ -460,6 +492,7 @@ void main() {
   TestCStyleCast();
   TestCStyleCastToReference();
   TestQualifiedId();
+  TestStaticConst();
   TestTemplateTypes();
   TestValueScope();
   TestBitField();
