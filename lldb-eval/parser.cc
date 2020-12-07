@@ -21,6 +21,7 @@
 #include <sstream>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/LangOptions.h"
@@ -42,11 +43,20 @@
 #include "lldb/API/SBValue.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatAdapters.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Host.h"
 
 namespace {
+
+void StringReplace(std::string& str, const std::string& old_value,
+                   const std::string& new_value) {
+  size_t pos = str.find(old_value);
+  if (pos != std::string::npos) {
+    str.replace(pos, old_value.length(), new_value);
+  }
+}
 
 template <typename T>
 constexpr unsigned type_width() {
@@ -154,6 +164,37 @@ lldb::BasicType PickIntegerType(const clang::NumericLiteralParser& literal,
 }  // namespace
 
 namespace lldb_eval {
+
+std::string TypeDeclaration::GetName() const {
+  // Full name is a combination of a base name and pointer operators.
+  std::string name = GetBaseName();
+
+  // In LLDB pointer operators are separated with a single whitespace.
+  if (ptr_operators_.size() > 0) {
+    name.append(" ");
+  }
+  for (auto tok : ptr_operators_) {
+    if (tok == clang::tok::star) {
+      name.append("*");
+    } else if (tok == clang::tok::amp) {
+      name.append("&");
+    }
+  }
+  return name;
+}
+
+std::string TypeDeclaration::GetBaseName() const {
+  // TODO(werat): Implement more robust textual type representation.
+  std::string base_name = llvm::formatv(
+      "{0:$[ ]}", llvm::make_range(typenames_.begin(), typenames_.end()));
+
+  // TODO(werat): Handle these type aliases and detect invalid type combinations
+  // (e.g. "long char") during the TypeDeclaration construction.
+  StringReplace(base_name, "short int", "short");
+  StringReplace(base_name, "long int", "long");
+
+  return base_name;
+}
 
 Parser::Parser(std::shared_ptr<Context> ctx) : ctx_(std::move(ctx)) {
   target_ = ctx_->GetExecutionContext().GetTarget();
@@ -504,16 +545,27 @@ ExprResult Parser::ParseCastExpression() {
     // then we should rollback and try parsing the expression.
     TypeDeclaration type_decl = ParseTypeId();
 
-    if (type_decl.IsValid() && ResolveTypeFromTypeDecl(type_decl)) {
+    // Try resolving base type of the type declaration.
+    // TODO(werat): Resolve the type and the declarators during parsing to save
+    // time and produce more accurate diagnostics.
+    lldb::SBType type = ResolveTypeFromTypeDecl(type_decl);
+
+    if (type) {
       // Successfully parsed the type declaration. Commit the backtracked
       // tokens and parse the cast_expression.
       tentative_parsing.Commit();
+
+      // Apply type declarators (i.e. pointer/reference qualifiers).
+      type = ResolveTypeDeclarators(type, type_decl);
+      if (!type) {
+        return std::make_unique<ErrorNode>();
+      }
 
       Expect(clang::tok::r_paren);
       ConsumeToken();
       auto rhs = ParseCastExpression();
 
-      return std::make_unique<CStyleCastNode>(type_decl, std::move(rhs));
+      return std::make_unique<CStyleCastNode>(type, std::move(rhs));
 
     } else {
       // Failed to parse the contents of the parentheses as a type declaration.
@@ -673,7 +725,6 @@ ExprResult Parser::ParsePrimaryExpression() {
 //
 TypeDeclaration Parser::ParseTypeId() {
   TypeDeclaration type_decl;
-  type_decl.is_builtin_ = true;
 
   // type_specifier_seq is required here, start with trying to parse it.
   ParseTypeSpecifierSeq(&type_decl);
@@ -766,9 +817,6 @@ bool Parser::ParseTypeSpecifier(TypeDeclaration* type_decl) {
       auto type_specifier = llvm::formatv("{0}{1}{2}", global_scope ? "::" : "",
                                           nested_name_specifier, type_name);
 
-      // This is a user-defined type now. Typedefs from standard library (e.g.
-      // "uint64_t") are also considered user-defined.
-      type_decl->is_builtin_ = false;
       type_decl->typenames_.push_back(type_specifier);
       return true;
     }
@@ -1025,19 +1073,45 @@ void Parser::ParsePtrOperator(TypeDeclaration* type_decl) {
   }
 }
 
-bool Parser::ResolveTypeFromTypeDecl(const TypeDeclaration& type_decl) {
-  // TODO(werat): This is an over-broad simplification, because TypeDeclaration
-  // doesn't have any type validation at the moment. Types like "char char" are
-  // considered valid and built-in, yet they don't resolve to anything. For the
-  // sake of parsing it's OK, it will be handled at the evaluation step.
-  if (type_decl.is_builtin_) {
-    return true;
+lldb::SBType Parser::ResolveTypeFromTypeDecl(const TypeDeclaration& type_decl) {
+  if (!type_decl.IsValid()) {
+    return lldb::SBType();
   }
 
   // Resolve the type in the current expression context.
-  lldb::SBType type = ctx_->ResolveTypeByName(type_decl.GetBaseName().c_str());
+  return ctx_->ResolveTypeByName(type_decl.GetBaseName().c_str());
+}
 
-  return type.IsValid();
+lldb::SBType Parser::ResolveTypeDeclarators(lldb::SBType type,
+                                            const TypeDeclaration& type_decl) {
+  // Resolve pointers/references.
+  for (clang::tok::TokenKind tk : type_decl.ptr_operators_) {
+    if (tk == clang::tok::star) {
+      // Pointers to reference types are forbidden.
+      if (type.IsReferenceType()) {
+        std::string msg = llvm::formatv(
+            "'type name' declared as a pointer to a reference of type '{0}'",
+            type.GetName());
+        BailOut(ErrorCode::kInvalidOperandType, msg, token_.getLocation());
+        return lldb::SBType();
+      }
+      // Get pointer type for the base type: e.g. int* -> int**.
+      type = type.GetPointerType();
+
+    } else if (tk == clang::tok::amp) {
+      // References to references are forbidden.
+      if (type.IsReferenceType()) {
+        BailOut(ErrorCode::kInvalidOperandType,
+                "type name declared as a reference to a reference",
+                token_.getLocation());
+        return lldb::SBType();
+      }
+      // Get reference type for the base type: e.g. int -> int&.
+      type = type.GetReferenceType();
+    }
+  }
+
+  return type;
 }
 
 bool Parser::IsSimpleTypeSpecifierKeyword(clang::Token token) const {

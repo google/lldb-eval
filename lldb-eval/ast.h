@@ -19,35 +19,12 @@
 
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "clang/Basic/TokenKinds.h"
 #include "lldb-eval/value.h"
+#include "lldb/API/SBType.h"
 
 namespace lldb_eval {
-
-// TypeDeclaration holds information about the literal type definition. It
-// doesn't perform semantic analysis of the type -- e.g. "long long long" and
-// "char&&&" are valid type declarations.
-// NOTE: CV qualifiers are ignored.
-class TypeDeclaration {
- public:
-  // Type declaration is considered valid if it contains at least one typename.
-  bool IsValid() const { return typenames_.size() > 0; }
-
-  std::string GetName() const;
-  std::string GetBaseName() const;
-
- public:
-  // True if the type is builtin, false if it's user-defined.
-  bool is_builtin_;
-
-  // List of base typenames, e.g. ["long", "long"] or ["uint64_t"].
-  std::vector<std::string> typenames_;
-
-  // Pointer and reference operators (* and &).
-  std::vector<clang::tok::TokenKind> ptr_operators_;
-};
 
 class Visitor;
 
@@ -95,16 +72,16 @@ class IdentifierNode : public AstNode {
 
 class CStyleCastNode : public AstNode {
  public:
-  CStyleCastNode(TypeDeclaration type_decl, ExprResult rhs)
-      : type_decl_(std::move(type_decl)), rhs_(std::move(rhs)) {}
+  CStyleCastNode(lldb::SBType type, ExprResult rhs)
+      : type_(std::move(type)), rhs_(std::move(rhs)) {}
 
   void Accept(Visitor* v) const override;
 
-  TypeDeclaration type_decl() const { return type_decl_; }
+  lldb::SBType type() const { return type_; }
   AstNode* rhs() const { return rhs_.get(); }
 
  private:
-  TypeDeclaration type_decl_;
+  lldb::SBType type_;
   ExprResult rhs_;
 };
 

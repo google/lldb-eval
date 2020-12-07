@@ -70,26 +70,6 @@ TEST_F(ParserTest, TestUnbalancedParentheses) {
   TestExprErr("1 + (2 - 3", msg);
 }
 
-TEST_F(ParserTest, TestCStyleCast) {
-  TestExpr("(int)1");
-  TestExpr("(long long)1");
-  TestExpr("(unsigned long)1");
-  TestExpr("(long const const)1");
-  TestExpr("(long const long)1");
-
-  TestExpr("(char*)1");
-  TestExpr("(long long**)1");
-  TestExpr("(long*&)1");
-  TestExpr("(long&*)1");
-  TestExpr("(const long const long const* const const)1");
-
-  auto msg =
-      "<expr>:1:7: expected 'r_paren', got: <'1' (numeric_constant)>\n"
-      "(long 1)1\n"
-      "      ^";
-  TestExprErr("(long 1)1", msg);
-}
-
 TEST_F(ParserTest, TestDiagnostics) {
   auto expr_1 =
       ")1 + 2 +\n"

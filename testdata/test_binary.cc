@@ -251,6 +251,7 @@ static void TestCStyleCast() {
   ns::inner::Foo ns_inner_foo_;
   ns::inner::Foo* ns_inner_foo_ptr_ = &ns_inner_foo_;
 
+  // BREAK(TestCStyleCastBuiltins)
   // BREAK(TestCStyleCastBasicType)
   // BREAK(TestCStyleCastPointer)
 }
