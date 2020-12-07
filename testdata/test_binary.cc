@@ -365,6 +365,19 @@ struct T_1 {
   T x;
 };
 
+template <typename T, typename U>
+struct is_same {
+  static constexpr bool value = false;
+};
+
+template <typename T>
+struct is_same<T, T> {
+  static constexpr bool value = true;
+};
+
+template struct is_same<bool, int>;
+template struct is_same<char, char>;
+
 template <typename T>
 const int T_1<T>::cx = 46;
 

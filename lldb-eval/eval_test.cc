@@ -1001,6 +1001,12 @@ TEST_F(EvalTest, TestTemplateTypes) {
               IsEqual("1.10000002"));
   EXPECT_THAT(Eval("(::T_2<T_1<T_1<int> >, T_1<char> >::myint)1.1"),
               IsEqual("1.10000002"));
+
+  EXPECT_THAT(Eval("ns::is_same<bool, int>::value"), IsEqual("false"));
+  EXPECT_THAT(Eval("::ns::is_same<bool, int>::value"), IsEqual("false"));
+
+  EXPECT_THAT(Eval("ns::is_same<char, char>::value"), IsEqual("true"));
+  EXPECT_THAT(Eval("::ns::is_same<char, char>::value"), IsEqual("true"));
 }
 
 TEST_F(EvalTest, TestValueScope) {

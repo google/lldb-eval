@@ -101,6 +101,19 @@ class NonEmptyDerived : public NonEmptyBase, public EmptyBase {
   int f1 = 10;
 };
 
+template <typename T, typename U>
+struct is_same {
+  static constexpr bool value = false;
+};
+
+template <typename T>
+struct is_same<T, T> {
+  static constexpr bool value = true;
+};
+
+template struct is_same<bool, int>;
+template struct is_same<char, char>;
+
 int main() {
   auto char_min = std::numeric_limits<char>::min();
   auto char_max = std::numeric_limits<char>::max();
