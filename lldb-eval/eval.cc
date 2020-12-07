@@ -131,49 +131,8 @@ void Interpreter::Visit(const IdentifierNode* node) {
 }
 
 void Interpreter::Visit(const CStyleCastNode* node) {
-  // TODO(werat): CStyleCastNode should already contain a resolved type.
-
-  // Resolve the type from the type declaration.
-  TypeDeclaration type_decl = node->type_decl();
-
-  // Resolve the type within the current expression context.
-  lldb::SBType type = ctx_->ResolveTypeByName(type_decl.GetBaseName().c_str());
-
-  if (!type.IsValid()) {
-    // TODO(werat): Make sure we don't have false negative errors here.
-    std::string msg =
-        "use of undeclared identifier '" + type_decl.GetBaseName() + "'";
-    error_.Set(ErrorCode::kUndeclaredIdentifier, msg);
-    return;
-  }
-
-  // Resolve pointers/references.
-  for (clang::tok::TokenKind tk : type_decl.ptr_operators_) {
-    if (tk == clang::tok::star) {
-      // Pointers to reference types are forbidden.
-      if (type.IsReferenceType()) {
-        std::string msg = llvm::formatv(
-            "'type name' declared as a pointer to a reference of type '{0}'",
-            type.GetName());
-        error_.Set(ErrorCode::kInvalidOperandType, msg);
-        return;
-      }
-      // Get pointer type for the base type: e.g. int* -> int**.
-      type = type.GetPointerType();
-
-    } else if (tk == clang::tok::amp) {
-      // References to references are forbidden.
-      if (type.IsReferenceType()) {
-        std::string msg = "type name declared as a reference to a reference";
-        error_.Set(ErrorCode::kInvalidOperandType, msg);
-        return;
-      }
-      // Get reference type for the base type: e.g. int -> int&.
-      type = type.GetReferenceType();
-    }
-  }
-
-  // At this point we need to know the type of the value we're going to cast.
+  // Get the type and the value we need to cast.
+  lldb::SBType type = node->type();
   auto rhs = EvalNode(node->rhs());
   if (!rhs) {
     return;
