@@ -181,8 +181,9 @@ int main() {
   int** q = &p;
   int& ref = x;
   int* const* const& refp = &p;
+  const void* void_ptr = p;
 
-  (void)x, (void)p, (void)q, (void)ref, (void)refp;
+  (void)x, (void)p, (void)q, (void)ref, (void)refp, (void)void_ptr;
 
   int array2d[3][3] = {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}};
   (void)array2d;

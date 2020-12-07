@@ -22,6 +22,7 @@
 #include <ios>
 #include <memory>
 #include <sstream>
+#include <type_traits>
 #include <utility>
 #include <variant>
 
@@ -80,12 +81,15 @@ static const char* SCALAR_TYPES_STRINGS[NUM_SCALAR_TYPES] = {
     "unsigned long",       // ScalarType::UnsignedLong
     "long long",           // ScalarType::SignedLongLong
     "unsigned long long",  // ScalarType::UnsignedLongLong
+    "float",               // ScalarType::Float
+    "double",              // ScalarType::Double
+    "long double",         // ScalarType::LongDouble
 };
 
 std::ostream& operator<<(std::ostream& os, CvQualifiers qualifiers) {
   const char* to_print;
-  bool is_const = qualifiers[(size_t)CvQualifier::Const];
-  bool is_volatile = qualifiers[(size_t)CvQualifier::Volatile];
+  bool is_const = qualifiers[CvQualifier::Const];
+  bool is_volatile = qualifiers[CvQualifier::Volatile];
   if (is_const && is_volatile) {
     to_print = "const volatile";
   } else if (is_const) {
@@ -108,24 +112,36 @@ const std::string& TaggedType::name() const { return name_; }
 std::ostream& operator<<(std::ostream& os, const TaggedType& type) {
   return os << type.name();
 }
+bool TaggedType::operator==(const TaggedType& rhs) const {
+  return name_ == rhs.name_;
+}
+bool TaggedType::operator!=(const TaggedType& rhs) const {
+  return name_ != rhs.name_;
+}
 
 PointerType::PointerType(QualifiedType type) : type_(std::move(type)) {}
 const QualifiedType& PointerType::type() const { return type_; }
 std::ostream& operator<<(std::ostream& os, const PointerType& type) {
   return os << type.type() << "*";
 }
-
-ReferenceType::ReferenceType(QualifiedType type) : type_(std::move(type)) {}
-const QualifiedType& ReferenceType::type() const { return type_; }
-std::ostream& operator<<(std::ostream& os, const ReferenceType& type) {
-  return os << type.type() << "&";
+bool PointerType::operator==(const PointerType& rhs) const {
+  return type_ == rhs.type_;
+}
+bool PointerType::operator!=(const PointerType& rhs) const {
+  return type_ != rhs.type_;
 }
 
-QualifiedType::QualifiedType(QualifiableType type, CvQualifiers cv_qualifiers)
-    : type_(std::make_unique<QualifiableType>(std::move(type))),
+QualifiedType::QualifiedType(Type type, CvQualifiers cv_qualifiers)
+    : type_(std::make_shared<Type>(std::move(type))),
       cv_qualifiers_(cv_qualifiers) {}
-const QualifiableType& QualifiedType::type() const { return *type_; }
+const Type& QualifiedType::type() const { return *type_; }
 CvQualifiers QualifiedType::cv_qualifiers() const { return cv_qualifiers_; }
+bool QualifiedType::operator==(const QualifiedType& rhs) const {
+  return cv_qualifiers_ == rhs.cv_qualifiers_ && type_ == rhs.type_;
+}
+bool QualifiedType::operator!=(const QualifiedType& rhs) const {
+  return cv_qualifiers_ != rhs.cv_qualifiers_ || type_ != rhs.type_;
+}
 
 std::ostream& operator<<(std::ostream& os, const QualifiedType& type) {
   const auto& inner_type = type.type();
@@ -143,19 +159,14 @@ std::ostream& operator<<(std::ostream& os, const QualifiedType& type) {
   return os;
 }
 
-std::ostream& operator<<(std::ostream& os, const QualifiableType& type) {
-  std::visit([&os](const auto& type) { os << type; }, type);
-  return os;
-}
-
 std::ostream& operator<<(std::ostream& os, const Type& type) {
   std::visit([&os](const auto& type) { os << type; }, type);
   return os;
 }
 
 BinaryExpr::BinaryExpr(Expr lhs, BinOp op, Expr rhs)
-    : lhs_(std::make_unique<Expr>(std::move(lhs))),
-      rhs_(std::make_unique<Expr>(std::move(rhs))),
+    : lhs_(std::make_shared<Expr>(std::move(lhs))),
+      rhs_(std::make_shared<Expr>(std::move(rhs))),
       op_(op) {}
 const Expr& BinaryExpr::lhs() const { return *lhs_; }
 const Expr& BinaryExpr::rhs() const { return *rhs_; }
@@ -175,7 +186,7 @@ std::ostream& operator<<(std::ostream& os, const VariableExpr& e) {
 }
 
 UnaryExpr::UnaryExpr(UnOp op, Expr expr)
-    : expr_(std::make_unique<Expr>(std::move(expr))), op_(op) {}
+    : expr_(std::make_shared<Expr>(std::move(expr))), op_(op) {}
 UnOp UnaryExpr::op() const { return op_; }
 const Expr& UnaryExpr::expr() const { return *expr_; }
 std::ostream& operator<<(std::ostream& os, const UnaryExpr& e) {
@@ -285,14 +296,14 @@ std::ostream& operator<<(std::ostream& os, const DoubleConstant& e) {
 }
 
 ParenthesizedExpr::ParenthesizedExpr(Expr expr)
-    : expr_(std::make_unique<Expr>(std::move(expr))) {}
+    : expr_(std::make_shared<Expr>(std::move(expr))) {}
 const Expr& ParenthesizedExpr::expr() const { return *expr_; }
 std::ostream& operator<<(std::ostream& os, const ParenthesizedExpr& e) {
   return os << "(" << e.expr() << ")";
 }
 
 AddressOf::AddressOf(Expr expr)
-    : expr_(std::make_unique<Expr>(std::move(expr))) {}
+    : expr_(std::make_shared<Expr>(std::move(expr))) {}
 const Expr& AddressOf::expr() const { return *expr_; }
 std::ostream& operator<<(std::ostream& os, const AddressOf& e) {
   os << "&";
@@ -304,7 +315,7 @@ std::ostream& operator<<(std::ostream& os, const AddressOf& e) {
 }
 
 MemberOf::MemberOf(Expr expr, std::string field)
-    : expr_(std::make_unique<Expr>(std::move(expr))),
+    : expr_(std::make_shared<Expr>(std::move(expr))),
       field_(std::move(field)) {}
 const Expr& MemberOf::expr() const { return *expr_; }
 const std::string& MemberOf::field() const { return field_; }
@@ -313,7 +324,7 @@ std::ostream& operator<<(std::ostream& os, const MemberOf& e) {
 }
 
 MemberOfPtr::MemberOfPtr(Expr expr, std::string field)
-    : expr_(std::make_unique<Expr>(std::move(expr))),
+    : expr_(std::make_shared<Expr>(std::move(expr))),
       field_(std::move(field)) {}
 const Expr& MemberOfPtr::expr() const { return *expr_; }
 const std::string& MemberOfPtr::field() const { return field_; }
@@ -322,8 +333,8 @@ std::ostream& operator<<(std::ostream& os, const MemberOfPtr& e) {
 }
 
 ArrayIndex::ArrayIndex(Expr expr, Expr idx)
-    : expr_(std::make_unique<Expr>(std::move(expr))),
-      idx_(std::make_unique<Expr>(std::move(idx))) {}
+    : expr_(std::make_shared<Expr>(std::move(expr))),
+      idx_(std::make_shared<Expr>(std::move(idx))) {}
 const Expr& ArrayIndex::expr() const { return *expr_; }
 const Expr& ArrayIndex::idx() const { return *idx_; }
 std::ostream& operator<<(std::ostream& os, const ArrayIndex& e) {
@@ -331,9 +342,9 @@ std::ostream& operator<<(std::ostream& os, const ArrayIndex& e) {
 }
 
 TernaryExpr::TernaryExpr(Expr cond, Expr lhs, Expr rhs)
-    : cond_(std::make_unique<Expr>(std::move(cond))),
-      lhs_(std::make_unique<Expr>(std::move(lhs))),
-      rhs_(std::make_unique<Expr>(std::move(rhs))) {}
+    : cond_(std::make_shared<Expr>(std::move(cond))),
+      lhs_(std::make_shared<Expr>(std::move(lhs))),
+      rhs_(std::make_shared<Expr>(std::move(rhs))) {}
 const Expr& TernaryExpr::cond() const { return *cond_; }
 const Expr& TernaryExpr::lhs() const { return *lhs_; }
 const Expr& TernaryExpr::rhs() const { return *rhs_; }
@@ -342,12 +353,19 @@ std::ostream& operator<<(std::ostream& os, const TernaryExpr& e) {
 }
 
 CastExpr::CastExpr(Type type, Expr expr)
-    : type_(std::move(type)), expr_(std::make_unique<Expr>(std::move(expr))) {}
+    : type_(std::move(type)), expr_(std::make_shared<Expr>(std::move(expr))) {}
 
 const Type& CastExpr::type() const { return type_; }
 const Expr& CastExpr::expr() const { return *expr_; }
 std::ostream& operator<<(std::ostream& os, const CastExpr& e) {
   return os << "(" << e.type() << ") " << e.expr();
+}
+
+DereferenceExpr::DereferenceExpr(Expr expr)
+    : expr_(std::make_shared<Expr>(std::move(expr))) {}
+const Expr& DereferenceExpr::expr() const { return *expr_; }
+std::ostream& operator<<(std::ostream& os, const DereferenceExpr& expr) {
+  return os << "*" << expr.expr();
 }
 
 std::ostream& operator<<(std::ostream& os, const BooleanConstant& expr) {
@@ -470,6 +488,12 @@ class ExprDumper {
     indented_visit(e.expr());
   }
 
+  void operator()(const DereferenceExpr& e) {
+    emit_marked_indentation();
+    printf("Dereference:\n");
+    indented_visit(e.expr());
+  }
+
   void operator()(const BooleanConstant& e) {
     emit_marked_indentation();
 
@@ -498,3 +522,54 @@ void dump_expr(const Expr& expr) { std::visit(ExprDumper(), expr); }
 int bin_op_precedence(BinOp op) { return BIN_OP_TABLE[(size_t)op].precedence; }
 
 }  // namespace fuzzer
+
+static inline size_t hash_combine_impl(size_t acc) { return acc; }
+
+template <typename T, typename... Rest>
+static inline size_t hash_combine_impl(size_t acc, T&& v, Rest&&... rest) {
+  // std::hash has specializations for e.g. `std::string`, but not for `const
+  // std::string&`, so remove any cv-qualified reference from type `T`.
+  using Type = std::remove_cv_t<std::remove_reference_t<T>>;
+  std::hash<Type> hasher;
+  // Disclaimer: Hash combining algorithm is taken from `boost::hash_combine`,
+  // no idea how it fares in practice.
+  acc ^= hasher(std::forward<T>(v)) + 0x9e3779b9u + (acc << 6) + (acc >> 2);
+  return hash_combine_impl(acc, std::forward<Rest>(rest)...);
+}
+
+/*
+ * Combines multiple hash values together. This is equivalent to
+ * `boost::hash_combine`, albeit with support for perfect forwarding (so that
+ * invocation of `hash_combine` can be conveniently a one-liner).
+ */
+template <typename... Args>
+static inline size_t hash_combine(Args&&... args) {
+  return hash_combine_impl(0, std::forward<Args>(args)...);
+}
+
+enum class HashingTypeKind {
+  PointerType,
+  QualifiedType,
+  TaggedType,
+};
+
+namespace std {
+
+using fuzzer::PointerType;
+using fuzzer::QualifiedType;
+using fuzzer::TaggedType;
+
+size_t hash<PointerType>::operator()(const PointerType& type) const {
+  return hash_combine(HashingTypeKind::PointerType, type.type());
+}
+
+size_t hash<QualifiedType>::operator()(const QualifiedType& type) const {
+  return hash_combine(HashingTypeKind::QualifiedType, type.cv_qualifiers(),
+                      type.type());
+}
+
+size_t hash<TaggedType>::operator()(const TaggedType& type) const {
+  return hash_combine(HashingTypeKind::TaggedType, type.name());
+}
+
+}  // namespace std

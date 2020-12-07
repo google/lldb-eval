@@ -18,11 +18,13 @@
 #define INCLUDE_EXPR_GEN_H
 
 #include <array>
-#include <bitset>
 #include <cstdint>
+#include <optional>
 #include <random>
+#include <unordered_map>
 
 #include "tools/fuzzer/ast.h"
+#include "tools/fuzzer/enum_bitset.h"
 
 namespace fuzzer {
 
@@ -39,45 +41,28 @@ enum class ExprKind : unsigned char {
   ArrayIndex,
   TernaryExpr,
   BooleanConstant,
+  DereferenceExpr,
   CastExpr,
   EnumLast = CastExpr,
 };
-constexpr size_t NUM_GEN_EXPR_KINDS = (size_t)ExprKind::EnumLast + 1;
+inline constexpr size_t NUM_GEN_EXPR_KINDS = (size_t)ExprKind::EnumLast + 1;
 
 enum class TypeKind : unsigned char {
-  ScalarType,
+  EnumFirst,
+  ScalarType = EnumFirst,
   TaggedType,
   PointerType,
-  ReferenceType,
-  EnumLast = ReferenceType,
+  VoidPointerType,
+  EnumLast = VoidPointerType,
 };
-constexpr size_t NUM_GEN_TYPE_KINDS = (size_t)TypeKind::EnumLast + 1;
+inline constexpr size_t NUM_GEN_TYPE_KINDS = (size_t)TypeKind::EnumLast + 1;
 
-class Weights {
- public:
-  using ExprWeightsArray = std::array<float, NUM_GEN_EXPR_KINDS>;
-  using TypeWeightsArray = std::array<float, NUM_GEN_TYPE_KINDS>;
+using ExprKindMask = EnumBitset<ExprKind>;
+using TypeKindMask = EnumBitset<TypeKind>;
 
-  ExprWeightsArray& expr_weights() { return expr_weights_; }
-  const ExprWeightsArray& expr_weights() const { return expr_weights_; }
-
-  TypeWeightsArray& type_weights() { return type_weights_; }
-  const TypeWeightsArray& type_weights() const { return type_weights_; }
-
-  float& operator[](ExprKind kind) { return expr_weights_[(size_t)kind]; }
-  float& operator[](TypeKind kind) { return type_weights_[(size_t)kind]; }
-
-  const float& operator[](ExprKind kind) const {
-    return expr_weights_[(size_t)kind];
-  }
-  const float& operator[](TypeKind kind) const {
-    return type_weights_[(size_t)kind];
-  }
-
- private:
-  std::array<float, NUM_GEN_EXPR_KINDS> expr_weights_;
-  std::array<float, NUM_GEN_TYPE_KINDS> type_weights_;
-};
+class Weights;
+class ExprConstraints;
+class TypeConstraints;
 
 struct ExprKindWeightInfo {
   float initial_weight;
@@ -89,11 +74,11 @@ struct TypeKindWeightInfo {
   float dampening_factor;
 };
 
-using BinOpMask = std::bitset<NUM_BIN_OPS>;
-using UnOpMask = std::bitset<NUM_UN_OPS>;
+using BinOpMask = EnumBitset<BinOp>;
+using UnOpMask = EnumBitset<UnOp>;
 
 struct GenConfig {
-  int num_exprs_to_generate = 20;
+  int num_exprs_to_generate = 8;
 
   uint64_t int_const_min = 0;
   uint64_t int_const_max = 1000;
@@ -103,24 +88,31 @@ struct GenConfig {
 
   float parenthesize_prob = 0.2f;
 
+  float binop_gen_ptr_expr_prob = 0.2f;
+  float binop_gen_ptrdiff_expr_prob = 0.1f;
+  float binop_flip_operands_prob = 0.1f;
+
   float const_prob = 0.3f;
   float volatile_prob = 0.05f;
 
-  BinOpMask bin_op_mask = ~0ull;
-  UnOpMask un_op_mask = ~0ull;
+  BinOpMask bin_op_mask = BinOpMask::all_set();
+  UnOpMask un_op_mask = UnOpMask::all_set();
 
-  std::array<ExprKindWeightInfo, NUM_EXPR_KINDS> expr_kind_weights = {{
+  ExprKindMask expr_kind_mask = ExprKindMask::all_set();
+
+  std::array<ExprKindWeightInfo, NUM_GEN_EXPR_KINDS> expr_kind_weights = {{
       {1.0f, 0.0f},  // ExprKind::IntegerConstant
       {2.0f, 0.0f},  // ExprKind::DoubleConstant
       {1.0f, 0.0f},  // ExprKind::VariableExpr
       {7.0f, 0.4f},  // ExprKind::UnaryExpr
       {3.0f, 0.4f},  // ExprKind::BinaryExpr
-      {0.0f, 0.0f},  // ExprKind::AddressOf
-      {0.0f, 0.0f},  // ExprKind::MemberOf
-      {0.0f, 0.0f},  // ExprKind::MemberOfPtr
-      {0.0f, 0.0f},  // ExprKind::ArrayIndex
-      {2.0f, 0.0f},  // ExprKind::TernaryExpr
+      {1.0f, 0.1f},  // ExprKind::AddressOf
+      {1.0f, 0.1f},  // ExprKind::MemberOf
+      {1.0f, 0.1f},  // ExprKind::MemberOfPtr
+      {1.0f, 0.1f},  // ExprKind::ArrayIndex
+      {1.0f, 0.1f},  // ExprKind::TernaryExpr
       {1.0f, 0.0f},  // ExprKind::BooleanConstant
+      {1.0f, 0.1f},  // ExprKind::DereferenceExpr
       {1.0f, 0.4f},  // ExprKind::CastExpr
   }};
 
@@ -128,8 +120,10 @@ struct GenConfig {
       {2.0f, 0.0f},  // TypeKind::ScalarType
       {1.0f, 0.0f},  // TypeKind::TaggedType
       {1.0f, 0.1f},  // TypeKind::PointerType
-      {1.0f, 0.1f},  // TypeKind::ReferenceType
+      {1.0f, 0.1f},  // TypeKind::VoidPointerType
   }};
+
+  std::unordered_map<Type, std::vector<std::string>> symbol_table;
 };
 
 class GeneratorRng {
@@ -138,13 +132,18 @@ class GeneratorRng {
 
   virtual BinOp gen_bin_op(BinOpMask mask) = 0;
   virtual UnOp gen_un_op(UnOpMask mask) = 0;
-  virtual ExprKind gen_expr_kind(const Weights& array) = 0;
-  virtual TypeKind gen_type_kind(const Weights& array) = 0;
-  virtual ScalarType gen_scalar_type() = 0;
+  virtual ExprKind gen_expr_kind(const Weights& weights,
+                                 const ExprKindMask& mask) = 0;
+  virtual TypeKind gen_type_kind(const Weights& weights,
+                                 const TypeKindMask& mask) = 0;
+  virtual ScalarType gen_scalar_type(EnumBitset<ScalarType> mask) = 0;
   virtual bool gen_boolean() = 0;
   virtual IntegerConstant gen_integer_constant(uint64_t min, uint64_t max) = 0;
   virtual DoubleConstant gen_double_constant(double min, double max) = 0;
   virtual bool gen_parenthesize(float probability) = 0;
+  virtual bool gen_binop_ptr_expr(float probability) = 0;
+  virtual bool gen_binop_flip_operands(float probability) = 0;
+  virtual bool gen_binop_ptrdiff_expr(float probability) = 0;
   virtual CvQualifiers gen_cv_qualifiers(float const_prob,
                                          float volatile_prob) = 0;
 };
@@ -155,13 +154,18 @@ class DefaultGeneratorRng : public GeneratorRng {
 
   BinOp gen_bin_op(BinOpMask mask) override;
   UnOp gen_un_op(UnOpMask mask) override;
-  ExprKind gen_expr_kind(const Weights& array) override;
-  TypeKind gen_type_kind(const Weights& array) override;
-  ScalarType gen_scalar_type() override;
+  ExprKind gen_expr_kind(const Weights& weights,
+                         const ExprKindMask& mask) override;
+  TypeKind gen_type_kind(const Weights& weights,
+                         const TypeKindMask& mask) override;
+  ScalarType gen_scalar_type(EnumBitset<ScalarType> mask) override;
   bool gen_boolean() override;
   IntegerConstant gen_integer_constant(uint64_t min, uint64_t max) override;
   DoubleConstant gen_double_constant(double min, double max) override;
   bool gen_parenthesize(float probability) override;
+  bool gen_binop_ptr_expr(float probability) override;
+  bool gen_binop_flip_operands(float probability) override;
+  bool gen_binop_ptrdiff_expr(float probability) override;
   CvQualifiers gen_cv_qualifiers(float const_prob,
                                  float volatile_prob) override;
 
@@ -171,31 +175,52 @@ class DefaultGeneratorRng : public GeneratorRng {
 
 class ExprGenerator {
  public:
-  ExprGenerator(std::unique_ptr<GeneratorRng> rng, const GenConfig& cfg)
-      : rng_(std::move(rng)), cfg_(cfg) {}
+  ExprGenerator(std::unique_ptr<GeneratorRng> rng, GenConfig cfg)
+      : rng_(std::move(rng)), cfg_(std::move(cfg)) {}
 
-  Expr generate();
+  std::optional<Expr> generate();
 
  private:
-  static constexpr char VAR[] = "x";
-
   Expr maybe_parenthesized(Expr expr);
 
-  BooleanConstant gen_boolean_constant();
-  VariableExpr gen_variable_expr();
-  BinaryExpr gen_binary_expr(const Weights& weights);
-  UnaryExpr gen_unary_expr(const Weights& weights);
-  TernaryExpr gen_ternary_expr(const Weights& weights);
-  CastExpr gen_cast_expr(const Weights& weights);
+  std::optional<Expr> gen_boolean_constant(const ExprConstraints& constraints);
+  std::optional<Expr> gen_integer_constant(const ExprConstraints& constraints);
+  std::optional<Expr> gen_double_constant(const ExprConstraints& constraints);
+  std::optional<Expr> gen_variable_expr(const ExprConstraints& constraints);
+  std::optional<Expr> gen_binary_expr(const Weights& weights,
+                                      const ExprConstraints& constraints);
+  std::optional<Expr> gen_unary_expr(const Weights& weights,
+                                     const ExprConstraints& constraints);
+  std::optional<Expr> gen_ternary_expr(const Weights& weights,
+                                       const ExprConstraints& constraints);
+  std::optional<Expr> gen_cast_expr(const Weights& weights,
+                                    const ExprConstraints& constraints);
+  std::optional<Expr> gen_dereference_expr(const Weights& weights,
+                                           const ExprConstraints& constraints);
+  std::optional<Expr> gen_address_of_expr(const Weights& weights,
+                                          const ExprConstraints& constraints);
+  std::optional<Expr> gen_member_of_expr(const Weights& weights,
+                                         const ExprConstraints& constraints);
+  std::optional<Expr> gen_member_of_ptr_expr(
+      const Weights& weights, const ExprConstraints& constraints);
+  std::optional<Expr> gen_array_index_expr(const Weights& weights,
+                                           const ExprConstraints& constraints);
 
-  Type gen_type(const Weights& weights);
-  QualifiedType gen_qualified_type(const Weights& weights);
-  PointerType gen_pointer_type(const Weights& weights);
-  TaggedType gen_tagged_type();
-  ScalarType gen_scalar_type();
+  std::optional<Type> gen_type(const Weights& weights,
+                               const TypeConstraints& constraints);
+  std::optional<Type> gen_type_impl(const Weights& weights,
+                                    const TypeConstraints& constraints);
+  std::optional<QualifiedType> gen_qualified_type(
+      const Weights& weights, const TypeConstraints& constraints);
+  std::optional<Type> gen_pointer_type(const Weights& weights,
+                                       const TypeConstraints& constraints);
+  std::optional<Type> gen_void_pointer_type(const TypeConstraints& constraints);
+  std::optional<Type> gen_tagged_type(const TypeConstraints& constraints);
+  std::optional<Type> gen_scalar_type(const TypeConstraints& constraints);
   CvQualifiers gen_cv_qualifiers();
 
-  Expr gen_with_weights(const Weights& weights);
+  std::optional<Expr> gen_with_weights(const Weights& weights,
+                                       const ExprConstraints& constraints);
 
  private:
   std::unique_ptr<GeneratorRng> rng_;
