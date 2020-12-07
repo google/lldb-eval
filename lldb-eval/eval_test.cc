@@ -865,14 +865,43 @@ TEST_F(EvalTest, TestQualifiedId) {
   EXPECT_THAT(Eval("ns::i"), IsEqual("1"));
   EXPECT_THAT(Eval("::ns::ns::i"), IsEqual("2"));
   EXPECT_THAT(Eval("ns::ns::i"), IsEqual("2"));
+}
 
-  EXPECT_THAT(Eval("::Foo::y"), IsEqual("42"));
-  EXPECT_THAT(Eval("Foo::y"), IsEqual("42"));
+// This test depends on one of the following patches:
+// * https://reviews.llvm.org/D92223
+// * https://reviews.llvm.org/D92643
+TEST_F(EvalTest, DISABLED_TestStaticConstDeclaredInline) {
+  // Upstream LLDB doesn't handle static const variables.
+  this->compare_with_lldb_ = false;
 
-  // Static consts with no definition can't be looked up by name.
-  EXPECT_THAT(Eval("::Foo::x"),
-              IsError("use of undeclared identifier '::Foo::x'"));
-  EXPECT_THAT(Eval("Foo::x"), IsError("use of undeclared identifier 'Foo::x'"));
+  EXPECT_THAT(Eval("::outer::inner::Vars::inline_static"), IsEqual("1.5"));
+  EXPECT_THAT(Eval("::outer::inner::Vars::static_constexpr"), IsEqual("2"));
+  EXPECT_THAT(Eval("outer::inner::Vars::inline_static"), IsEqual("1.5"));
+  EXPECT_THAT(Eval("outer::inner::Vars::static_constexpr"), IsEqual("2"));
+
+  EXPECT_THAT(Eval("::outer::Vars::inline_static"), IsEqual("4.5"));
+  EXPECT_THAT(Eval("::outer::Vars::static_constexpr"), IsEqual("5"));
+  EXPECT_THAT(Eval("outer::Vars::inline_static"), IsEqual("4.5"));
+  EXPECT_THAT(Eval("outer::Vars::static_constexpr"), IsEqual("5"));
+
+  EXPECT_THAT(Eval("::Vars::inline_static"), IsEqual("7.5"));
+  EXPECT_THAT(Eval("::Vars::static_constexpr"), IsEqual("8"));
+  EXPECT_THAT(Eval("Vars::inline_static"), IsEqual("7.5"));
+  EXPECT_THAT(Eval("Vars::static_constexpr"), IsEqual("8"));
+}
+
+TEST_F(EvalTest, TestStaticConstDeclaredOutsideTheClass) {
+#if LLVM_VERSION_MAJOR < 12
+  // Upstream LLDB doesn't handle static const variables.
+  this->compare_with_lldb_ = false;
+#endif
+
+  EXPECT_THAT(Eval("::outer::inner::Vars::static_const"), IsEqual("3"));
+  EXPECT_THAT(Eval("outer::inner::Vars::static_const"), IsEqual("3"));
+  EXPECT_THAT(Eval("::outer::Vars::static_const"), IsEqual("6"));
+  EXPECT_THAT(Eval("outer::Vars::static_const"), IsEqual("6"));
+  EXPECT_THAT(Eval("::Vars::static_const"), IsEqual("9"));
+  EXPECT_THAT(Eval("Vars::static_const"), IsEqual("9"));
 }
 
 TEST_F(EvalTest, TestTemplateTypes) {
