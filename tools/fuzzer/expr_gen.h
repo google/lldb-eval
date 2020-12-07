@@ -78,7 +78,7 @@ using BinOpMask = EnumBitset<BinOp>;
 using UnOpMask = EnumBitset<UnOp>;
 
 struct GenConfig {
-  int num_exprs_to_generate = 8;
+  int num_exprs_to_generate = 30;
 
   uint64_t int_const_min = 0;
   uint64_t int_const_max = 1000;
