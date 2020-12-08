@@ -148,7 +148,10 @@ class GeneratorRng {
   virtual CvQualifiers gen_cv_qualifiers(float const_prob,
                                          float volatile_prob) = 0;
   virtual VariableExpr pick_variable(
-      const std::vector<std::reference_wrapper<const VariableExpr>>& vars) = 0;
+      const std::vector<SymbolTable::VarsContainer::const_iterator>& vars) = 0;
+  virtual SymbolTable::FieldsContainer::const_iterator pick_field(
+      const std::vector<SymbolTable::FieldsContainer::const_iterator>&
+          fields) = 0;
 };
 
 class DefaultGeneratorRng : public GeneratorRng {
@@ -172,7 +175,10 @@ class DefaultGeneratorRng : public GeneratorRng {
   CvQualifiers gen_cv_qualifiers(float const_prob,
                                  float volatile_prob) override;
   VariableExpr pick_variable(
-      const std::vector<std::reference_wrapper<const VariableExpr>>& vars)
+      const std::vector<SymbolTable::VarsContainer::const_iterator>& vars)
+      override;
+  SymbolTable::FieldsContainer::const_iterator pick_field(
+      const std::vector<SymbolTable::FieldsContainer::const_iterator>& fields)
       override;
 
  private:

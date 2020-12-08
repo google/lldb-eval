@@ -155,125 +155,124 @@ fuzzer::SymbolTable gen_symtab() {
 
   {
     fuzzer::Type type(fuzzer::ScalarType::Char);
-    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("char_min"),
-                                           fuzzer::VariableExpr("char_max")};
 
-    symtab.add_vars(std::move(type), std::move(vars));
+    symtab.add_var(type, fuzzer::VariableExpr("char_min"));
+    symtab.add_var(type, fuzzer::VariableExpr("char_max"));
   }
   {
     fuzzer::Type type(fuzzer::ScalarType::UnsignedChar);
-    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("uchar_min"),
-                                           fuzzer::VariableExpr("uchar_max")};
 
-    symtab.add_vars(std::move(type), std::move(vars));
+    symtab.add_var(type, fuzzer::VariableExpr("uchar_min"));
+    symtab.add_var(type, fuzzer::VariableExpr("uchar_max"));
   }
   {
     fuzzer::Type type(fuzzer::ScalarType::SignedChar);
-    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("schar_min"),
-                                           fuzzer::VariableExpr("schar_max")};
 
-    symtab.add_vars(std::move(type), std::move(vars));
+    symtab.add_var(type, fuzzer::VariableExpr("schar_min"));
+    symtab.add_var(type, fuzzer::VariableExpr("schar_max"));
   }
   {
     fuzzer::Type type(fuzzer::ScalarType::UnsignedShort);
-    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("ushort_min"),
-                                           fuzzer::VariableExpr("ushort_max")};
 
-    symtab.add_vars(std::move(type), std::move(vars));
+    symtab.add_var(type, fuzzer::VariableExpr("ushort_min"));
+    symtab.add_var(type, fuzzer::VariableExpr("ushort_max"));
   }
   {
     fuzzer::Type type(fuzzer::ScalarType::SignedShort);
-    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("short_min"),
-                                           fuzzer::VariableExpr("short_max")};
 
-    symtab.add_vars(std::move(type), std::move(vars));
+    symtab.add_var(type, fuzzer::VariableExpr("short_min"));
+    symtab.add_var(type, fuzzer::VariableExpr("short_max"));
   }
   {
     fuzzer::Type type(fuzzer::ScalarType::UnsignedInt);
-    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("uint_min"),
-                                           fuzzer::VariableExpr("uint_max")};
 
-    symtab.add_vars(std::move(type), std::move(vars));
+    symtab.add_var(type, fuzzer::VariableExpr("uint_min"));
+    symtab.add_var(type, fuzzer::VariableExpr("uint_max"));
   }
   {
     fuzzer::Type type(fuzzer::ScalarType::SignedInt);
-    std::vector<fuzzer::VariableExpr> vars{
-        fuzzer::VariableExpr("int_min"), fuzzer::VariableExpr("int_max"),
-        fuzzer::VariableExpr("x"), fuzzer::VariableExpr("ref")};
 
-    symtab.add_vars(std::move(type), std::move(vars));
+    symtab.add_var(type, fuzzer::VariableExpr("int_min"));
+    symtab.add_var(type, fuzzer::VariableExpr("int_max"));
+    symtab.add_var(type, fuzzer::VariableExpr("x"));
+
+    // TODO: Change the type of ref when we add support for references
+    symtab.add_var(type, fuzzer::VariableExpr("ref"));
   }
   {
     fuzzer::Type type(fuzzer::ScalarType::UnsignedLong);
-    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("ulong_min"),
-                                           fuzzer::VariableExpr("ulong_max")};
 
-    symtab.add_vars(std::move(type), std::move(vars));
+    symtab.add_var(type, fuzzer::VariableExpr("ulong_min"));
+    symtab.add_var(type, fuzzer::VariableExpr("ulong_max"));
   }
   {
     fuzzer::Type type(fuzzer::ScalarType::SignedLong);
-    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("long_min"),
-                                           fuzzer::VariableExpr("long_max")};
 
-    symtab.add_vars(std::move(type), std::move(vars));
+    symtab.add_var(type, fuzzer::VariableExpr("long_min"));
+    symtab.add_var(type, fuzzer::VariableExpr("long_max"));
   }
   {
     fuzzer::Type type(fuzzer::ScalarType::UnsignedLongLong);
-    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("ullong_min"),
-                                           fuzzer::VariableExpr("ullong_max")};
 
-    symtab.add_vars(std::move(type), std::move(vars));
+    symtab.add_var(type, fuzzer::VariableExpr("ullong_min"));
+    symtab.add_var(type, fuzzer::VariableExpr("ullong_max"));
   }
   {
     fuzzer::Type type(fuzzer::ScalarType::SignedLongLong);
-    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("llong_min"),
-                                           fuzzer::VariableExpr("llong_max")};
 
-    symtab.add_vars(std::move(type), std::move(vars));
+    symtab.add_var(type, fuzzer::VariableExpr("llong_min"));
+    symtab.add_var(type, fuzzer::VariableExpr("llong_max"));
   }
   {
     fuzzer::Type type(fuzzer::ScalarType::Float);
-    std::vector<fuzzer::VariableExpr> vars{
-        fuzzer::VariableExpr("fnan"), fuzzer::VariableExpr("finf"),
-        fuzzer::VariableExpr("fsnan"), fuzzer::VariableExpr("fmax"),
-        fuzzer::VariableExpr("fdenorm")};
 
-    symtab.add_vars(std::move(type), std::move(vars));
+    symtab.add_var(type, fuzzer::VariableExpr("fnan"));
+    symtab.add_var(type, fuzzer::VariableExpr("finf"));
+    symtab.add_var(type, fuzzer::VariableExpr("fsnan"));
+    symtab.add_var(type, fuzzer::VariableExpr("fmax"));
+    symtab.add_var(type, fuzzer::VariableExpr("fdenorm"));
   }
   {
     fuzzer::Type type(fuzzer::ScalarType::Double);
-    std::vector<fuzzer::VariableExpr> vars{
-        fuzzer::VariableExpr("dnan"), fuzzer::VariableExpr("dinf"),
-        fuzzer::VariableExpr("dsnan"), fuzzer::VariableExpr("dmax"),
-        fuzzer::VariableExpr("ddenorm")};
 
-    symtab.add_vars(std::move(type), std::move(vars));
+    symtab.add_var(type, fuzzer::VariableExpr("dnan"));
+    symtab.add_var(type, fuzzer::VariableExpr("dinf"));
+    symtab.add_var(type, fuzzer::VariableExpr("dsnan"));
+    symtab.add_var(type, fuzzer::VariableExpr("dmax"));
+    symtab.add_var(type, fuzzer::VariableExpr("ddenorm"));
   }
   {
     fuzzer::Type type(fuzzer::ScalarType::LongDouble);
-    std::vector<fuzzer::VariableExpr> vars{
-        fuzzer::VariableExpr("ldnan"), fuzzer::VariableExpr("ldinf"),
-        fuzzer::VariableExpr("ldsnan"), fuzzer::VariableExpr("ldmax"),
-        fuzzer::VariableExpr("lddenorm")};
 
-    symtab.add_vars(std::move(type), std::move(vars));
+    symtab.add_var(type, fuzzer::VariableExpr("ldnan"));
+    symtab.add_var(type, fuzzer::VariableExpr("ldinf"));
+    symtab.add_var(type, fuzzer::VariableExpr("ldsnan"));
+    symtab.add_var(type, fuzzer::VariableExpr("ldmax"));
+    symtab.add_var(type, fuzzer::VariableExpr("lddenorm"));
   }
   {
     fuzzer::Type type(fuzzer::TaggedType("TestStruct"));
-    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("ts")};
 
-    symtab.add_vars(std::move(type), std::move(vars));
+    symtab.add_var(type, fuzzer::VariableExpr("ts"));
   }
   {
     fuzzer::PointerType type{
         fuzzer::QualifiedType(fuzzer::ScalarType::SignedInt)};
-    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("p")};
-    symtab.add_vars(std::move(type), std::move(vars));
+    symtab.add_var(type, fuzzer::VariableExpr("p"));
   }
   {
-    fuzzer::PointerType type{fuzzer::QualifiedType(fuzzer::ScalarType::Char)};
-    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("test_str")};
-    symtab.add_vars(std::move(type), std::move(vars));
+    fuzzer::PointerType type(fuzzer::QualifiedType(fuzzer::ScalarType::Char,
+                                                   fuzzer::CvQualifier::Const));
+    symtab.add_var(type, fuzzer::VariableExpr("test_str"));
+  }
+
+  {
+    fuzzer::TaggedType struct_type("TestStruct");
+    symtab.add_field(struct_type, "int_field", fuzzer::ScalarType::SignedInt);
+    symtab.add_field(struct_type, "flt_field", fuzzer::ScalarType::Float);
+    symtab.add_field(struct_type, "ull_field",
+                     fuzzer::ScalarType::UnsignedLongLong);
+    symtab.add_field(struct_type, "ch_field", fuzzer::ScalarType::Char);
   }
 
   return symtab;
@@ -290,8 +289,8 @@ void run_fuzzer(lldb::SBFrame& frame, const unsigned* seed_ptr) {
   cfg.bin_op_mask[fuzzer::BinOp::Shl] = false;
   cfg.bin_op_mask[fuzzer::BinOp::Shr] = false;
 
-  cfg.expr_kind_mask[fuzzer::ExprKind::MemberOf] = false;
-  cfg.expr_kind_mask[fuzzer::ExprKind::MemberOfPtr] = false;
+  // cfg.expr_kind_mask[fuzzer::ExprKind::MemberOf] = false;
+  // cfg.expr_kind_mask[fuzzer::ExprKind::MemberOfPtr] = false;
 
   fuzzer::SymbolTable symtab = gen_symtab();
 

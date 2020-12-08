@@ -104,12 +104,18 @@ class FakeGeneratorRng : public GeneratorRng {
   }
 
   virtual VariableExpr pick_variable(
-      const std::vector<std::reference_wrapper<const VariableExpr>>&) override {
+      const std::vector<SymbolTable::VarsContainer::const_iterator>&) override {
     assert(!vars_.empty());
     VariableExpr var = vars_.back();
     vars_.pop_back();
 
     return var;
+  }
+
+  virtual SymbolTable::FieldsContainer::const_iterator pick_field(
+      const std::vector<SymbolTable::FieldsContainer::const_iterator>&)
+      override {
+    assert(false && "Not implemented yet");
   }
 
   bool gen_binop_ptr_expr(float) override {

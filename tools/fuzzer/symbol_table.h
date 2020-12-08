@@ -8,15 +8,40 @@
 
 namespace fuzzer {
 
-class SymbolTable {
+class Field {
  public:
-  SymbolTable() = default;
+  Field(TaggedType type, std::string field)
+      : type_(std::move(type)), field_(std::move(field)) {}
 
-  void add_vars(Type type, std::vector<VariableExpr> vars);
-  const std::unordered_map<Type, std::vector<VariableExpr>>& vars() const;
+  const TaggedType& type() const { return type_; }
+  const std::string& field() const { return field_; }
 
  private:
-  std::unordered_map<Type, std::vector<VariableExpr>> var_map_;
+  TaggedType type_;
+  std::string field_;
+};
+
+class SymbolTable {
+ public:
+  using VarsContainer = std::unordered_multimap<Type, VariableExpr>;
+  using FieldsContainer = std::unordered_multimap<Type, Field>;
+
+  SymbolTable() = default;
+
+  void add_var(Type type, VariableExpr var);
+  const std::unordered_multimap<Type, VariableExpr>& vars() const {
+    return var_map_;
+  }
+
+  void add_field(TaggedType tagged_type, std::string field_name,
+                 Type field_type);
+  const std::unordered_multimap<Type, Field>& fields_by_type() const {
+    return fields_by_type_;
+  }
+
+ private:
+  std::unordered_multimap<Type, VariableExpr> var_map_;
+  std::unordered_multimap<Type, Field> fields_by_type_;
 };
 
 }  // namespace fuzzer
