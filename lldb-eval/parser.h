@@ -19,6 +19,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/LangOptions.h"
@@ -30,8 +31,30 @@
 #include "clang/Lex/Preprocessor.h"
 #include "lldb-eval/ast.h"
 #include "lldb-eval/context.h"
+#include "lldb/API/SBTarget.h"
+#include "lldb/API/SBType.h"
 
 namespace lldb_eval {
+
+// TypeDeclaration holds information about the literal type definition. It
+// doesn't perform semantic analysis of the type -- e.g. "long long long" and
+// "char&&&" are valid type declarations.
+// NOTE: CV qualifiers are ignored.
+class TypeDeclaration {
+ public:
+  // Type declaration is considered valid if it contains at least one typename.
+  bool IsValid() const { return typenames_.size() > 0; }
+
+  std::string GetName() const;
+  std::string GetBaseName() const;
+
+ public:
+  // List of base typenames, e.g. ["long", "long"] or ["uint64_t"].
+  std::vector<std::string> typenames_;
+
+  // Pointer and reference operators (* and &).
+  std::vector<clang::tok::TokenKind> ptr_operators_;
+};
 
 // Pure recursive descent parser for C++ like expressions.
 // EBNF grammar is described here:
@@ -72,7 +95,9 @@ class Parser {
 
   void ParsePtrOperator(TypeDeclaration* type_decl);
 
-  bool ResolveTypeFromTypeDecl(const TypeDeclaration& type_decl);
+  lldb::SBType ResolveTypeFromTypeDecl(const TypeDeclaration& type_decl);
+  lldb::SBType ResolveTypeDeclarators(lldb::SBType type,
+                                      const TypeDeclaration& type_decl);
 
   bool IsSimpleTypeSpecifierKeyword(clang::Token token) const;
   bool IsCvQualifier(clang::Token token) const;

@@ -123,12 +123,19 @@ class IsOkMatcher : public MatcherInterface<EvalResult> {
 
     std::string actual = result.lldb_eval_value.GetValue();
     // Compare only if we tried to evaluate with LLDB.
-    if (result.lldb_value.has_value() &&
-        actual != result.lldb_value.value().GetValue()) {
-      *listener << "values produced by lldb-eval and LLDB don't match\n"
-                << "lldb-eval: " << actual << "\n"
-                << "lldb     : " << result.lldb_value.value().GetValue();
-      return false;
+    if (result.lldb_value.has_value()) {
+      if (result.lldb_value.value().GetError().GetError()) {
+        *listener << "values produced by lldb-eval and LLDB don't match\n"
+                  << "lldb-eval: " << actual << "\n"
+                  << "lldb     : "
+                  << result.lldb_value.value().GetError().GetCString();
+        return false;
+      } else if (actual != result.lldb_value.value().GetValue()) {
+        *listener << "values produced by lldb-eval and LLDB don't match\n"
+                  << "lldb-eval: " << actual << "\n"
+                  << "lldb     : " << result.lldb_value.value().GetValue();
+        return false;
+      }
     }
 
     return true;
@@ -739,6 +746,36 @@ TEST_F(EvalTest, TestSubscript) {
 
   // Test address-of of the subscripted value.
   EXPECT_THAT(Eval("(&c_arr[1])->field_"), IsEqual("1"));
+}
+
+TEST_F(EvalTest, TestCStyleCastBuiltins) {
+  EXPECT_THAT(Eval("(int)1"), IsOk());
+  EXPECT_THAT(Eval("(long long)1"), IsOk());
+  EXPECT_THAT(Eval("(unsigned long)1"), IsOk());
+  EXPECT_THAT(Eval("(long const const)1"), IsOk());
+  EXPECT_THAT(Eval("(long const long)1"), IsOk());
+
+  EXPECT_THAT(Eval("(char*)1"), IsOk());
+  EXPECT_THAT(Eval("(long long**)1"), IsOk());
+  EXPECT_THAT(Eval("(const long const long const* const const)1"), IsOk());
+
+  EXPECT_THAT(
+      Eval("(long&*)1"),
+      IsError(
+          "'type name' declared as a pointer to a reference of type 'long &'\n"
+          "(long&*)1\n"
+          "       ^"));
+
+  EXPECT_THAT(Eval("(long& &)1"),
+              IsError("type name declared as a reference to a reference\n"
+                      "(long& &)1\n"
+                      "        ^"));
+
+  EXPECT_THAT(
+      Eval("(long 1)1"),
+      IsError("<expr>:1:7: expected 'r_paren', got: <'1' (numeric_constant)>\n"
+              "(long 1)1\n"
+              "      ^"));
 }
 
 TEST_F(EvalTest, TestCStyleCastBasicType) {
