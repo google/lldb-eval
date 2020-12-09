@@ -203,8 +203,7 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
             rng_->gen_binop_ptr_expr(cfg_.binop_gen_ptr_expr_prob);
         if (gen_ptr_exprs) {
           auto maybe_type =
-              gen_type(weights, SpecificTypes::make_any_pointer_constraints(),
-                       GenTypePurpose::ImplicitPick);
+              gen_type(weights, SpecificTypes::make_any_pointer_constraints());
           if (maybe_type.has_value()) {
             const auto& type = maybe_type.value();
             lhs_types = SpecificTypes(type);
@@ -232,8 +231,7 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
         }
 
         if (allows_pointers) {
-          auto maybe_type =
-              gen_type(weights, type_constraints, GenTypePurpose::ImplicitPick);
+          auto maybe_type = gen_type(weights, type_constraints);
           if (!maybe_type.has_value()) {
             mask[op] = false;
             continue;
@@ -261,8 +259,8 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
         } else {
           if (op == BinOp::Minus &&
               rng_->gen_binop_ptrdiff_expr(cfg_.binop_gen_ptrdiff_expr_prob)) {
-            auto maybe_type = gen_type(weights, type_constraints,
-                                       GenTypePurpose::ImplicitPick);
+            auto maybe_type = gen_type(weights, type_constraints);
+
             if (!maybe_type.has_value()) {
               mask[op] = false;
               continue;
@@ -420,8 +418,7 @@ std::optional<Expr> ExprGenerator::gen_ternary_expr(
   Expr cond = std::move(maybe_cond.value());
 
   const auto& type_constraints = constraints.type_constraints();
-  auto maybe_type =
-      gen_type(weights, type_constraints, GenTypePurpose::ImplicitPick);
+  auto maybe_type = gen_type(weights, type_constraints);
   if (!maybe_type.has_value()) {
     return {};
   }
@@ -694,8 +691,7 @@ Expr ExprGenerator::maybe_parenthesized(Expr expr) {
 }
 
 std::optional<Type> ExprGenerator::gen_type(
-    const Weights& weights, const TypeConstraints& type_constraints,
-    GenTypePurpose purpose) {
+    const Weights& weights, const TypeConstraints& type_constraints) {
   if (!type_constraints.satisfiable()) {
     return {};
   }
@@ -722,7 +718,7 @@ std::optional<Type> ExprGenerator::gen_type(
   }
 
   while (mask.any()) {
-    auto choice = rng_->gen_type_kind(new_weights, mask, purpose);
+    auto choice = rng_->gen_type_kind(new_weights, mask);
     auto idx = (size_t)choice;
 
     auto& new_type_weights = new_weights.type_weights();
@@ -732,19 +728,19 @@ std::optional<Type> ExprGenerator::gen_type(
     std::optional<Type> maybe_type;
     switch (choice) {
       case TypeKind::ScalarType:
-        maybe_type = gen_scalar_type(type_constraints, purpose);
+        maybe_type = gen_scalar_type(type_constraints);
         break;
 
       case TypeKind::TaggedType:
-        maybe_type = gen_tagged_type(type_constraints, purpose);
+        maybe_type = gen_tagged_type(type_constraints);
         break;
 
       case TypeKind::PointerType:
-        maybe_type = gen_pointer_type(new_weights, type_constraints, purpose);
+        maybe_type = gen_pointer_type(new_weights, type_constraints);
         break;
 
       case TypeKind::VoidPointerType:
-        maybe_type = gen_void_pointer_type(type_constraints, purpose);
+        maybe_type = gen_void_pointer_type(type_constraints);
         break;
     }
 
@@ -760,27 +756,25 @@ std::optional<Type> ExprGenerator::gen_type(
 }
 
 std::optional<QualifiedType> ExprGenerator::gen_qualified_type(
-    const Weights& weights, const TypeConstraints& constraints,
-    GenTypePurpose purpose) {
-  auto maybe_type = gen_type(weights, constraints, purpose);
+    const Weights& weights, const TypeConstraints& constraints) {
+  auto maybe_type = gen_type(weights, constraints);
   if (!maybe_type.has_value()) {
     return {};
   }
   Type type = std::move(maybe_type.value());
-  auto qualifiers = gen_cv_qualifiers(purpose);
+  auto qualifiers = gen_cv_qualifiers();
 
   return QualifiedType(std::move(type), qualifiers);
 }
 
 std::optional<Type> ExprGenerator::gen_pointer_type(
-    const Weights& weights, const TypeConstraints& constraints,
-    GenTypePurpose purpose) {
+    const Weights& weights, const TypeConstraints& constraints) {
   if (!constraints.allows_pointer() && !constraints.allows_void_pointer()) {
     return {};
   }
 
   auto maybe_type =
-      gen_qualified_type(weights, constraints.allowed_to_point_to(), purpose);
+      gen_qualified_type(weights, constraints.allowed_to_point_to());
   if (!maybe_type.has_value()) {
     return {};
   }
@@ -789,19 +783,19 @@ std::optional<Type> ExprGenerator::gen_pointer_type(
 }
 
 std::optional<Type> ExprGenerator::gen_void_pointer_type(
-    const TypeConstraints& constraints, GenTypePurpose purpose) {
+    const TypeConstraints& constraints) {
   if (!constraints.allows_void_pointer()) {
     return {};
   }
 
   auto cv_qualifiers =
-      rng_->gen_cv_qualifiers(cfg_.const_prob, cfg_.volatile_prob, purpose);
+      rng_->gen_cv_qualifiers(cfg_.const_prob, cfg_.volatile_prob);
 
   return PointerType(QualifiedType(ScalarType::Void, cv_qualifiers));
 }
 
 std::optional<Type> ExprGenerator::gen_tagged_type(
-    const TypeConstraints& constraints, GenTypePurpose) {
+    const TypeConstraints& constraints) {
   if (!constraints.allows_tagged_types()) {
     return {};
   }
@@ -820,17 +814,17 @@ std::optional<Type> ExprGenerator::gen_tagged_type(
 }
 
 std::optional<Type> ExprGenerator::gen_scalar_type(
-    const TypeConstraints& constraints, GenTypePurpose purpose) {
+    const TypeConstraints& constraints) {
   ScalarMask mask = constraints.allowed_scalar_types();
   if (mask.none()) {
     return {};
   }
 
-  return rng_->gen_scalar_type(mask, purpose);
+  return rng_->gen_scalar_type(mask);
 }
 
-CvQualifiers ExprGenerator::gen_cv_qualifiers(GenTypePurpose purpose) {
-  return rng_->gen_cv_qualifiers(cfg_.const_prob, cfg_.volatile_prob, purpose);
+CvQualifiers ExprGenerator::gen_cv_qualifiers() {
+  return rng_->gen_cv_qualifiers(cfg_.const_prob, cfg_.volatile_prob);
 }
 
 std::optional<Expr> ExprGenerator::generate() {
@@ -954,8 +948,7 @@ DoubleConstant DefaultGeneratorRng::gen_double_constant(double min,
 }
 
 CvQualifiers DefaultGeneratorRng::gen_cv_qualifiers(float const_prob,
-                                                    float volatile_prob,
-                                                    GenTypePurpose) {
+                                                    float volatile_prob) {
   std::bernoulli_distribution const_distr(const_prob);
   std::bernoulli_distribution volatile_distr(volatile_prob);
 
@@ -1005,13 +998,11 @@ ExprKind DefaultGeneratorRng::gen_expr_kind(const Weights& weights,
 }
 
 TypeKind DefaultGeneratorRng::gen_type_kind(const Weights& weights,
-                                            const TypeKindMask& mask,
-                                            GenTypePurpose) {
+                                            const TypeKindMask& mask) {
   return weighted_pick(weights.type_weights(), mask, rng_);
 }
 
-ScalarType DefaultGeneratorRng::gen_scalar_type(ScalarMask mask,
-                                                GenTypePurpose) {
+ScalarType DefaultGeneratorRng::gen_scalar_type(ScalarMask mask) {
   return pick_nth_set_bit(mask, rng_);
 }
 

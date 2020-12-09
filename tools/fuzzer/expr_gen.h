@@ -127,19 +127,6 @@ struct GenConfig {
   }};
 };
 
-/*
- * The purpose for generating the type in question. The purpose of this enum
- * is purely to assist in unit testing.
- */
-enum class GenTypePurpose {
-  // The type will be present in the AST (e.g. cast expression).
-  Ast,
-
-  // The type will be generated so as to e.g. determine the common type for
-  // a ternary expression.
-  ImplicitPick,
-};
-
 class GeneratorRng {
  public:
   virtual ~GeneratorRng() {}
@@ -149,10 +136,8 @@ class GeneratorRng {
   virtual ExprKind gen_expr_kind(const Weights& weights,
                                  const ExprKindMask& mask) = 0;
   virtual TypeKind gen_type_kind(const Weights& weights,
-                                 const TypeKindMask& mask,
-                                 GenTypePurpose purpose) = 0;
-  virtual ScalarType gen_scalar_type(EnumBitset<ScalarType> mask,
-                                     GenTypePurpose purpose) = 0;
+                                 const TypeKindMask& mask) = 0;
+  virtual ScalarType gen_scalar_type(EnumBitset<ScalarType> mask) = 0;
   virtual bool gen_boolean() = 0;
   virtual IntegerConstant gen_integer_constant(uint64_t min, uint64_t max) = 0;
   virtual DoubleConstant gen_double_constant(double min, double max) = 0;
@@ -160,8 +145,8 @@ class GeneratorRng {
   virtual bool gen_binop_ptr_expr(float probability) = 0;
   virtual bool gen_binop_flip_operands(float probability) = 0;
   virtual bool gen_binop_ptrdiff_expr(float probability) = 0;
-  virtual CvQualifiers gen_cv_qualifiers(float const_prob, float volatile_prob,
-                                         GenTypePurpose) = 0;
+  virtual CvQualifiers gen_cv_qualifiers(float const_prob,
+                                         float volatile_prob) = 0;
   virtual VariableExpr pick_variable(
       const std::vector<std::reference_wrapper<const VariableExpr>>& vars) = 0;
 };
@@ -174,10 +159,9 @@ class DefaultGeneratorRng : public GeneratorRng {
   UnOp gen_un_op(UnOpMask mask) override;
   ExprKind gen_expr_kind(const Weights& weights,
                          const ExprKindMask& mask) override;
-  TypeKind gen_type_kind(const Weights& weights, const TypeKindMask& mask,
-                         GenTypePurpose) override;
-  ScalarType gen_scalar_type(EnumBitset<ScalarType> mask,
-                             GenTypePurpose) override;
+  TypeKind gen_type_kind(const Weights& weights,
+                         const TypeKindMask& mask) override;
+  ScalarType gen_scalar_type(EnumBitset<ScalarType> mask) override;
   bool gen_boolean() override;
   IntegerConstant gen_integer_constant(uint64_t min, uint64_t max) override;
   DoubleConstant gen_double_constant(double min, double max) override;
@@ -185,8 +169,8 @@ class DefaultGeneratorRng : public GeneratorRng {
   bool gen_binop_ptr_expr(float probability) override;
   bool gen_binop_flip_operands(float probability) override;
   bool gen_binop_ptrdiff_expr(float probability) override;
-  CvQualifiers gen_cv_qualifiers(float const_prob, float volatile_prob,
-                                 GenTypePurpose) override;
+  CvQualifiers gen_cv_qualifiers(float const_prob,
+                                 float volatile_prob) override;
   VariableExpr pick_variable(
       const std::vector<std::reference_wrapper<const VariableExpr>>& vars)
       override;
@@ -232,21 +216,15 @@ class ExprGenerator {
                                            const ExprConstraints& constraints);
 
   std::optional<Type> gen_type(const Weights& weights,
-                               const TypeConstraints& constraints,
-                               GenTypePurpose purpose = GenTypePurpose::Ast);
+                               const TypeConstraints& constraints);
   std::optional<QualifiedType> gen_qualified_type(
-      const Weights& weights, const TypeConstraints& constraints,
-      GenTypePurpose purpose);
+      const Weights& weights, const TypeConstraints& constraints);
   std::optional<Type> gen_pointer_type(const Weights& weights,
-                                       const TypeConstraints& constraints,
-                                       GenTypePurpose purpose);
-  std::optional<Type> gen_void_pointer_type(const TypeConstraints& constraints,
-                                            GenTypePurpose purpose);
-  std::optional<Type> gen_tagged_type(const TypeConstraints& constraints,
-                                      GenTypePurpose purpose);
-  std::optional<Type> gen_scalar_type(const TypeConstraints& constraints,
-                                      GenTypePurpose purpose);
-  CvQualifiers gen_cv_qualifiers(GenTypePurpose purpose);
+                                       const TypeConstraints& constraints);
+  std::optional<Type> gen_void_pointer_type(const TypeConstraints& constraints);
+  std::optional<Type> gen_tagged_type(const TypeConstraints& constraints);
+  std::optional<Type> gen_scalar_type(const TypeConstraints& constraints);
+  CvQualifiers gen_cv_qualifiers();
 
   std::optional<Expr> gen_with_weights(const Weights& weights,
                                        const ExprConstraints& constraints);

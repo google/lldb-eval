@@ -63,30 +63,18 @@ class FakeGeneratorRng : public GeneratorRng {
     return kind;
   }
 
-  TypeKind gen_type_kind(const Weights&, const TypeKindMask&,
-                         GenTypePurpose purpose) override {
-    auto& vec =
-        purpose == GenTypePurpose::Ast ? type_kinds_ : implicit_type_kinds_;
-
-    if (vec.empty()) {
-      assert(false);
-    }
-
-    assert(!vec.empty());
-    TypeKind kind = vec.back();
-    vec.pop_back();
+  TypeKind gen_type_kind(const Weights&, const TypeKindMask&) override {
+    assert(!type_kinds_.empty());
+    TypeKind kind = type_kinds_.back();
+    type_kinds_.pop_back();
 
     return kind;
   }
 
-  ScalarType gen_scalar_type(EnumBitset<ScalarType>,
-                             GenTypePurpose purpose) override {
-    auto& vec =
-        purpose == GenTypePurpose::Ast ? scalar_types_ : implicit_scalar_types_;
-
-    assert(!vec.empty());
-    ScalarType type = vec.back();
-    vec.pop_back();
+  ScalarType gen_scalar_type(EnumBitset<ScalarType>) override {
+    assert(!scalar_types_.empty());
+    ScalarType type = scalar_types_.back();
+    scalar_types_.pop_back();
 
     return type;
   }
@@ -154,14 +142,10 @@ class FakeGeneratorRng : public GeneratorRng {
     return gen;
   }
 
-  CvQualifiers gen_cv_qualifiers(float, float,
-                                 GenTypePurpose purpose) override {
-    auto& vec = purpose == GenTypePurpose::Ast ? cv_qualifiers_
-                                               : implicit_cv_qualifiers_;
-
-    assert(!vec.empty());
-    CvQualifiers cv = vec.back();
-    vec.pop_back();
+  CvQualifiers gen_cv_qualifiers(float, float) override {
+    assert(!cv_qualifiers_.empty());
+    CvQualifiers cv = cv_qualifiers_.back();
+    cv_qualifiers_.pop_back();
 
     return cv;
   }
@@ -169,18 +153,10 @@ class FakeGeneratorRng : public GeneratorRng {
   bool gen_parenthesize(float) override { return false; }
 
   static FakeGeneratorRng from_expr(
-      const Expr& expr, const std::vector<Type>& implicit_types,
-      const std::vector<bool>& flip_operands,
+      const Expr& expr, const std::vector<bool>& flip_operands,
       const std::vector<bool>& gen_binop_ptr_expr,
       const std::vector<bool>& gen_binop_ptrdiff_expr) {
     FakeGeneratorRng rng;
-    for (const auto& type : implicit_types) {
-      std::visit(rng, type);
-    }
-    std::swap(rng.type_kinds_, rng.implicit_type_kinds_);
-    std::swap(rng.scalar_types_, rng.implicit_scalar_types_);
-    std::swap(rng.tagged_types_, rng.implicit_tagged_types_);
-    std::swap(rng.cv_qualifiers_, rng.implicit_cv_qualifiers_);
 
     std::visit(rng, expr);
 
@@ -195,15 +171,6 @@ class FakeGeneratorRng : public GeneratorRng {
     std::reverse(rng.cv_qualifiers_.begin(), rng.cv_qualifiers_.end());
     std::reverse(rng.scalar_types_.begin(), rng.scalar_types_.end());
     std::reverse(rng.tagged_types_.begin(), rng.tagged_types_.end());
-
-    std::reverse(rng.implicit_type_kinds_.begin(),
-                 rng.implicit_type_kinds_.end());
-    std::reverse(rng.implicit_cv_qualifiers_.begin(),
-                 rng.implicit_cv_qualifiers_.end());
-    std::reverse(rng.implicit_scalar_types_.begin(),
-                 rng.implicit_scalar_types_.end());
-    std::reverse(rng.implicit_tagged_types_.begin(),
-                 rng.implicit_tagged_types_.end());
 
     std::reverse(rng.vars_.begin(), rng.vars_.end());
 
@@ -224,7 +191,14 @@ class FakeGeneratorRng : public GeneratorRng {
 
   void operator()(const BinaryExpr& e) {
     expr_kinds_.push_back(ExprKind::BinaryExpr);
+
     bin_ops_.push_back(e.op());
+
+    const auto* unit_test_type = e.type_for_unit_testing();
+    if (unit_test_type != nullptr) {
+      std::visit(*this, *unit_test_type);
+    }
+
     std::visit(*this, e.lhs());
     std::visit(*this, e.rhs());
   }
@@ -276,6 +250,12 @@ class FakeGeneratorRng : public GeneratorRng {
   void operator()(const TernaryExpr& e) {
     expr_kinds_.push_back(ExprKind::TernaryExpr);
     std::visit(*this, e.cond());
+
+    const auto* unit_test_type = e.type_for_unit_testing();
+    if (unit_test_type != nullptr) {
+      std::visit(*this, *unit_test_type);
+    }
+
     std::visit(*this, e.lhs());
     std::visit(*this, e.rhs());
   }
@@ -323,11 +303,6 @@ class FakeGeneratorRng : public GeneratorRng {
   std::vector<CvQualifiers> cv_qualifiers_;
   std::vector<ScalarType> scalar_types_;
   std::vector<std::string> tagged_types_;
-
-  std::vector<TypeKind> implicit_type_kinds_;
-  std::vector<CvQualifiers> implicit_cv_qualifiers_;
-  std::vector<ScalarType> implicit_scalar_types_;
-  std::vector<std::string> implicit_tagged_types_;
 
   std::vector<VariableExpr> vars_;
 
@@ -504,20 +479,17 @@ MATCHER_P(MatchesAst, expected,
 struct PrecedenceTestParam {
   std::string str;
   Expr expr;
-  std::vector<Type> implicit_types;
   std::vector<bool> flip_operands;
   std::vector<bool> gen_binop_ptr_expr;
   std::vector<bool> gen_binop_ptrdiff_expr;
 
   PrecedenceTestParam(
       std::string str, Expr expr,
-      std::vector<Type> implicit_types = std::vector<Type>(),
       std::vector<bool> flip_operands = std::vector<bool>(),
       std::vector<bool> gen_binop_ptr_expr = std::vector<bool>(),
       std::vector<bool> gen_binop_ptrdiff_expr = std::vector<bool>())
       : str(std::move(str)),
         expr(std::move(expr)),
-        implicit_types(std::move(implicit_types)),
         flip_operands(std::move(flip_operands)),
         gen_binop_ptr_expr(std::move(gen_binop_ptr_expr)),
         gen_binop_ptrdiff_expr(std::move(gen_binop_ptrdiff_expr)) {}
@@ -534,8 +506,8 @@ TEST_P(OperatorPrecedence, CorrectAst) {
 
   auto fake_rng =
       std::make_unique<FakeGeneratorRng>(FakeGeneratorRng::from_expr(
-          param.expr, param.implicit_types, param.flip_operands,
-          param.gen_binop_ptr_expr, param.gen_binop_ptrdiff_expr));
+          param.expr, param.flip_operands, param.gen_binop_ptr_expr,
+          param.gen_binop_ptrdiff_expr));
 
   ExprGenerator gen(std::move(fake_rng), GenConfig(), SymbolTable());
   auto maybe_expr = gen.generate();
@@ -641,13 +613,12 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
         ParenthesizedExpr(TernaryExpr(
             IntegerConstant(1),
             IntegerConstant(2),
-            IntegerConstant(3))));
+            IntegerConstant(3),
+            ScalarType::SignedInt)));
     // clang-format on
 
     std::string str = "~(1 ? 2 : 3)";
-    std::vector<Type> implicit_types = {ScalarType::SignedInt};
-    params.emplace_back(std::move(str), std::move(expected),
-                        std::move(implicit_types));
+    params.emplace_back(std::move(str), std::move(expected));
   }
   {
     // clang-format off
@@ -661,14 +632,12 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
                 TernaryExpr(
                     BooleanConstant(false),
                     IntegerConstant(1),
-                    IntegerConstant(2)))));
+                    IntegerConstant(2), ScalarType::SignedInt),
+                ScalarType::SignedInt)));
     // clang-format on
 
     std::string str = "1 * (true ? 0 : false ? 1 : 2)";
-    std::vector<Type> implicit_types = {ScalarType::SignedInt,
-                                        ScalarType::SignedInt};
-    params.emplace_back(std::move(str), std::move(expected),
-                        std::move(implicit_types));
+    params.emplace_back(std::move(str), std::move(expected));
   }
   {
     // clang-format off
@@ -679,16 +648,15 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
             TernaryExpr(ParenthesizedExpr(TernaryExpr(
                 BinaryExpr(IntegerConstant(1), BinOp::Eq, IntegerConstant(2)),
                 BooleanConstant(false),
-                BooleanConstant(true))),
+                BooleanConstant(true),
+                ScalarType::Bool)),
         IntegerConstant(1),
-        IntegerConstant(0))));
+        IntegerConstant(0),
+        ScalarType::SignedInt)));
     // clang-format on
 
     std::string str = "4 * ((1 == 2 ? false : true) ? 1 : 0)";
-    std::vector<Type> implicit_types = {ScalarType::SignedInt,
-                                        ScalarType::Bool};
-    params.emplace_back(std::move(str), std::move(expected),
-                        std::move(implicit_types));
+    params.emplace_back(std::move(str), std::move(expected));
   }
   {
     // clang-format off
@@ -704,7 +672,7 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
     std::string str = "&((int) true)[(char*) 0]";
     std::vector<bool> flip_operands = {true};
     params.emplace_back(std::move(str), std::move(expected),
-                        std::vector<Type>(), std::move(flip_operands));
+                        std::move(flip_operands));
   }
   {
     Expr expected = UnaryExpr(UnOp::Neg, DoubleConstant(1.5));
