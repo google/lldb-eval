@@ -194,7 +194,7 @@ class FakeGeneratorRng : public GeneratorRng {
 
     bin_ops_.push_back(e.op());
 
-    const auto* unit_test_type = e.type_for_unit_testing();
+    const auto* unit_test_type = e.expr_type();
     if (unit_test_type != nullptr) {
       std::visit(*this, *unit_test_type);
     }
@@ -251,7 +251,7 @@ class FakeGeneratorRng : public GeneratorRng {
     expr_kinds_.push_back(ExprKind::TernaryExpr);
     std::visit(*this, e.cond());
 
-    const auto* unit_test_type = e.type_for_unit_testing();
+    const auto* unit_test_type = e.expr_type();
     if (unit_test_type != nullptr) {
       std::visit(*this, *unit_test_type);
     }

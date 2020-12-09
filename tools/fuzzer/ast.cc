@@ -168,17 +168,14 @@ BinaryExpr::BinaryExpr(Expr lhs, BinOp op, Expr rhs)
     : lhs_(std::make_shared<Expr>(std::move(lhs))),
       rhs_(std::make_shared<Expr>(std::move(rhs))),
       op_(op) {}
-BinaryExpr::BinaryExpr(Expr lhs, BinOp op, Expr rhs, Type type_for_unit_testing)
+BinaryExpr::BinaryExpr(Expr lhs, BinOp op, Expr rhs, Type expr_type)
     : lhs_(std::make_shared<Expr>(std::move(lhs))),
       rhs_(std::make_shared<Expr>(std::move(rhs))),
       op_(op),
-      type_for_unit_testing_(
-          std::make_unique<Type>(std::move(type_for_unit_testing))) {}
+      expr_type_(std::make_unique<Type>(std::move(expr_type))) {}
 const Expr& BinaryExpr::lhs() const { return *lhs_; }
 const Expr& BinaryExpr::rhs() const { return *rhs_; }
-const Type* BinaryExpr::type_for_unit_testing() const {
-  return type_for_unit_testing_.get();
-}
+const Type* BinaryExpr::expr_type() const { return expr_type_.get(); }
 BinOp BinaryExpr::op() const { return op_; }
 int BinaryExpr::precedence() const {
   return BIN_OP_TABLE[(size_t)op_].precedence;
@@ -354,19 +351,15 @@ TernaryExpr::TernaryExpr(Expr cond, Expr lhs, Expr rhs)
     : cond_(std::make_shared<Expr>(std::move(cond))),
       lhs_(std::make_shared<Expr>(std::move(lhs))),
       rhs_(std::make_shared<Expr>(std::move(rhs))) {}
-TernaryExpr::TernaryExpr(Expr cond, Expr lhs, Expr rhs,
-                         Type type_for_unit_testing)
+TernaryExpr::TernaryExpr(Expr cond, Expr lhs, Expr rhs, Type expr_type)
     : cond_(std::make_shared<Expr>(std::move(cond))),
       lhs_(std::make_shared<Expr>(std::move(lhs))),
       rhs_(std::make_shared<Expr>(std::move(rhs))),
-      type_for_unit_testing_(
-          std::make_shared<Type>(std::move(type_for_unit_testing))) {}
+      expr_type_(std::make_shared<Type>(std::move(expr_type))) {}
 const Expr& TernaryExpr::cond() const { return *cond_; }
 const Expr& TernaryExpr::lhs() const { return *lhs_; }
 const Expr& TernaryExpr::rhs() const { return *rhs_; }
-const Type* TernaryExpr::type_for_unit_testing() const {
-  return type_for_unit_testing_.get();
-}
+const Type* TernaryExpr::expr_type() const { return expr_type_.get(); }
 std::ostream& operator<<(std::ostream& os, const TernaryExpr& e) {
   return os << e.cond() << " ? " << e.lhs() << " : " << e.rhs();
 }
