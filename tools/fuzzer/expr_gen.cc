@@ -124,9 +124,9 @@ std::optional<Expr> ExprGenerator::gen_variable_expr(
   const auto& type_constraints = constraints.type_constraints();
 
   std::vector<std::reference_wrapper<const VariableExpr>> vars;
-  for (const auto& e : symtab_.vars()) {
-    if (type_constraints.allows_type(e.first)) {
-      vars.insert(vars.end(), e.second.begin(), e.second.end());
+  for (const auto& [k, v] : symtab_.vars()) {
+    if (type_constraints.allows_type(k)) {
+      vars.insert(vars.end(), v.begin(), v.end());
     }
   }
 
@@ -523,9 +523,9 @@ std::optional<Expr> ExprGenerator::gen_member_of_expr(
   const auto& type_constraints = constraints.type_constraints();
 
   std::vector<std::reference_wrapper<const Field>> fields;
-  for (const auto& e : symtab_.fields_by_type()) {
-    if (type_constraints.allows_type(e.first)) {
-      fields.insert(fields.end(), e.second.begin(), e.second.end());
+  for (const auto& [k, v] : symtab_.fields_by_type()) {
+    if (type_constraints.allows_type(k)) {
+      fields.insert(fields.end(), v.begin(), v.end());
     }
   }
 
@@ -554,9 +554,9 @@ std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
 
   std::vector<std::reference_wrapper<const Field>> fields;
 
-  for (const auto& e : symtab_.fields_by_type()) {
-    if (type_constraints.allows_type(e.first)) {
-      fields.insert(fields.end(), e.second.begin(), e.second.end());
+  for (const auto& [k, v] : symtab_.fields_by_type()) {
+    if (type_constraints.allows_type(k)) {
+      fields.insert(fields.end(), v.begin(), v.end());
     }
   }
 
@@ -573,7 +573,7 @@ std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
   }
   Expr expr = std::move(maybe_expr.value());
 
-  if (expr_precedence(expr) > MemberOf::PRECEDENCE) {
+  if (expr_precedence(expr) > MemberOfPtr::PRECEDENCE) {
     expr = ParenthesizedExpr(std::move(expr));
   }
 
@@ -925,14 +925,13 @@ Enum weighted_pick(
 }
 
 template <typename T, typename Rng>
-typename std::vector<T>::const_iterator pick_element(const std::vector<T>& vec,
-                                                     Rng& rng) {
+const T& pick_element(const std::vector<T>& vec, Rng& rng) {
   assert(!vec.empty() && "Can't pick an element out of an empty vector");
 
   std::uniform_int_distribution<size_t> distr(0, vec.size() - 1);
   auto choice = distr(rng);
 
-  return vec.begin() + choice;
+  return vec[choice];
 }
 
 BinOp DefaultGeneratorRng::gen_bin_op(BinOpMask mask) {
@@ -1000,20 +999,20 @@ CvQualifiers DefaultGeneratorRng::gen_cv_qualifiers(float const_prob,
 
 VariableExpr DefaultGeneratorRng::pick_variable(
     const std::vector<std::reference_wrapper<const VariableExpr>>& vars) {
-  auto it = pick_element(vars, rng_);
-  return *it;
+  return pick_element(vars, rng_);
+  ;
 }
 
 Field DefaultGeneratorRng::pick_field(
     const std::vector<std::reference_wrapper<const Field>>& fields) {
-  auto it = pick_element(fields, rng_);
-  return *it;
+  return pick_element(fields, rng_);
+  ;
 }
 
 TaggedType DefaultGeneratorRng::pick_tagged_type(
     const std::vector<std::reference_wrapper<const TaggedType>>& types) {
-  auto it = pick_element(types, rng_);
-  return *it;
+  return pick_element(types, rng_);
+  ;
 }
 
 bool DefaultGeneratorRng::gen_binop_ptr_expr(float probability) {
