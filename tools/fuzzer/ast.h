@@ -372,15 +372,24 @@ class MemberOf {
   MemberOf() = default;
   MemberOf(Expr expr, std::string field);
 
+  // Useful only for unit testing
+  MemberOf(Expr expr, std::string field, TaggedType tagged_type_for_unit_tests);
+
   const Expr& expr() const;
   const std::string& field() const;
   int precedence() const { return PRECEDENCE; }
+
+  const TaggedType& tagged_type_for_unit_tests() const {
+    return tagged_type_for_unit_tests_;
+  }
 
   friend std::ostream& operator<<(std::ostream& os, const MemberOf& expr);
 
  private:
   std::shared_ptr<Expr> expr_;
   std::string field_;
+
+  TaggedType tagged_type_for_unit_tests_;
 };
 
 class MemberOfPtr {
@@ -390,15 +399,25 @@ class MemberOfPtr {
   MemberOfPtr() = default;
   MemberOfPtr(Expr expr, std::string field);
 
+  // Useful only for unit testing
+  MemberOfPtr(Expr expr, std::string field,
+              TaggedType tagged_type_for_unit_tests);
+
   const Expr& expr() const;
   const std::string& field() const;
   int precedence() const { return PRECEDENCE; }
+
+  const TaggedType& tagged_type_for_unit_tests() const {
+    return tagged_type_for_unit_tests_;
+  }
 
   friend std::ostream& operator<<(std::ostream& os, const MemberOfPtr& expr);
 
  private:
   std::shared_ptr<Expr> expr_;
   std::string field_;
+
+  TaggedType tagged_type_for_unit_tests_;
 };
 
 class ArrayIndex {

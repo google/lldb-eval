@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <functional>
 #include <sstream>
 #include <type_traits>
 #include <unordered_set>
@@ -103,8 +104,8 @@ class FakeGeneratorRng : public GeneratorRng {
     return constant;
   }
 
-  virtual VariableExpr pick_variable(
-      const std::vector<SymbolTable::VarsContainer::const_iterator>&) override {
+  VariableExpr pick_variable(
+      const std::vector<std::reference_wrapper<const VariableExpr>>&) override {
     assert(!vars_.empty());
     VariableExpr var = vars_.back();
     vars_.pop_back();
@@ -112,10 +113,19 @@ class FakeGeneratorRng : public GeneratorRng {
     return var;
   }
 
-  virtual SymbolTable::FieldsContainer::const_iterator pick_field(
-      const std::vector<SymbolTable::FieldsContainer::const_iterator>&)
+  fuzzer::Field pick_field(
+      const std::vector<std::reference_wrapper<const fuzzer::Field>>&)
       override {
-    assert(false && "Not implemented yet");
+    assert(!fields_.empty());
+    assert(!tagged_types_.empty());
+
+    std::string field_name = fields_.back();
+    TaggedType type = tagged_types_.back();
+
+    fields_.pop_back();
+    tagged_types_.pop_back();
+
+    return fuzzer::Field(std::move(type), std::move(field_name));
   }
 
   bool gen_binop_ptr_expr(float) override {
@@ -238,11 +248,15 @@ class FakeGeneratorRng : public GeneratorRng {
 
   void operator()(const MemberOf& e) {
     expr_kinds_.push_back(ExprKind::MemberOf);
+    tagged_types_.push_back(e.tagged_type_for_unit_tests());
+    fields_.push_back(e.field());
     std::visit(*this, e.expr());
   }
 
   void operator()(const MemberOfPtr& e) {
     expr_kinds_.push_back(ExprKind::MemberOfPtr);
+    tagged_types_.push_back(e.tagged_type_for_unit_tests());
+    fields_.push_back(e.field());
     std::visit(*this, e.expr());
   }
 
@@ -289,7 +303,7 @@ class FakeGeneratorRng : public GeneratorRng {
 
   void operator()(const TaggedType& e) {
     type_kinds_.push_back(TypeKind::TaggedType);
-    tagged_types_.push_back(e.name());
+    tagged_types_.push_back(e);
   }
 
   void operator()(const ScalarType& e) {
@@ -308,7 +322,8 @@ class FakeGeneratorRng : public GeneratorRng {
   std::vector<TypeKind> type_kinds_;
   std::vector<CvQualifiers> cv_qualifiers_;
   std::vector<ScalarType> scalar_types_;
-  std::vector<std::string> tagged_types_;
+  std::vector<TaggedType> tagged_types_;
+  std::vector<std::string> fields_;
 
   std::vector<VariableExpr> vars_;
 

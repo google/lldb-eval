@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <functional>
 #include <optional>
 #include <random>
 #include <type_traits>
@@ -121,33 +122,19 @@ std::optional<Expr> ExprGenerator::gen_double_constant(
 std::optional<Expr> ExprGenerator::gen_variable_expr(
     const ExprConstraints& constraints) {
   const auto& type_constraints = constraints.type_constraints();
-  const auto& vars = symtab_.vars();
 
-  std::vector<SymbolTable::VarsContainer::const_iterator> eligible_vars;
-  auto begin = vars.cbegin();
-  auto end = vars.cend();
-
-  // `std::unordered_multimap` iteration does not guarantee any kind of
-  // specific order. However, elements with the same key will be iterated
-  // in one contiguous subrange. That is, when iterating through a multimap,
-  // we'll get all elements with the same key "in one go".
-  for (auto it = begin; it != end;) {
-    auto it_range = vars.equal_range(it->first);
-
-    if (type_constraints.allows_type(it->first)) {
-      for (auto var_it = it_range.first; var_it != it_range.second; var_it++) {
-        eligible_vars.push_back(var_it);
-      }
+  std::vector<std::reference_wrapper<const VariableExpr>> vars;
+  for (const auto& e : symtab_.vars()) {
+    if (type_constraints.allows_type(e.first)) {
+      vars.insert(vars.end(), e.second.begin(), e.second.end());
     }
-
-    it = it_range.second;
   }
 
-  if (eligible_vars.empty()) {
+  if (vars.empty()) {
     return {};
   }
 
-  return rng_->pick_variable(eligible_vars);
+  return rng_->pick_variable(vars);
 }
 
 std::optional<Expr> ExprGenerator::gen_binary_expr(
@@ -534,36 +521,20 @@ std::optional<Expr> ExprGenerator::gen_address_of_expr(
 std::optional<Expr> ExprGenerator::gen_member_of_expr(
     const Weights& weights, const ExprConstraints& constraints) {
   const auto& type_constraints = constraints.type_constraints();
-  const auto& fields = symtab_.fields_by_type();
 
-  std::vector<SymbolTable::FieldsContainer::const_iterator> eligible_fields;
-
-  auto begin = fields.cbegin();
-  auto end = fields.cend();
-
-  // `std::unordered_multimap` iteration does not guarantee any kind of
-  // specific order. However, elements with the same key will be iterated
-  // in one contiguous subrange. That is, when iterating through a multimap,
-  // we'll get all elements with the same key "in one go".
-  for (auto it = begin; it != end;) {
-    auto it_range = fields.equal_range(it->first);
-
-    if (type_constraints.allows_type(it->first)) {
-      for (auto fields_it = it_range.first; fields_it != it_range.second;
-           fields_it++) {
-        eligible_fields.push_back(fields_it);
-      }
+  std::vector<std::reference_wrapper<const Field>> fields;
+  for (const auto& e : symtab_.fields_by_type()) {
+    if (type_constraints.allows_type(e.first)) {
+      fields.insert(fields.end(), e.second.begin(), e.second.end());
     }
-
-    it = it_range.second;
   }
 
-  if (eligible_fields.empty()) {
+  if (fields.empty()) {
     return {};
   }
 
-  auto it = rng_->pick_field(eligible_fields);
-  TypeConstraints new_constraints = SpecificTypes(it->second.type());
+  Field field = rng_->pick_field(fields);
+  TypeConstraints new_constraints = SpecificTypes(field.containing_type());
   auto maybe_expr = gen_with_weights(weights, std::move(new_constraints));
   if (!maybe_expr.has_value()) {
     return {};
@@ -574,42 +545,27 @@ std::optional<Expr> ExprGenerator::gen_member_of_expr(
     expr = ParenthesizedExpr(std::move(expr));
   }
 
-  return MemberOf(std::move(expr), it->second.field());
+  return MemberOf(std::move(expr), field.name());
 }
 
 std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
     const Weights& weights, const ExprConstraints& constraints) {
   const auto& type_constraints = constraints.type_constraints();
-  const auto& fields = symtab_.fields_by_type();
 
-  std::vector<SymbolTable::FieldsContainer::const_iterator> eligible_fields;
+  std::vector<std::reference_wrapper<const Field>> fields;
 
-  auto begin = fields.cbegin();
-  auto end = fields.cend();
-
-  // `std::unordered_multimap` iteration does not guarantee any kind of
-  // specific order. However, elements with the same key will be iterated
-  // in one contiguous subrange. That is, when iterating through a multimap,
-  // we'll get all elements with the same key "in one go".
-  for (auto it = begin; it != end;) {
-    auto it_range = fields.equal_range(it->first);
-
-    if (type_constraints.allows_type(it->first)) {
-      for (auto fields_it = it_range.first; fields_it != it_range.second;
-           fields_it++) {
-        eligible_fields.push_back(fields_it);
-      }
+  for (const auto& e : symtab_.fields_by_type()) {
+    if (type_constraints.allows_type(e.first)) {
+      fields.insert(fields.end(), e.second.begin(), e.second.end());
     }
-
-    it = it_range.second;
   }
 
-  if (eligible_fields.empty()) {
+  if (fields.empty()) {
     return {};
   }
 
-  auto it = rng_->pick_field(eligible_fields);
-  TypeConstraints new_constraints = SpecificTypes(it->second.type());
+  Field field = rng_->pick_field(fields);
+  TypeConstraints new_constraints = SpecificTypes(field.containing_type());
   new_constraints = new_constraints.make_pointer_constraints();
   auto maybe_expr = gen_with_weights(weights, std::move(new_constraints));
   if (!maybe_expr.has_value()) {
@@ -621,7 +577,7 @@ std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
     expr = ParenthesizedExpr(std::move(expr));
   }
 
-  return MemberOfPtr(std::move(expr), it->second.field());
+  return MemberOfPtr(std::move(expr), field.name());
 }
 
 std::optional<Expr> ExprGenerator::gen_array_index_expr(
@@ -1046,13 +1002,13 @@ CvQualifiers DefaultGeneratorRng::gen_cv_qualifiers(float const_prob,
 }
 
 VariableExpr DefaultGeneratorRng::pick_variable(
-    const std::vector<SymbolTable::VarsContainer::const_iterator>& vars) {
+    const std::vector<std::reference_wrapper<const VariableExpr>>& vars) {
   auto it = pick_element(vars, rng_);
-  return (*it)->second;
+  return *it;
 }
 
-SymbolTable::FieldsContainer::const_iterator DefaultGeneratorRng::pick_field(
-    const std::vector<SymbolTable::FieldsContainer::const_iterator>& fields) {
+Field DefaultGeneratorRng::pick_field(
+    const std::vector<std::reference_wrapper<const Field>>& fields) {
   auto it = pick_element(fields, rng_);
   return *it;
 }
