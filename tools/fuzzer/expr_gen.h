@@ -25,6 +25,7 @@
 
 #include "tools/fuzzer/ast.h"
 #include "tools/fuzzer/enum_bitset.h"
+#include "tools/fuzzer/symbol_table.h"
 
 namespace fuzzer {
 
@@ -80,6 +81,8 @@ using UnOpMask = EnumBitset<UnOp>;
 struct GenConfig {
   int num_exprs_to_generate = 30;
 
+  int max_depth = 10;
+
   uint64_t int_const_min = 0;
   uint64_t int_const_max = 1000;
 
@@ -104,9 +107,9 @@ struct GenConfig {
       {1.0f, 0.0f},  // ExprKind::IntegerConstant
       {2.0f, 0.0f},  // ExprKind::DoubleConstant
       {1.0f, 0.0f},  // ExprKind::VariableExpr
-      {7.0f, 0.4f},  // ExprKind::UnaryExpr
+      {3.0f, 0.4f},  // ExprKind::UnaryExpr
       {3.0f, 0.4f},  // ExprKind::BinaryExpr
-      {1.0f, 0.1f},  // ExprKind::AddressOf
+      {2.0f, 0.1f},  // ExprKind::AddressOf
       {1.0f, 0.1f},  // ExprKind::MemberOf
       {1.0f, 0.1f},  // ExprKind::MemberOfPtr
       {1.0f, 0.1f},  // ExprKind::ArrayIndex
@@ -122,8 +125,6 @@ struct GenConfig {
       {1.0f, 0.1f},  // TypeKind::PointerType
       {1.0f, 0.1f},  // TypeKind::VoidPointerType
   }};
-
-  std::unordered_map<Type, std::vector<std::string>> symbol_table;
 };
 
 class GeneratorRng {
@@ -146,6 +147,8 @@ class GeneratorRng {
   virtual bool gen_binop_ptrdiff_expr(float probability) = 0;
   virtual CvQualifiers gen_cv_qualifiers(float const_prob,
                                          float volatile_prob) = 0;
+  virtual VariableExpr pick_variable(
+      const std::vector<std::reference_wrapper<const VariableExpr>>& vars) = 0;
 };
 
 class DefaultGeneratorRng : public GeneratorRng {
@@ -168,6 +171,9 @@ class DefaultGeneratorRng : public GeneratorRng {
   bool gen_binop_ptrdiff_expr(float probability) override;
   CvQualifiers gen_cv_qualifiers(float const_prob,
                                  float volatile_prob) override;
+  VariableExpr pick_variable(
+      const std::vector<std::reference_wrapper<const VariableExpr>>& vars)
+      override;
 
  private:
   std::mt19937 rng_;
@@ -175,8 +181,11 @@ class DefaultGeneratorRng : public GeneratorRng {
 
 class ExprGenerator {
  public:
-  ExprGenerator(std::unique_ptr<GeneratorRng> rng, GenConfig cfg)
-      : rng_(std::move(rng)), cfg_(std::move(cfg)) {}
+  ExprGenerator(std::unique_ptr<GeneratorRng> rng, GenConfig cfg,
+                SymbolTable symtab)
+      : rng_(std::move(rng)),
+        cfg_(std::move(cfg)),
+        symtab_(std::move(symtab)) {}
 
   std::optional<Expr> generate();
 
@@ -208,8 +217,6 @@ class ExprGenerator {
 
   std::optional<Type> gen_type(const Weights& weights,
                                const TypeConstraints& constraints);
-  std::optional<Type> gen_type_impl(const Weights& weights,
-                                    const TypeConstraints& constraints);
   std::optional<QualifiedType> gen_qualified_type(
       const Weights& weights, const TypeConstraints& constraints);
   std::optional<Type> gen_pointer_type(const Weights& weights,
@@ -225,6 +232,7 @@ class ExprGenerator {
  private:
   std::unique_ptr<GeneratorRng> rng_;
   GenConfig cfg_;
+  SymbolTable symtab_;
 };
 
 }  // namespace fuzzer

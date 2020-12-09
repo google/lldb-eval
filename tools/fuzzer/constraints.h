@@ -188,6 +188,7 @@ class TypeConstraints {
   }
 
   TypeConstraints allowed_to_point_to() const;
+  TypeConstraints make_pointer_constraints() const;
 
   bool allows_void_pointer() const {
     if (!satisfiable()) {
@@ -216,7 +217,7 @@ class TypeConstraints {
     const auto* specific_types = as_specific_types();
     assert(specific_types != nullptr && "Did you introduce a new alternative?");
 
-    return specific_types->allows_void_pointer();
+    return specific_types->allows_non_void_pointer();
   }
 
   bool allows_type(const Type& type) const;

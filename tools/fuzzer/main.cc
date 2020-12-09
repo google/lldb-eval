@@ -38,6 +38,7 @@
 #include "tools/cpp/runfiles/runfiles.h"
 #include "tools/fuzzer/ast.h"
 #include "tools/fuzzer/expr_gen.h"
+#include "tools/fuzzer/symbol_table.h"
 
 using bazel::tools::cpp::runfiles::Runfiles;
 
@@ -149,9 +150,138 @@ void run_repl(lldb::SBFrame& frame) {
   }
 }
 
-void run_fuzzer(lldb::SBFrame& frame) {
+fuzzer::SymbolTable gen_symtab() {
+  fuzzer::SymbolTable symtab;
+
+  {
+    fuzzer::Type type(fuzzer::ScalarType::Char);
+    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("char_min"),
+                                           fuzzer::VariableExpr("char_max")};
+
+    symtab.add_vars(std::move(type), std::move(vars));
+  }
+  {
+    fuzzer::Type type(fuzzer::ScalarType::UnsignedChar);
+    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("uchar_min"),
+                                           fuzzer::VariableExpr("uchar_max")};
+
+    symtab.add_vars(std::move(type), std::move(vars));
+  }
+  {
+    fuzzer::Type type(fuzzer::ScalarType::SignedChar);
+    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("schar_min"),
+                                           fuzzer::VariableExpr("schar_max")};
+
+    symtab.add_vars(std::move(type), std::move(vars));
+  }
+  {
+    fuzzer::Type type(fuzzer::ScalarType::UnsignedShort);
+    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("ushort_min"),
+                                           fuzzer::VariableExpr("ushort_max")};
+
+    symtab.add_vars(std::move(type), std::move(vars));
+  }
+  {
+    fuzzer::Type type(fuzzer::ScalarType::SignedShort);
+    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("short_min"),
+                                           fuzzer::VariableExpr("short_max")};
+
+    symtab.add_vars(std::move(type), std::move(vars));
+  }
+  {
+    fuzzer::Type type(fuzzer::ScalarType::UnsignedInt);
+    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("uint_min"),
+                                           fuzzer::VariableExpr("uint_max")};
+
+    symtab.add_vars(std::move(type), std::move(vars));
+  }
+  {
+    fuzzer::Type type(fuzzer::ScalarType::SignedInt);
+    std::vector<fuzzer::VariableExpr> vars{
+        fuzzer::VariableExpr("int_min"), fuzzer::VariableExpr("int_max"),
+        fuzzer::VariableExpr("x"), fuzzer::VariableExpr("ref")};
+
+    symtab.add_vars(std::move(type), std::move(vars));
+  }
+  {
+    fuzzer::Type type(fuzzer::ScalarType::UnsignedLong);
+    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("ulong_min"),
+                                           fuzzer::VariableExpr("ulong_max")};
+
+    symtab.add_vars(std::move(type), std::move(vars));
+  }
+  {
+    fuzzer::Type type(fuzzer::ScalarType::SignedLong);
+    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("long_min"),
+                                           fuzzer::VariableExpr("long_max")};
+
+    symtab.add_vars(std::move(type), std::move(vars));
+  }
+  {
+    fuzzer::Type type(fuzzer::ScalarType::UnsignedLongLong);
+    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("ullong_min"),
+                                           fuzzer::VariableExpr("ullong_max")};
+
+    symtab.add_vars(std::move(type), std::move(vars));
+  }
+  {
+    fuzzer::Type type(fuzzer::ScalarType::SignedLongLong);
+    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("llong_min"),
+                                           fuzzer::VariableExpr("llong_max")};
+
+    symtab.add_vars(std::move(type), std::move(vars));
+  }
+  {
+    fuzzer::Type type(fuzzer::ScalarType::Float);
+    std::vector<fuzzer::VariableExpr> vars{
+        fuzzer::VariableExpr("fnan"), fuzzer::VariableExpr("finf"),
+        fuzzer::VariableExpr("fsnan"), fuzzer::VariableExpr("fmax"),
+        fuzzer::VariableExpr("fdenorm")};
+
+    symtab.add_vars(std::move(type), std::move(vars));
+  }
+  {
+    fuzzer::Type type(fuzzer::ScalarType::Double);
+    std::vector<fuzzer::VariableExpr> vars{
+        fuzzer::VariableExpr("dnan"), fuzzer::VariableExpr("dinf"),
+        fuzzer::VariableExpr("dsnan"), fuzzer::VariableExpr("dmax"),
+        fuzzer::VariableExpr("ddenorm")};
+
+    symtab.add_vars(std::move(type), std::move(vars));
+  }
+  {
+    fuzzer::Type type(fuzzer::ScalarType::LongDouble);
+    std::vector<fuzzer::VariableExpr> vars{
+        fuzzer::VariableExpr("ldnan"), fuzzer::VariableExpr("ldinf"),
+        fuzzer::VariableExpr("ldsnan"), fuzzer::VariableExpr("ldmax"),
+        fuzzer::VariableExpr("lddenorm")};
+
+    symtab.add_vars(std::move(type), std::move(vars));
+  }
+  {
+    fuzzer::Type type(fuzzer::TaggedType("TestStruct"));
+    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("ts")};
+
+    symtab.add_vars(std::move(type), std::move(vars));
+  }
+  {
+    fuzzer::PointerType type{
+        fuzzer::QualifiedType(fuzzer::ScalarType::SignedInt)};
+    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("p")};
+    symtab.add_vars(std::move(type), std::move(vars));
+  }
+  {
+    fuzzer::PointerType type{fuzzer::QualifiedType(fuzzer::ScalarType::Char)};
+    std::vector<fuzzer::VariableExpr> vars{fuzzer::VariableExpr("test_str")};
+    symtab.add_vars(std::move(type), std::move(vars));
+  }
+
+  return symtab;
+}
+
+void run_fuzzer(lldb::SBFrame& frame, const unsigned* seed_ptr) {
   std::random_device rd;
-  auto seed = rd();
+  unsigned seed = seed_ptr ? *seed_ptr : rd();
   printf("==== Seed for this run is: %u ====\n", seed);
 
   auto rng = std::make_unique<fuzzer::DefaultGeneratorRng>(seed);
@@ -159,29 +289,13 @@ void run_fuzzer(lldb::SBFrame& frame) {
   // Disable shift and division for now
   cfg.bin_op_mask[fuzzer::BinOp::Shl] = false;
   cfg.bin_op_mask[fuzzer::BinOp::Shr] = false;
-  cfg.bin_op_mask[fuzzer::BinOp::Div] = false;
-  cfg.bin_op_mask[fuzzer::BinOp::Mod] = false;
 
-  cfg.expr_kind_mask[fuzzer::ExprKind::DereferenceExpr] = false;
-  cfg.expr_kind_mask[fuzzer::ExprKind::AddressOf] = false;
-  cfg.expr_kind_mask[fuzzer::ExprKind::ArrayIndex] = false;
   cfg.expr_kind_mask[fuzzer::ExprKind::MemberOf] = false;
   cfg.expr_kind_mask[fuzzer::ExprKind::MemberOfPtr] = false;
 
-  cfg.symbol_table.emplace(
-      std::make_pair(fuzzer::Type(fuzzer::ScalarType::SignedInt),
-                     std::vector<std::string>{"x", "int_min", "int_max"}));
-  cfg.symbol_table.emplace(
-      std::make_pair(fuzzer::Type(fuzzer::ScalarType::SignedLong),
-                     std::vector<std::string>{"long_min", "long_max"}));
-  cfg.symbol_table.emplace(std::make_pair(
-      fuzzer::PointerType(fuzzer::QualifiedType(fuzzer::ScalarType::SignedInt)),
-      std::vector<std::string>{"p"}));
-  cfg.symbol_table.emplace(std::make_pair(
-      fuzzer::PointerType(fuzzer::QualifiedType(fuzzer::ScalarType::Char)),
-      std::vector<std::string>{"test_str"}));
+  fuzzer::SymbolTable symtab = gen_symtab();
 
-  fuzzer::ExprGenerator gen(std::move(rng), std::move(cfg));
+  fuzzer::ExprGenerator gen(std::move(rng), std::move(cfg), std::move(symtab));
   std::vector<std::string> exprs;
 
   for (int i = 0; i < cfg.num_exprs_to_generate; i++) {
@@ -212,7 +326,20 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  bool repl_mode = argc >= 2 && strcmp(argv[1], "--repl") == 0;
+  bool repl_mode = false;
+  bool custom_seed = false;
+  unsigned seed = 0;
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--repl") == 0) {
+      repl_mode = true;
+    }
+    if (strcmp(argv[i], "--seed") == 0 && i < argc - 1) {
+      custom_seed = true;
+
+      i++;
+      seed = std::stoul(argv[i]);
+    }
+  }
 
   lldb_eval::SetupLLDBServerEnv(*runfiles);
 
@@ -230,7 +357,8 @@ int main(int argc, char** argv) {
     if (repl_mode) {
       run_repl(frame);
     } else {
-      run_fuzzer(frame);
+      const unsigned* seed_ptr = custom_seed ? &seed : nullptr;
+      run_fuzzer(frame, seed_ptr);
     }
 
     proc.Destroy();

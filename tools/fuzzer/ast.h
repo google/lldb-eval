@@ -196,11 +196,13 @@ class BinaryExpr {
  public:
   BinaryExpr() = default;
   BinaryExpr(Expr lhs, BinOp op, Expr rhs);
+  BinaryExpr(Expr lhs, BinOp op, Expr rhs, Type expr_type);
 
   const Expr& lhs() const;
   const Expr& rhs() const;
   BinOp op() const;
   int precedence() const;
+  const Type* expr_type() const;
 
   friend std::ostream& operator<<(std::ostream& os, const BinaryExpr& expr);
 
@@ -208,6 +210,7 @@ class BinaryExpr {
   std::shared_ptr<Expr> lhs_;
   std::shared_ptr<Expr> rhs_;
   BinOp op_ = BinOp::Plus;  // Just pick one for the default ctor
+  std::shared_ptr<Type> expr_type_;
 };
 
 class UnaryExpr {
@@ -422,11 +425,13 @@ class TernaryExpr {
 
   TernaryExpr() = default;
   TernaryExpr(Expr cond, Expr lhs, Expr rhs);
+  TernaryExpr(Expr cond, Expr lhs, Expr rhs, Type expr_type);
 
   const Expr& cond() const;
   const Expr& lhs() const;
   const Expr& rhs() const;
   int precedence() const { return PRECEDENCE; }
+  const Type* expr_type() const;
 
   friend std::ostream& operator<<(std::ostream& os, const TernaryExpr& expr);
 
@@ -434,11 +439,13 @@ class TernaryExpr {
   std::shared_ptr<Expr> cond_;
   std::shared_ptr<Expr> lhs_;
   std::shared_ptr<Expr> rhs_;
+
+  std::shared_ptr<Type> expr_type_;
 };
 
 class CastExpr {
  public:
-  static constexpr int PRECEDENCE = 2;
+  static constexpr int PRECEDENCE = 3;
 
   CastExpr() = default;
   CastExpr(Type type, Expr expr);
