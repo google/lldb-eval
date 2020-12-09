@@ -149,6 +149,8 @@ class GeneratorRng {
                                          float volatile_prob) = 0;
   virtual VariableExpr pick_variable(
       const std::vector<std::reference_wrapper<const VariableExpr>>& vars) = 0;
+  virtual TaggedType pick_tagged_type(
+      const std::vector<std::reference_wrapper<const TaggedType>>& types) = 0;
   virtual Field pick_field(
       const std::vector<std::reference_wrapper<const Field>>& fields) = 0;
 };
@@ -175,6 +177,9 @@ class DefaultGeneratorRng : public GeneratorRng {
                                  float volatile_prob) override;
   VariableExpr pick_variable(
       const std::vector<std::reference_wrapper<const VariableExpr>>& vars)
+      override;
+  TaggedType pick_tagged_type(
+      const std::vector<std::reference_wrapper<const TaggedType>>& types)
       override;
   Field pick_field(
       const std::vector<std::reference_wrapper<const Field>>& fields) override;

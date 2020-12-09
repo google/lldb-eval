@@ -831,17 +831,14 @@ std::optional<Type> ExprGenerator::gen_tagged_type(
     return {};
   }
 
-  const auto* tagged_types = constraints.allowed_tagged_types();
-  if (tagged_types == nullptr) {
-    return TaggedType("TestStruct");
-  }
+  const auto* constraint_tagged_types = constraints.allowed_tagged_types();
+  const auto& tagged_type_set = constraint_tagged_types != nullptr
+                                    ? *constraint_tagged_types
+                                    : symtab_.tagged_types();
+  std::vector<std::reference_wrapper<const TaggedType>> tagged_types(
+      tagged_type_set.begin(), tagged_type_set.end());
 
-  auto it = tagged_types->begin();
-  if (it != tagged_types->end()) {
-    return *it;
-  }
-
-  return {};
+  return rng_->pick_tagged_type(tagged_types);
 }
 
 std::optional<Type> ExprGenerator::gen_scalar_type(
@@ -1010,6 +1007,12 @@ VariableExpr DefaultGeneratorRng::pick_variable(
 Field DefaultGeneratorRng::pick_field(
     const std::vector<std::reference_wrapper<const Field>>& fields) {
   auto it = pick_element(fields, rng_);
+  return *it;
+}
+
+TaggedType DefaultGeneratorRng::pick_tagged_type(
+    const std::vector<std::reference_wrapper<const TaggedType>>& types) {
+  auto it = pick_element(types, rng_);
   return *it;
 }
 
