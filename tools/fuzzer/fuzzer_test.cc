@@ -256,14 +256,14 @@ class FakeGeneratorRng : public GeneratorRng {
 
   void operator()(const MemberOf& e) {
     expr_kinds_.push_back(ExprKind::MemberOf);
-    (*this)(e.tagged_type_for_unit_tests());
+    (*this)(e.expr_type());
     fields_.push_back(e.field());
     std::visit(*this, e.expr());
   }
 
   void operator()(const MemberOfPtr& e) {
     expr_kinds_.push_back(ExprKind::MemberOfPtr);
-    (*this)(e.tagged_type_for_unit_tests());
+    (*this)(e.expr_type());
     fields_.push_back(e.field());
     std::visit(*this, e.expr());
   }

@@ -373,15 +373,13 @@ class MemberOf {
   MemberOf(Expr expr, std::string field);
 
   // Useful only for unit testing
-  MemberOf(Expr expr, std::string field, TaggedType tagged_type_for_unit_tests);
+  MemberOf(Expr expr, std::string field, TaggedType expr_type);
 
   const Expr& expr() const;
   const std::string& field() const;
   int precedence() const { return PRECEDENCE; }
 
-  const TaggedType& tagged_type_for_unit_tests() const {
-    return tagged_type_for_unit_tests_;
-  }
+  const TaggedType& expr_type() const { return expr_type_; }
 
   friend std::ostream& operator<<(std::ostream& os, const MemberOf& expr);
 
@@ -389,7 +387,7 @@ class MemberOf {
   std::shared_ptr<Expr> expr_;
   std::string field_;
 
-  TaggedType tagged_type_for_unit_tests_;
+  TaggedType expr_type_;
 };
 
 class MemberOfPtr {
@@ -400,16 +398,13 @@ class MemberOfPtr {
   MemberOfPtr(Expr expr, std::string field);
 
   // Useful only for unit testing
-  MemberOfPtr(Expr expr, std::string field,
-              TaggedType tagged_type_for_unit_tests);
+  MemberOfPtr(Expr expr, std::string field, TaggedType expr_type);
 
   const Expr& expr() const;
   const std::string& field() const;
   int precedence() const { return PRECEDENCE; }
 
-  const TaggedType& tagged_type_for_unit_tests() const {
-    return tagged_type_for_unit_tests_;
-  }
+  const TaggedType& expr_type() const { return expr_type_; }
 
   friend std::ostream& operator<<(std::ostream& os, const MemberOfPtr& expr);
 
@@ -417,7 +412,7 @@ class MemberOfPtr {
   std::shared_ptr<Expr> expr_;
   std::string field_;
 
-  TaggedType tagged_type_for_unit_tests_;
+  TaggedType expr_type_;
 };
 
 class ArrayIndex {

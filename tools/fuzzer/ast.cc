@@ -323,11 +323,10 @@ std::ostream& operator<<(std::ostream& os, const AddressOf& e) {
 MemberOf::MemberOf(Expr expr, std::string field)
     : expr_(std::make_shared<Expr>(std::move(expr))),
       field_(std::move(field)) {}
-MemberOf::MemberOf(Expr expr, std::string field,
-                   TaggedType tagged_type_for_unit_tests)
+MemberOf::MemberOf(Expr expr, std::string field, TaggedType expr_type)
     : expr_(std::make_shared<Expr>(std::move(expr))),
       field_(std::move(field)),
-      tagged_type_for_unit_tests_(std::move(tagged_type_for_unit_tests)) {}
+      expr_type_(std::move(expr_type)) {}
 const Expr& MemberOf::expr() const { return *expr_; }
 const std::string& MemberOf::field() const { return field_; }
 std::ostream& operator<<(std::ostream& os, const MemberOf& e) {
@@ -337,11 +336,10 @@ std::ostream& operator<<(std::ostream& os, const MemberOf& e) {
 MemberOfPtr::MemberOfPtr(Expr expr, std::string field)
     : expr_(std::make_shared<Expr>(std::move(expr))),
       field_(std::move(field)) {}
-MemberOfPtr::MemberOfPtr(Expr expr, std::string field,
-                         TaggedType tagged_type_for_unit_tests)
+MemberOfPtr::MemberOfPtr(Expr expr, std::string field, TaggedType expr_type)
     : expr_(std::make_shared<Expr>(std::move(expr))),
       field_(std::move(field)),
-      tagged_type_for_unit_tests_(std::move(tagged_type_for_unit_tests)) {}
+      expr_type_(std::move(expr_type)) {}
 const Expr& MemberOfPtr::expr() const { return *expr_; }
 const std::string& MemberOfPtr::field() const { return field_; }
 std::ostream& operator<<(std::ostream& os, const MemberOfPtr& e) {
