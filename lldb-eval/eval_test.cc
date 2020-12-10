@@ -491,6 +491,18 @@ TEST_F(EvalTest, TestPointerArithmetic) {
                       "'const char *')"));
 }
 
+TEST_F(EvalTest, PointerPointerArithmeticFloat) {
+  EXPECT_THAT(
+      Eval("(int*)0 + 1.1"),
+      IsError("invalid operands to binary expression ('int *' and 'double')"));
+  EXPECT_THAT(
+      Eval("1.1 + (int*)0"),
+      IsError("invalid operands to binary expression ('double' and 'int *')"));
+  EXPECT_THAT(
+      Eval("(int*)0 - 1.1"),
+      IsError("invalid operands to binary expression ('int *' and 'double')"));
+}
+
 TEST_F(EvalTest, PointerPointerComparison) {
   EXPECT_THAT(Eval("p_void == p_void"), IsEqual("true"));
   EXPECT_THAT(Eval("p_void == p_char1"), IsEqual("true"));
