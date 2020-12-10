@@ -6,7 +6,6 @@ cc_library(
         "ast.cc",
         "constraints.cc",
         "expr_gen.cc",
-        "symbol_table.cc",
     ],
     hdrs = [
         "ast.h",

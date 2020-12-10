@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <functional>
 #include <sstream>
 #include <type_traits>
 #include <unordered_set>
@@ -103,13 +104,36 @@ class FakeGeneratorRng : public GeneratorRng {
     return constant;
   }
 
-  virtual VariableExpr pick_variable(
+  VariableExpr pick_variable(
       const std::vector<std::reference_wrapper<const VariableExpr>>&) override {
     assert(!vars_.empty());
     VariableExpr var = vars_.back();
     vars_.pop_back();
 
     return var;
+  }
+
+  fuzzer::Field pick_field(
+      const std::vector<std::reference_wrapper<const fuzzer::Field>>&)
+      override {
+    assert(!fields_.empty());
+    std::string field_name = fields_.back();
+
+    fields_.pop_back();
+
+    TaggedType type = pick_tagged_type(
+        std::vector<std::reference_wrapper<const TaggedType>>());
+
+    return fuzzer::Field(std::move(type), std::move(field_name));
+  }
+
+  TaggedType pick_tagged_type(
+      const std::vector<std::reference_wrapper<const TaggedType>>&) override {
+    assert(!tagged_types_.empty());
+    TaggedType type = tagged_types_.back();
+    tagged_types_.pop_back();
+
+    return type;
   }
 
   bool gen_binop_ptr_expr(float) override {
@@ -232,11 +256,15 @@ class FakeGeneratorRng : public GeneratorRng {
 
   void operator()(const MemberOf& e) {
     expr_kinds_.push_back(ExprKind::MemberOf);
+    (*this)(e.expr_type());
+    fields_.push_back(e.field());
     std::visit(*this, e.expr());
   }
 
   void operator()(const MemberOfPtr& e) {
     expr_kinds_.push_back(ExprKind::MemberOfPtr);
+    (*this)(e.expr_type());
+    fields_.push_back(e.field());
     std::visit(*this, e.expr());
   }
 
@@ -283,7 +311,7 @@ class FakeGeneratorRng : public GeneratorRng {
 
   void operator()(const TaggedType& e) {
     type_kinds_.push_back(TypeKind::TaggedType);
-    tagged_types_.push_back(e.name());
+    tagged_types_.push_back(e);
   }
 
   void operator()(const ScalarType& e) {
@@ -302,7 +330,8 @@ class FakeGeneratorRng : public GeneratorRng {
   std::vector<TypeKind> type_kinds_;
   std::vector<CvQualifiers> cv_qualifiers_;
   std::vector<ScalarType> scalar_types_;
-  std::vector<std::string> tagged_types_;
+  std::vector<TaggedType> tagged_types_;
+  std::vector<std::string> fields_;
 
   std::vector<VariableExpr> vars_;
 

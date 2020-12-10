@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <functional>
 #include <optional>
 #include <random>
 #include <type_traits>
@@ -30,6 +31,7 @@
 #include "tools/fuzzer/ast.h"
 #include "tools/fuzzer/constraints.h"
 #include "tools/fuzzer/enum_bitset.h"
+#include "tools/fuzzer/symbol_table.h"
 
 namespace fuzzer {
 
@@ -119,13 +121,12 @@ std::optional<Expr> ExprGenerator::gen_double_constant(
 
 std::optional<Expr> ExprGenerator::gen_variable_expr(
     const ExprConstraints& constraints) {
-  // TODO: This is a stub, which is addressed by the `fuzzer-ptrs` branch
   const auto& type_constraints = constraints.type_constraints();
 
   std::vector<std::reference_wrapper<const VariableExpr>> vars;
-  for (const auto& type : symtab_.vars()) {
-    if (type_constraints.allows_type(type.first)) {
-      vars.insert(vars.end(), type.second.begin(), type.second.end());
+  for (const auto& [k, v] : symtab_.vars()) {
+    if (type_constraints.allows_type(k)) {
+      vars.insert(vars.end(), v.begin(), v.end());
     }
   }
 
@@ -519,23 +520,54 @@ std::optional<Expr> ExprGenerator::gen_address_of_expr(
 
 std::optional<Expr> ExprGenerator::gen_member_of_expr(
     const Weights& weights, const ExprConstraints& constraints) {
-  auto maybe_expr = gen_with_weights(weights, constraints);
+  const auto& type_constraints = constraints.type_constraints();
+
+  std::vector<std::reference_wrapper<const Field>> fields;
+  for (const auto& [k, v] : symtab_.fields_by_type()) {
+    if (type_constraints.allows_type(k)) {
+      fields.insert(fields.end(), v.begin(), v.end());
+    }
+  }
+
+  if (fields.empty()) {
+    return {};
+  }
+
+  Field field = rng_->pick_field(fields);
+  TypeConstraints new_constraints = SpecificTypes(field.containing_type());
+  auto maybe_expr = gen_with_weights(weights, std::move(new_constraints));
   if (!maybe_expr.has_value()) {
     return {};
   }
-  Expr expr = maybe_expr.value();
+  Expr expr = std::move(maybe_expr.value());
 
   if (expr_precedence(expr) > MemberOf::PRECEDENCE) {
     expr = ParenthesizedExpr(std::move(expr));
   }
 
-  // TODO: Stub
-  return MemberOf(std::move(expr), "f1");
+  return MemberOf(std::move(expr), field.name());
 }
 
 std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
     const Weights& weights, const ExprConstraints& constraints) {
-  auto maybe_expr = gen_with_weights(weights, constraints);
+  const auto& type_constraints = constraints.type_constraints();
+
+  std::vector<std::reference_wrapper<const Field>> fields;
+
+  for (const auto& [k, v] : symtab_.fields_by_type()) {
+    if (type_constraints.allows_type(k)) {
+      fields.insert(fields.end(), v.begin(), v.end());
+    }
+  }
+
+  if (fields.empty()) {
+    return {};
+  }
+
+  Field field = rng_->pick_field(fields);
+  TypeConstraints new_constraints = SpecificTypes(field.containing_type());
+  new_constraints = new_constraints.make_pointer_constraints();
+  auto maybe_expr = gen_with_weights(weights, std::move(new_constraints));
   if (!maybe_expr.has_value()) {
     return {};
   }
@@ -545,8 +577,7 @@ std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
     expr = ParenthesizedExpr(std::move(expr));
   }
 
-  // TODO: Stub
-  return MemberOfPtr(std::move(expr), "f1");
+  return MemberOfPtr(std::move(expr), field.name());
 }
 
 std::optional<Expr> ExprGenerator::gen_array_index_expr(
@@ -800,17 +831,14 @@ std::optional<Type> ExprGenerator::gen_tagged_type(
     return {};
   }
 
-  const auto* tagged_types = constraints.allowed_tagged_types();
-  if (tagged_types == nullptr) {
-    return TaggedType("TestStruct");
-  }
+  const auto* constraint_tagged_types = constraints.allowed_tagged_types();
+  const auto& tagged_type_set = constraint_tagged_types != nullptr
+                                    ? *constraint_tagged_types
+                                    : symtab_.tagged_types();
+  std::vector<std::reference_wrapper<const TaggedType>> tagged_types(
+      tagged_type_set.begin(), tagged_type_set.end());
 
-  auto it = tagged_types->begin();
-  if (it != tagged_types->end()) {
-    return *it;
-  }
-
-  return {};
+  return rng_->pick_tagged_type(tagged_types);
 }
 
 std::optional<Type> ExprGenerator::gen_scalar_type(
@@ -896,6 +924,16 @@ Enum weighted_pick(
   lldb_eval_unreachable("Could not pick an element; maybe sum is 0?");
 }
 
+template <typename T, typename Rng>
+const T& pick_element(const std::vector<T>& vec, Rng& rng) {
+  assert(!vec.empty() && "Can't pick an element out of an empty vector");
+
+  std::uniform_int_distribution<size_t> distr(0, vec.size() - 1);
+  auto choice = distr(rng);
+
+  return vec[choice];
+}
+
 BinOp DefaultGeneratorRng::gen_bin_op(BinOpMask mask) {
   return pick_nth_set_bit(mask, rng_);
 }
@@ -961,10 +999,17 @@ CvQualifiers DefaultGeneratorRng::gen_cv_qualifiers(float const_prob,
 
 VariableExpr DefaultGeneratorRng::pick_variable(
     const std::vector<std::reference_wrapper<const VariableExpr>>& vars) {
-  assert(!vars.empty() && "No variables to pick");
-  std::uniform_int_distribution<size_t> distr(0, vars.size() - 1);
+  return pick_element(vars, rng_);
+}
 
-  return vars[distr(rng_)];
+Field DefaultGeneratorRng::pick_field(
+    const std::vector<std::reference_wrapper<const Field>>& fields) {
+  return pick_element(fields, rng_);
+}
+
+TaggedType DefaultGeneratorRng::pick_tagged_type(
+    const std::vector<std::reference_wrapper<const TaggedType>>& types) {
+  return pick_element(types, rng_);
 }
 
 bool DefaultGeneratorRng::gen_binop_ptr_expr(float probability) {
