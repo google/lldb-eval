@@ -1000,19 +1000,16 @@ CvQualifiers DefaultGeneratorRng::gen_cv_qualifiers(float const_prob,
 VariableExpr DefaultGeneratorRng::pick_variable(
     const std::vector<std::reference_wrapper<const VariableExpr>>& vars) {
   return pick_element(vars, rng_);
-  ;
 }
 
 Field DefaultGeneratorRng::pick_field(
     const std::vector<std::reference_wrapper<const Field>>& fields) {
   return pick_element(fields, rng_);
-  ;
 }
 
 TaggedType DefaultGeneratorRng::pick_tagged_type(
     const std::vector<std::reference_wrapper<const TaggedType>>& types) {
   return pick_element(types, rng_);
-  ;
 }
 
 bool DefaultGeneratorRng::gen_binop_ptr_expr(float probability) {
