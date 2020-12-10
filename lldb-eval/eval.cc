@@ -147,9 +147,8 @@ void Interpreter::Visit(const CStyleCastNode* node) {
     if (rhs.IsPointer()) {
       // C-style cast from pointer to float/double is not allowed.
       if (type.GetCanonicalType().GetTypeFlags() & lldb::eTypeIsFloat) {
-        std::string type_name = type.GetName();
-        std::string msg =
-            "C-style cast from '{0}' to '" + type_name + "' is not allowed";
+        std::string msg = llvm::formatv(
+            "C-style cast from '{{0}' to '{0}' is not allowed", type.GetName());
         ReportTypeError(msg.c_str(), rhs);
         return;
       }
@@ -561,8 +560,8 @@ Value Interpreter::EvaluateComparison(clang::tok::TokenKind op, Value lhs,
       }
     }
 
-    return CreateValueFromBool(target_,
-                               Compare(op, lhs.GetUInt64(), rhs.GetUInt64()));
+    bool ret = Compare(op, lhs.GetUInt64(), rhs.GetUInt64());
+    return CreateValueFromBool(target_, ret);
   }
 
   ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
@@ -628,16 +627,16 @@ Value Interpreter::EvaluateBinaryAddition(Value lhs, Value rhs) {
   // Operation '+' works for:
   //
   //  scalar <-> scalar
-  //  scalar <-> pointer
-  //  pointer <-> scalar
+  //  integer <-> pointer
+  //  pointer <-> integer
 
   if (lhs.IsScalar() && rhs.IsScalar()) {
     lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
     return EvaluateArithmeticOp(target_, ArithmeticOp::ADD, lhs, rhs, rtype);
   }
 
-  bool pointer_arithmetic_operation = (lhs.IsPointer() && rhs.IsScalar()) ||
-                                      (lhs.IsScalar() && rhs.IsPointer());
+  bool pointer_arithmetic_operation = (lhs.IsPointer() && rhs.IsInteger()) ||
+                                      (lhs.IsInteger() && rhs.IsPointer());
 
   if (pointer_arithmetic_operation) {
     // Figure out which operand is the pointer and which one is the offset.
@@ -667,7 +666,7 @@ Value Interpreter::EvaluateBinarySubtraction(Value lhs, Value rhs) {
   // Operation '-' works for:
   //
   //  scalar <-> scalar
-  //  pointer <-> scalar
+  //  pointer <-> integer
   //  pointer <-> pointer (if pointee types are compatible)
 
   if (lhs.IsScalar() && rhs.IsScalar()) {
@@ -675,7 +674,7 @@ Value Interpreter::EvaluateBinarySubtraction(Value lhs, Value rhs) {
     return EvaluateArithmeticOp(target_, ArithmeticOp::SUB, lhs, rhs, rtype);
   }
 
-  if (lhs.IsPointer() && rhs.IsScalar()) {
+  if (lhs.IsPointer() && rhs.IsInteger()) {
     if (lhs.IsPointerToVoid()) {
       ReportTypeError("arithmetic on a pointer to void");
       return Value();
