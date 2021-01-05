@@ -18,10 +18,6 @@
 #include <type_traits>
 #include <unordered_map>
 
-// TODO: remove
-#include <cassert>
-#include <cstdio>
-
 #include "lldb-eval/api.h"
 #include "lldb-eval/runner.h"
 #include "lldb/API/SBDebugger.h"
