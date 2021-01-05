@@ -19,6 +19,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include "clang/Basic/SourceManager.h"
 #include "lldb/API/SBExecutionContext.h"
@@ -58,8 +59,12 @@ class Error {
 
 class Context {
  public:
-  static std::shared_ptr<Context> Create(std::string expr, lldb::SBFrame frame);
-  static std::shared_ptr<Context> Create(std::string expr, lldb::SBValue scope);
+  static std::shared_ptr<Context> Create(
+      std::string expr, lldb::SBFrame frame,
+      std::unordered_map<std::string, lldb::SBValue> context_vars = {});
+  static std::shared_ptr<Context> Create(
+      std::string expr, lldb::SBValue scope,
+      std::unordered_map<std::string, lldb::SBValue> context_vars = {});
 
   // This class cannot be safely moved because of the dependency between `expr_`
   // and `smff_`. Users are supposed to pass around the shared pointer.
@@ -75,7 +80,8 @@ class Context {
   lldb::SBValue LookupIdentifier(const char* name) const;
 
  private:
-  Context(std::string expr, lldb::SBExecutionContext ctx, lldb::SBValue scope);
+  Context(std::string expr, lldb::SBExecutionContext ctx, lldb::SBValue scope,
+          std::unordered_map<std::string, lldb::SBValue> context_vars);
 
  public:
   // Store the expression, since SourceManager doesn't take the ownership.
@@ -91,6 +97,9 @@ class Context {
   // used as `this` pointer and local variables from the current frame are not
   // available.
   mutable lldb::SBValue scope_;
+
+  // Context variables used for identifier lookup.
+  std::unordered_map<std::string, lldb::SBValue> context_vars_;
 };
 
 }  // namespace lldb_eval

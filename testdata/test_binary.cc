@@ -474,6 +474,17 @@ void TestBitField() {
   // BREAK(TestBitField)
 }
 
+void TestContextVariables() {
+  struct Scope {
+    int a = 10;
+    const char* ptr = "hello";
+  };
+
+  Scope s;
+
+  // BREAK(TestContextVariables)
+}
+
 namespace test_binary {
 
 void main() {
@@ -498,6 +509,7 @@ void main() {
   TestTemplateTypes();
   TestValueScope();
   TestBitField();
+  TestContextVariables();
 
   // break here
 }
