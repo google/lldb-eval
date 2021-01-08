@@ -483,6 +483,7 @@ void TestContextVariables() {
   Scope s;
 
   // BREAK(TestContextVariables)
+  // BREAK(TestContextVariablesSubset)
 }
 
 namespace test_binary {
