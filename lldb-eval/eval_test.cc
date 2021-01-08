@@ -16,6 +16,7 @@
 #include <optional>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 
 #include "lldb-eval/api.h"
 #include "lldb-eval/runner.h"
@@ -85,6 +86,39 @@ class EvaluatorHelper {
       // Evaluate in the frame context.
       ret.lldb_eval_value = lldb_eval::EvaluateExpression(frame_, expr.c_str(),
                                                           ret.lldb_eval_error);
+
+      if (lldb_) {
+        ret.lldb_value = frame_.EvaluateExpression(expr.c_str());
+      }
+    }
+
+    return ret;
+  }
+
+  EvalResult EvalWithContext(
+      const std::string& expr,
+      const std::unordered_map<std::string, lldb::SBValue>& vars) {
+    EvalResult ret;
+
+    std::vector<lldb_eval::ContextVariable> ctx_vec;
+    ctx_vec.reserve(vars.size());
+    for (const auto& [name, value] : vars) {
+      ctx_vec.push_back({name.c_str(), value});
+    }
+    lldb_eval::ContextVariableList context_vars{ctx_vec.data(), ctx_vec.size()};
+
+    if (scope_) {
+      // Evaluate in the variable context.
+      ret.lldb_eval_value = lldb_eval::EvaluateExpression(
+          scope_, expr.c_str(), context_vars, ret.lldb_eval_error);
+
+      if (lldb_) {
+        ret.lldb_value = scope_.EvaluateExpression(expr.c_str());
+      }
+    } else {
+      // Evaluate in the frame context.
+      ret.lldb_eval_value = lldb_eval::EvaluateExpression(
+          frame_, expr.c_str(), context_vars, ret.lldb_eval_error);
 
       if (lldb_) {
         ret.lldb_value = frame_.EvaluateExpression(expr.c_str());
@@ -259,10 +293,28 @@ class EvalTest : public ::testing::Test {
   EvalResult Eval(std::string expr) {
     return EvaluatorHelper(frame_, compare_with_lldb_).Eval(std::move(expr));
   }
+
+  EvalResult EvalWithContext(
+      const std::string& expr,
+      const std::unordered_map<std::string, lldb::SBValue>& vars) {
+    return EvaluatorHelper(frame_, compare_with_lldb_)
+        .EvalWithContext(expr, vars);
+  }
+
   EvaluatorHelper Scope(std::string scope) {
     // Resolve the scope variable (assume it's a local variable).
     lldb::SBValue scope_var = frame_.FindVariable(scope.c_str());
     return EvaluatorHelper(scope_var, compare_with_lldb_);
+  }
+
+  bool CreateContextVariable(std::string name, std::string assignment) {
+    std::string expr = "auto " + name + " = " + assignment + "; " + name;
+    lldb::SBValue value = frame_.EvaluateExpression(expr.c_str());
+    if (value.GetError().Fail()) {
+      return false;
+    }
+    vars_.emplace(name, value);
+    return true;
   }
 
  protected:
@@ -272,6 +324,9 @@ class EvalTest : public ::testing::Test {
 
   // Evaluate with both lldb-eval and LLDB by default.
   bool compare_with_lldb_ = true;
+
+  // Context variables.
+  std::unordered_map<std::string, lldb::SBValue> vars_;
 
   static Runfiles* runfiles_;
 };
@@ -1060,4 +1115,77 @@ TEST_F(EvalTest, TestBitField) {
   EXPECT_THAT(Scope("abf").Eval("0 + a"), IsEqual("1023"));
   EXPECT_THAT(Scope("abf").Eval("0 + b"), IsEqual("15"));
   EXPECT_THAT(Scope("abf").Eval("0 + c"), IsEqual("3"));
+}
+
+TEST_F(EvalTest, TestContextVariables) {
+  // Context variables don't exist yet.
+  EXPECT_THAT(EvalWithContext("$var", vars_),
+              IsError("use of undeclared identifier '$var'"));
+  EXPECT_THAT(Scope("s").EvalWithContext("$var", vars_),
+              IsError("use of undeclared identifier '$var'"));
+
+  EXPECT_TRUE(CreateContextVariable("$var", "13"));
+  EXPECT_THAT(EvalWithContext("$var", vars_), IsEqual("13"));
+  EXPECT_THAT(EvalWithContext("$var + 2", vars_), IsEqual("15"));
+  EXPECT_THAT(EvalWithContext("$var - s.a", vars_), IsEqual("3"));
+  EXPECT_THAT(EvalWithContext("var", vars_),
+              IsError("use of undeclared identifier 'var'"));
+  EXPECT_THAT(Scope("s").EvalWithContext("$var", vars_), IsEqual("13"));
+  EXPECT_THAT(Scope("s").EvalWithContext("$var + 2", vars_), IsEqual("15"));
+  EXPECT_THAT(Scope("s").EvalWithContext("$var - a", vars_), IsEqual("3"));
+  EXPECT_THAT(Scope("s").EvalWithContext("var", vars_),
+              IsError("use of undeclared identifier 'var'"));
+
+  // Context variable is a pointer.
+  EXPECT_TRUE(CreateContextVariable("$ptr", "s.ptr"));
+  // TODO(tsabolcec): Change the following line once the pointer
+  // comparison issue is fixed.
+  EXPECT_THAT(EvalWithContext("$ptr == s.ptr", vars_),
+              IsError("comparison of distinct pointer types"));
+  EXPECT_THAT(EvalWithContext("*$ptr", vars_), IsEqual("'h'"));
+  EXPECT_THAT(EvalWithContext("$ptr[1]", vars_), IsEqual("'e'"));
+  EXPECT_THAT(Scope("s").EvalWithContext("$ptr == ptr", vars_), IsError(""));
+  EXPECT_THAT(Scope("s").EvalWithContext("*$ptr", vars_), IsEqual("'h'"));
+  EXPECT_THAT(Scope("s").EvalWithContext("$ptr[1]", vars_), IsEqual("'e'"));
+
+  EXPECT_THAT(EvalWithContext("$var + *$ptr", vars_), IsEqual("117"));
+  EXPECT_THAT(Scope("s").EvalWithContext("$var + *$ptr", vars_),
+              IsEqual("117"));
+}
+
+TEST_F(EvalTest, TestContextVariablesSubset) {
+  // All context variables that are created in this test are visible by LLDB.
+  // Disable comparisons with LLDB to test subsets of created context variables.
+  this->compare_with_lldb_ = false;
+
+  EXPECT_TRUE(CreateContextVariable("$var", "13"));
+  EXPECT_TRUE(CreateContextVariable("$ptr", "s.ptr"));
+
+  // Evaluate without the context.
+  EXPECT_THAT(Eval("$var"), IsError("use of undeclared identifier '$var'"));
+  EXPECT_THAT(Eval("$var + 1"), IsError("use of undeclared identifier '$var'"));
+  EXPECT_THAT(Scope("s").Eval("$var"),
+              IsError("use of undeclared identifier '$var'"));
+  EXPECT_THAT(Scope("s").Eval("$var + 1"),
+              IsError("use of undeclared identifier '$var'"));
+
+  std::unordered_map<std::string, lldb::SBValue> var;
+  std::unordered_map<std::string, lldb::SBValue> ptr;
+  var.emplace("$var", vars_["$var"]);
+  ptr.emplace("$ptr", vars_["$ptr"]);
+
+  EXPECT_THAT(EvalWithContext("$var + 0", var), IsEqual("13"));
+  EXPECT_THAT(EvalWithContext("*$ptr", var),
+              IsError("use of undeclared identifier '$ptr'"));
+  EXPECT_THAT(EvalWithContext("$var + *$ptr", var),
+              IsError("use of undeclared identifier '$ptr'"));
+  EXPECT_THAT(EvalWithContext("$var + *$ptr", ptr),
+              IsError("use of undeclared identifier '$var'"));
+  EXPECT_THAT(Scope("s").EvalWithContext("$var + 0", var), IsEqual("13"));
+  EXPECT_THAT(Scope("s").EvalWithContext("*$ptr", var),
+              IsError("use of undeclared identifier '$ptr'"));
+  EXPECT_THAT(Scope("s").EvalWithContext("$var + *$ptr", var),
+              IsError("use of undeclared identifier '$ptr'"));
+  EXPECT_THAT(Scope("s").EvalWithContext("$var + *$ptr", ptr),
+              IsError("use of undeclared identifier '$var'"));
 }

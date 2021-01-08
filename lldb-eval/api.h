@@ -37,12 +37,37 @@
 
 namespace lldb_eval {
 
+// Context variables (aka. convenience variables) are variables living entirely
+// within LLDB. They are prefixed with '$' and created via expression evaluation
+// interface (e.g. 'expr int $foo = 13' in the LLDB's interactive console).
+// Since lldb-eval can't access context variables out of the box, they have to
+// be explicitly passed as arguments in lldb-eval API methods.
+struct ContextVariable {
+  const char* name;
+  lldb::SBValue value;
+};
+
+struct ContextVariableList {
+  const ContextVariable* data;
+  size_t size;
+};
+
 LLDB_EVAL_API
 lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
                                  lldb::SBError& error);
 
 LLDB_EVAL_API
+lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
+                                 ContextVariableList context_vars,
+                                 lldb::SBError& error);
+
+LLDB_EVAL_API
 lldb::SBValue EvaluateExpression(lldb::SBValue scope, const char* expression,
+                                 lldb::SBError& error);
+
+LLDB_EVAL_API
+lldb::SBValue EvaluateExpression(lldb::SBValue scope, const char* expression,
+                                 ContextVariableList context_vars,
                                  lldb::SBError& error);
 
 }  // namespace lldb_eval
