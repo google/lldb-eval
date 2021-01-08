@@ -45,9 +45,6 @@ namespace lldb_eval {
 struct ContextVariable {
   const char* name;
   lldb::SBValue value;
-
-  ContextVariable(const char* name, lldb::SBValue value)
-      : name(name), value(value) {}
 };
 
 struct ContextVariableList {

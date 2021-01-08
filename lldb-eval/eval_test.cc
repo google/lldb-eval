@@ -103,7 +103,7 @@ class EvaluatorHelper {
     std::vector<lldb_eval::ContextVariable> ctx_vec;
     ctx_vec.reserve(vars.size());
     for (const auto& [name, value] : vars) {
-      ctx_vec.emplace_back(name.c_str(), value);
+      ctx_vec.push_back({name.c_str(), value});
     }
     lldb_eval::ContextVariableList context_vars{ctx_vec.data(), ctx_vec.size()};
 
