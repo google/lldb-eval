@@ -78,31 +78,52 @@ struct TypeKindWeightInfo {
 using BinOpMask = EnumBitset<BinOp>;
 using UnOpMask = EnumBitset<UnOp>;
 
+/*
+ * Fuzzer configuration, specifies the various parameters (e.g. expression
+ * weights, min/max values for integer and double constants, etc).
+ */
 struct GenConfig {
+  // Number of expressions to generate in non-interactive mode
   int num_exprs_to_generate = 30;
 
+  // Maximum recursion depth
   int max_depth = 10;
 
+  // Min/max integer constant value
   uint64_t int_const_min = 0;
   uint64_t int_const_max = 1000;
 
+  // Min/max double constant value
   double double_constant_min = 0;
   double double_constant_max = 10;
 
+  // Probability that an expression will be wrapped with extra parentheses.
   float parenthesize_prob = 0.2f;
 
+  // Probability that an binary pointer arithmetic generation of the form
+  // `ptr + idx` or `ptr - idx`.
   float binop_gen_ptr_expr_prob = 0.2f;
+  // Probability that a pointer difference expression (`ptr1 - ptr2`) will
+  // be generated.
   float binop_gen_ptrdiff_expr_prob = 0.1f;
+  // Probability that the operands of a binary expression or array indexing will
+  // be flipped (`ptr + idx` -> `idx + ptr`, `arr[idx]` -> `idx[arr]`, etc).
   float binop_flip_operands_prob = 0.1f;
 
+  // Probabilities that a const/volatile qualifier will be generated
+  // respectively.
   float const_prob = 0.3f;
   float volatile_prob = 0.05f;
 
   BinOpMask bin_op_mask = BinOpMask::all_set();
   UnOpMask un_op_mask = UnOpMask::all_set();
 
+  // Mask to disable specific expression kinds. Modify this instead of setting
+  // a weight to zero to disable an expression kind.
   ExprKindMask expr_kind_mask = ExprKindMask::all_set();
 
+  // Expression kind weights. Make sure that weights are all non-zero and that
+  // any non-terminal expression has a dampening factor in the range `(0, 1)`.
   std::array<ExprKindWeightInfo, NUM_GEN_EXPR_KINDS> expr_kind_weights = {{
       {1.0f, 0.0f},  // ExprKind::IntegerConstant
       {2.0f, 0.0f},  // ExprKind::DoubleConstant
@@ -119,6 +140,8 @@ struct GenConfig {
       {1.0f, 0.4f},  // ExprKind::CastExpr
   }};
 
+  // Type kind weights. Make sure that weights are all non-zero and that
+  // any non-terminal expression has a dampening factor in the range `(0, 1)`.
   std::array<TypeKindWeightInfo, NUM_GEN_TYPE_KINDS> type_kind_weights = {{
       {2.0f, 0.0f},  // TypeKind::ScalarType
       {1.0f, 0.0f},  // TypeKind::TaggedType

@@ -476,6 +476,18 @@ void TestBitField() {
   // BREAK(TestBitField)
 }
 
+void TestContextVariables() {
+  struct Scope {
+    int a = 10;
+    const char* ptr = "hello";
+  };
+
+  Scope s;
+
+  // BREAK(TestContextVariables)
+  // BREAK(TestContextVariablesSubset)
+}
+
 // Referenced by TestScopedEnum.
 enum class ScopedEnum { kFoo, kBar };
 enum class ScopedEnumUInt8 : uint8_t { kFoo, kBar };
@@ -539,6 +551,7 @@ void main() {
   TestTemplateTypes();
   TestValueScope();
   TestBitField();
+  TestContextVariables();
   TestScopedEnum();
   TestUnscopedEnum();
 

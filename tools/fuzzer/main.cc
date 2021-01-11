@@ -284,14 +284,14 @@ void run_fuzzer(lldb::SBFrame& frame, const unsigned* seed_ptr) {
   printf("==== Seed for this run is: %u ====\n", seed);
 
   auto rng = std::make_unique<fuzzer::DefaultGeneratorRng>(seed);
+  // Fuzzer configuration. Refer to `tools/fuzzer/expr_gen.h` to see what
+  // parameters are available.
   auto cfg = fuzzer::GenConfig();
   // Disable shift and division for now
   cfg.bin_op_mask[fuzzer::BinOp::Shl] = false;
   cfg.bin_op_mask[fuzzer::BinOp::Shr] = false;
 
-  // cfg.expr_kind_mask[fuzzer::ExprKind::MemberOf] = false;
-  // cfg.expr_kind_mask[fuzzer::ExprKind::MemberOfPtr] = false;
-
+  // Symbol table
   fuzzer::SymbolTable symtab = gen_symtab();
 
   fuzzer::ExprGenerator gen(std::move(rng), std::move(cfg), std::move(symtab));
@@ -327,10 +327,16 @@ int main(int argc, char** argv) {
 
   bool repl_mode = false;
   bool custom_seed = false;
+  bool print_help = false;
+
   unsigned seed = 0;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--repl") == 0) {
       repl_mode = true;
+    }
+    if (strcmp(argv[i], "--help") == 0) {
+      print_help = true;
+      break;
     }
     if (strcmp(argv[i], "--seed") == 0 && i < argc - 1) {
       custom_seed = true;
@@ -338,6 +344,14 @@ int main(int argc, char** argv) {
       i++;
       seed = std::stoul(argv[i]);
     }
+  }
+  if (print_help) {
+    printf("Usage: %s [--repl] [--help] [--seed <rng_seed>]\n", argv[0]);
+    printf("--help: Print this message\n");
+    printf("--repl: REPL mode, evaluate expressions on lldb and lldb-eval\n");
+    printf("--seed <rng_seed>: Specify the RNG seed to use\n");
+
+    return 0;
   }
 
   lldb_eval::SetupLLDBServerEnv(*runfiles);

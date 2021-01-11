@@ -49,8 +49,12 @@ lldb::SBValue CreateSBValue(lldb::SBTarget target, const void* bytes,
 namespace lldb_eval {
 
 Context::Context(std::string expr, lldb::SBExecutionContext ctx,
-                 lldb::SBValue scope)
-    : expr_(std::move(expr)), ctx_(ctx), scope_(scope) {
+                 lldb::SBValue scope,
+                 std::unordered_map<std::string, lldb::SBValue> context_vars)
+    : expr_(std::move(expr)),
+      ctx_(ctx),
+      scope_(scope),
+      context_vars_(std::move(context_vars)) {
   // This holds a SourceManager and all of its dependencies.
   smff_ = std::make_unique<clang::SourceManagerForFile>("<expr>", expr_);
 
@@ -119,6 +123,12 @@ lldb::SBType Context::ResolveTypeByName(const std::string& name) const {
 }
 
 lldb::SBValue Context::LookupIdentifier(const std::string& name) const {
+  // Lookup context variables first.
+  auto context_var = context_vars_.find(name);
+  if (context_var != context_vars_.end()) {
+    return context_var->second;
+  }
+
   // Internally values don't have global scope qualifier in their names and
   // LLDB doesn't support queries with it too.
   llvm::StringRef name_ref(name);
@@ -200,14 +210,17 @@ lldb::SBValue Context::LookupIdentifier(const std::string& name) const {
   return value;
 }
 
-std::shared_ptr<Context> Context::Create(std::string expr,
-                                         lldb::SBFrame frame) {
-  return std::shared_ptr<Context>(new Context(
-      std::move(expr), lldb::SBExecutionContext(frame), lldb::SBValue()));
+std::shared_ptr<Context> Context::Create(
+    std::string expr, lldb::SBFrame frame,
+    std::unordered_map<std::string, lldb::SBValue> context_vars) {
+  return std::shared_ptr<Context>(
+      new Context(std::move(expr), lldb::SBExecutionContext(frame),
+                  lldb::SBValue(), std::move(context_vars)));
 }
 
-std::shared_ptr<Context> Context::Create(std::string expr,
-                                         lldb::SBValue scope) {
+std::shared_ptr<Context> Context::Create(
+    std::string expr, lldb::SBValue scope,
+    std::unordered_map<std::string, lldb::SBValue> context_vars) {
   // SBValues created via SBTarget::CreateValueFromData don't have SBFrame
   // associated with them. But they still have a process/target, so use that
   // instead.
@@ -215,7 +228,7 @@ std::shared_ptr<Context> Context::Create(std::string expr,
       std::move(expr),
       lldb::SBExecutionContext(
           scope.GetProcess().GetSelectedThread().GetSelectedFrame()),
-      scope));
+      scope, std::move(context_vars)));
 }
 
 }  // namespace lldb_eval

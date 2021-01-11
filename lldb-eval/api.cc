@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include "lldb-eval/context.h"
 #include "lldb-eval/eval.h"
@@ -57,14 +58,37 @@ static lldb::SBValue EvaluateExpressionImpl(std::shared_ptr<Context> ctx,
   return ret.inner_value();
 }
 
+static std::unordered_map<std::string, lldb::SBValue> ConvertToMap(
+    ContextVariableList context_vars) {
+  std::unordered_map<std::string, lldb::SBValue> ret;
+  for (size_t i = 0; i < context_vars.size; ++i) {
+    ret.emplace(context_vars.data[i].name, context_vars.data[i].value);
+  }
+  return ret;
+}
+
 lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
                                  lldb::SBError& error) {
   return EvaluateExpressionImpl(Context::Create(expression, frame), error);
 }
 
+lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
+                                 ContextVariableList context_vars,
+                                 lldb::SBError& error) {
+  return EvaluateExpressionImpl(
+      Context::Create(expression, frame, ConvertToMap(context_vars)), error);
+}
+
 lldb::SBValue EvaluateExpression(lldb::SBValue scope, const char* expression,
                                  lldb::SBError& error) {
   return EvaluateExpressionImpl(Context::Create(expression, scope), error);
+}
+
+lldb::SBValue EvaluateExpression(lldb::SBValue scope, const char* expression,
+                                 ContextVariableList context_vars,
+                                 lldb::SBError& error) {
+  return EvaluateExpressionImpl(
+      Context::Create(expression, scope, ConvertToMap(context_vars)), error);
 }
 
 }  // namespace lldb_eval
