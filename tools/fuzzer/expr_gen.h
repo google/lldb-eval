@@ -42,6 +42,7 @@ enum class ExprKind : unsigned char {
   ArrayIndex,
   TernaryExpr,
   BooleanConstant,
+  NullptrConstant,
   DereferenceExpr,
   CastExpr,
   EnumLast = CastExpr,
@@ -54,7 +55,8 @@ enum class TypeKind : unsigned char {
   TaggedType,
   PointerType,
   VoidPointerType,
-  EnumLast = VoidPointerType,
+  NullptrType,
+  EnumLast = NullptrType,
 };
 inline constexpr size_t NUM_GEN_TYPE_KINDS = (size_t)TypeKind::EnumLast + 1;
 
@@ -84,10 +86,10 @@ using UnOpMask = EnumBitset<UnOp>;
  */
 struct GenConfig {
   // Number of expressions to generate in non-interactive mode
-  int num_exprs_to_generate = 30;
+  int num_exprs_to_generate = 100;
 
   // Maximum recursion depth
-  int max_depth = 10;
+  int max_depth = 6;
 
   // Min/max integer constant value
   uint64_t int_const_min = 0;
@@ -136,6 +138,7 @@ struct GenConfig {
       {1.0f, 0.1f},  // ExprKind::ArrayIndex
       {1.0f, 0.1f},  // ExprKind::TernaryExpr
       {1.0f, 0.0f},  // ExprKind::BooleanConstant
+      {1.0f, 0.0f},  // ExprKind::NullptrConstant
       {1.0f, 0.1f},  // ExprKind::DereferenceExpr
       {1.0f, 0.4f},  // ExprKind::CastExpr
   }};
@@ -147,6 +150,7 @@ struct GenConfig {
       {1.0f, 0.0f},  // TypeKind::TaggedType
       {1.0f, 0.1f},  // TypeKind::PointerType
       {1.0f, 0.1f},  // TypeKind::VoidPointerType
+      {0.5f, 0.2f},  // TypeKind::NullptrType
   }};
 };
 
@@ -227,6 +231,7 @@ class ExprGenerator {
   std::optional<Expr> gen_boolean_constant(const ExprConstraints& constraints);
   std::optional<Expr> gen_integer_constant(const ExprConstraints& constraints);
   std::optional<Expr> gen_double_constant(const ExprConstraints& constraints);
+  std::optional<Expr> gen_nullptr_constant(const ExprConstraints& constraints);
   std::optional<Expr> gen_variable_expr(const ExprConstraints& constraints);
   std::optional<Expr> gen_binary_expr(const Weights& weights,
                                       const ExprConstraints& constraints);

@@ -275,6 +275,11 @@ fuzzer::SymbolTable gen_symtab() {
     symtab.add_field(struct_type, "ch_field", fuzzer::ScalarType::Char);
   }
 
+  {
+    fuzzer::Type type{fuzzer::NullptrType{}};
+    symtab.add_var(type, fuzzer::VariableExpr("null_ptr"));
+  }
+
   return symtab;
 }
 

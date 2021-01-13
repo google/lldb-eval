@@ -215,7 +215,6 @@ class FakeGeneratorRng : public GeneratorRng {
 
   void operator()(const BinaryExpr& e) {
     expr_kinds_.push_back(ExprKind::BinaryExpr);
-
     bin_ops_.push_back(e.op());
 
     const auto* unit_test_type = e.expr_type();
@@ -245,6 +244,10 @@ class FakeGeneratorRng : public GeneratorRng {
   void operator()(const BooleanConstant& e) {
     expr_kinds_.push_back(ExprKind::BooleanConstant);
     bools_.push_back(e.value());
+  }
+
+  void operator()(const NullptrConstant&) {
+    expr_kinds_.push_back(ExprKind::NullptrConstant);
   }
 
   void operator()(const ParenthesizedExpr& e) { std::visit(*this, e.expr()); }
@@ -312,6 +315,10 @@ class FakeGeneratorRng : public GeneratorRng {
   void operator()(const TaggedType& e) {
     type_kinds_.push_back(TypeKind::TaggedType);
     tagged_types_.push_back(e);
+  }
+
+  void operator()(const NullptrType& e) {
+    type_kinds_.push_back(TypeKind::NullptrType);
   }
 
   void operator()(const ScalarType& e) {
@@ -449,6 +456,10 @@ class AstComparator {
     }
   }
 
+  void operator()(const NullptrType&, const NullptrType&) {
+    // Nothing to compare here.
+  }
+
   void operator()(ScalarType lhs, ScalarType rhs) {
     if (lhs != rhs) {
       add_mismatch(lhs, rhs);
@@ -459,6 +470,10 @@ class AstComparator {
     if (lhs.value() != rhs.value()) {
       add_mismatch(lhs.value(), rhs.value());
     }
+  }
+
+  void operator()(const NullptrConstant&, const NullptrConstant&) {
+    // Nothing to compare here.
   }
 
   template <typename T, typename U,

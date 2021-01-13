@@ -70,6 +70,7 @@ class SpecificTypes {
     retval.scalar_types_ = ~ScalarMask(ScalarType::Void);
     retval.ptr_types_ = AnyType{};
     retval.allows_void_pointer_ = true;
+    retval.allows_nullptr_ = true;
 
     return retval;
   }
@@ -80,6 +81,7 @@ class SpecificTypes {
     SpecificTypes retval;
     retval.ptr_types_ = AnyType{};
     retval.allows_void_pointer_ = true;
+    retval.allows_nullptr_ = true;
 
     return retval;
   }
@@ -102,7 +104,8 @@ class SpecificTypes {
   // Is there any type that satisfies these constraints?
   bool satisfiable() const {
     return scalar_types_.any() || !tagged_types_.empty() ||
-           !std::holds_alternative<NoType>(ptr_types_) || allows_void_pointer_;
+           !std::holds_alternative<NoType>(ptr_types_) ||
+           allows_void_pointer_ || allows_nullptr_;
   }
 
   // Scalar types allowed by these constraints.
@@ -126,6 +129,12 @@ class SpecificTypes {
   // Do these constraints allow void pointers or the null pointer constant `0`?
   bool allows_void_pointer() const { return allows_void_pointer_; }
 
+  // Do these constraints allow `nullptr` or the null pointer constant `0`?
+  bool allows_nullptr() const { return allows_nullptr_; }
+
+  // Disallows `nullptr`s.
+  void disallow_nullptr() { allows_nullptr_ = false; }
+
   // What kind of types do these constraints allow a pointer to?
   TypeConstraints allowed_to_point_to() const;
 
@@ -134,6 +143,7 @@ class SpecificTypes {
   std::unordered_set<TaggedType> tagged_types_;
   std::variant<NoType, AnyType, std::shared_ptr<SpecificTypes>> ptr_types_;
   bool allows_void_pointer_ = false;
+  bool allows_nullptr_ = false;
 };
 
 // The type constraints an expression can have. This class represents the fact
@@ -266,6 +276,22 @@ class TypeConstraints {
     assert(specific_types != nullptr && "Did you introduce a new alternative?");
 
     return specific_types->allows_void_pointer();
+  }
+
+  // Do these constraints allow `nullptr` or the null pointer constant `0`?
+  bool allows_nullptr() const {
+    if (!satisfiable()) {
+      return false;
+    }
+
+    if (allows_any()) {
+      return true;
+    }
+
+    const auto* specific_types = as_specific_types();
+    assert(specific_types != nullptr && "Did you introduce a new alternative?");
+
+    return specific_types->allows_nullptr();
   }
 
   // Do these constraints allow non-void pointers?
