@@ -215,6 +215,7 @@ class FakeGeneratorRng : public GeneratorRng {
 
   void operator()(const BinaryExpr& e) {
     expr_kinds_.push_back(ExprKind::BinaryExpr);
+
     bin_ops_.push_back(e.op());
 
     const auto* unit_test_type = e.expr_type();

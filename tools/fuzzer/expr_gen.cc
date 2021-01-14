@@ -888,6 +888,7 @@ CvQualifiers ExprGenerator::gen_cv_qualifiers() {
 
 std::optional<Expr> ExprGenerator::generate() {
   Weights weights;
+
   auto& expr_weights = weights.expr_weights();
   for (size_t i = 0; i < expr_weights.size(); i++) {
     expr_weights[i] = cfg_.expr_kind_weights[i].initial_weight;

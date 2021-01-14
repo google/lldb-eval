@@ -55,7 +55,6 @@ SpecificTypes::SpecificTypes(const Type& type) {
 SpecificTypes SpecificTypes::make_pointer_constraints(
     SpecificTypes constraints, VoidPointerConstraint void_ptr_constraint) {
   SpecificTypes retval;
-  // Note: ScalarType::Void actually means it is a void*
   if (constraints.scalar_types_[ScalarType::Void]) {
     constraints.scalar_types_[ScalarType::Void] = false;
     void_ptr_constraint = VoidPointerConstraint::Allow;
