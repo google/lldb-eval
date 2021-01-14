@@ -25,9 +25,26 @@
 #include "lldb/API/SBTarget.h"
 #include "lldb/API/SBThread.h"
 #include "lldb/API/SBType.h"
+#include "lldb/API/SBTypeEnumMember.h"
 #include "lldb/API/SBValue.h"
 #include "lldb/API/SBValueList.h"
 #include "llvm/Support/FormatVariadic.h"
+
+namespace {
+
+lldb::SBValue CreateSBValue(lldb::SBTarget target, const void* bytes,
+                            lldb::SBType type) {
+  lldb::SBError ignore;
+  lldb::SBData data;
+  data.SetData(ignore, bytes, type.GetByteSize(), target.GetByteOrder(),
+               static_cast<uint8_t>(target.GetAddressByteSize()));
+
+  // CreateValueFromData copies the data referenced by `bytes` to its own
+  // storage. `value` should be valid up until this point.
+  return target.CreateValueFromData("result", data, type);
+}
+
+}  // namespace
 
 namespace lldb_eval {
 
@@ -47,7 +64,7 @@ Context::Context(std::string expr, lldb::SBExecutionContext ctx,
   de.setClient(new clang::IgnoringDiagConsumer);
 }
 
-lldb::SBType Context::ResolveTypeByName(const char* name) const {
+lldb::SBType Context::ResolveTypeByName(const std::string& name) const {
   // TODO(b/163308825): Do scope-aware type lookup. Look for the types defined
   // in the current scope (function, class, namespace) and prioritize them.
 
@@ -105,7 +122,7 @@ lldb::SBType Context::ResolveTypeByName(const char* name) const {
   return lldb::SBType();
 }
 
-lldb::SBValue Context::LookupIdentifier(const char* name) const {
+lldb::SBValue Context::LookupIdentifier(const std::string& name) const {
   // Lookup context variables first.
   auto context_var = context_vars_.find(name);
   if (context_var != context_vars_.end()) {
@@ -126,7 +143,7 @@ lldb::SBValue Context::LookupIdentifier(const char* name) const {
 
   // If the identifier doesn't refer to the global scope and doesn't have any
   // other scope qualifiers, try looking among the local and instance variables.
-  if (!global_scope && name_ref.find("::") == llvm::StringRef::npos) {
+  if (!global_scope && !name_ref.contains("::")) {
     if (!scope_) {
       // Lookup in the current frame.
       lldb::SBFrame frame = ctx_.GetFrame();
@@ -168,6 +185,23 @@ lldb::SBValue Context::LookupIdentifier(const char* name) const {
           val_name == llvm::formatv("::{0}", name_ref).str() ||
           val_name.endswith(llvm::formatv(" {0}", name_ref).str())) {
         value = val;
+        break;
+      }
+    }
+  }
+
+  // Try looking up enum value.
+  if (!value && name_ref.contains("::")) {
+    auto [enum_typename, enumerator_name] = name_ref.rsplit("::");
+
+    lldb::SBType type = ResolveTypeByName(enum_typename.str());
+    lldb::SBTypeEnumMemberList members = type.GetEnumMembers();
+
+    for (size_t i = 0; i < members.GetSize(); i++) {
+      lldb::SBTypeEnumMember member = members.GetTypeEnumMemberAtIndex(i);
+      if (member.GetName() == enumerator_name) {
+        uint64_t bytes = member.GetValueAsUnsigned();
+        value = CreateSBValue(ctx_.GetTarget(), &bytes, type);
         break;
       }
     }

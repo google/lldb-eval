@@ -144,7 +144,7 @@ void Interpreter::Visit(const CStyleCastNode* node) {
     Value value;
 
     // Pointers can be cast to integers of the same or larger size.
-    if (rhs.IsPointer()) {
+    if (rhs.IsPointer() || rhs.IsNullPtrType()) {
       // C-style cast from pointer to float/double is not allowed.
       if (type.GetCanonicalType().GetTypeFlags() & lldb::eTypeIsFloat) {
         std::string msg = llvm::formatv(
@@ -166,6 +166,9 @@ void Interpreter::Visit(const CStyleCastNode* node) {
 
     } else if (rhs.IsScalar()) {
       value = CastScalarToBasicType(target_, rhs, type);
+
+    } else if (rhs.IsEnum()) {
+      value = CastEnumToBasicType(target_, rhs, type);
 
     } else {
       std::string msg = llvm::formatv(
@@ -189,13 +192,28 @@ void Interpreter::Visit(const CStyleCastNode* node) {
     return;
   }
 
+  // Cast to enum type.
+  if (type.GetCanonicalType().GetTypeFlags() & lldb::eTypeIsEnumeration) {
+    if (rhs.IsScalar() || rhs.IsUnscopedEnum()) {
+      uint64_t value = rhs.GetUInt64();
+      result_ = CreateValueFromBytes(target_, &value, type);
+      return;
+    }
+
+    std::string msg = llvm::formatv(
+        "C-style cast from '{{0}' to '{0}' is not allowed", type.GetName());
+    ReportTypeError(msg.c_str(), rhs);
+    return;
+  }
+
   // Cast to pointer type.
   if (type.IsPointerType()) {
     // TODO(b/161677840): Implement type compatibility checks.
     // TODO(b/161677840): Do some error handling here.
     uintptr_t addr;
 
-    if (rhs.IsInteger() || rhs.IsPointer()) {
+    if (rhs.IsInteger() || rhs.IsUnscopedEnum() || rhs.IsPointer() ||
+        rhs.IsNullPtrType()) {
       addr = rhs.GetUInt64();
     } else {
       std::string msg = llvm::formatv(
@@ -507,12 +525,20 @@ Value Interpreter::EvaluateComparison(clang::tok::TokenKind op, Value lhs,
                                       Value rhs) {
   // Comparison works for:
   //
-  //  scalar <-> scalar
+  //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
+  //  scoped_enum <-> scoped_enum (if the same type)
   //  pointer <-> pointer (if pointee types are compatible)
-  //  pointer <-> integer
-  //  integer <-> pointer
+  //  pointer <-> {integer,unscoped_enum,nullptr_t}
+  //  {integer,unscoped_enum,nullptr_t} <-> pointer
+  //  nullptr_t <-> {nullptr_t,integer} (if integer is literal zero)
+  //  {nullptr_t,integer} <-> nullptr_t (if integer is literal zero)
 
-  if (lhs.IsScalar() && rhs.IsScalar()) {
+  if ((lhs.IsScalar() || lhs.IsUnscopedEnum()) &&
+      (rhs.IsScalar() || rhs.IsUnscopedEnum())) {
+    // If the operands has arithmetic or enumeration type (scoped or unscoped),
+    // usual arithmetic conversions are performed on both operands following the
+    // rules for arithmetic operators.
+    // https://eel.is/c++draft/expr.rel#3
     lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
 
     // Evaluate arithmetic operation for two integral values.
@@ -530,22 +556,35 @@ Value Interpreter::EvaluateComparison(clang::tok::TokenKind op, Value lhs,
     lldb_eval_unreachable("Result of arithmetic conversion is not a scalar");
   }
 
+  // Scoped enums can be compared only to the instances of the same type.
+  if (lhs.IsScopedEnum() || rhs.IsScopedEnum()) {
+    if (lhs.type() == rhs.type()) {
+      bool ret = Compare(op, lhs.GetUInt64(), rhs.GetUInt64());
+      return CreateValueFromBool(target_, ret);
+    }
+
+    ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
+    return Value();
+  }
+
   bool is_ordered = op == clang::tok::less || op == clang::tok::lessequal ||
                     op == clang::tok::greater || op == clang::tok::greaterequal;
 
   // Check if the value can be compared to a pointer. We allow all pointers,
-  // integers and a nullptr literal if it's an equality/inequality comparison.
-  // For "pointer <-> integer" C++ allows only equality/inequality comparison
-  // against literal zero and nullptr. However in the debugger context it's
-  // often useful to compare a pointer with an integer representing an address.
-  // That said, this also allows comparing nullptr and any integer, not just
-  // literal zero, e.g. "nullptr == 1 -> false". C++ doesn't allow it, but we
-  // implement this for convenience.
+  // integers, unscoped enumerations and a nullptr literal if it's an
+  // equality/inequality comparison. For "pointer <-> integer" C++ allows only
+  // equality/inequality comparison against literal zero and nullptr. However in
+  // the debugger context it's often useful to compare a pointer with an integer
+  // representing an address. That said, this also allows comparing nullptr and
+  // any integer, not just literal zero, e.g. "nullptr == 1 -> false". C++
+  // doesn't allow it, but we implement this for convenience.
   auto comparable_to_pointer = [&](Value v) {
-    return v.IsPointer() || v.IsInteger() || (!is_ordered && v.IsNullPtrType());
+    return v.IsPointer() || v.IsInteger() || v.IsUnscopedEnum() ||
+           (!is_ordered && v.IsNullPtrType());
   };
 
-  if (comparable_to_pointer(lhs) && comparable_to_pointer(rhs)) {
+  if ((lhs.IsPointer() && comparable_to_pointer(rhs)) ||
+      (comparable_to_pointer(lhs) && rhs.IsPointer())) {
     // If both are pointers, check if they have comparable types. Comparing
     // pointers to void is always allowed.
     if ((lhs.IsPointer() && !lhs.IsPointerToVoid()) &&
@@ -564,13 +603,24 @@ Value Interpreter::EvaluateComparison(clang::tok::TokenKind op, Value lhs,
     return CreateValueFromBool(target_, ret);
   }
 
+  auto is_nullptr_or_zero = [&](Value v) {
+    // Technically only literal zero is allowed here, but we don't have the
+    // information about the value being literal to implement the restriction.
+    return v.IsNullPtrType() || (v.IsInteger() && v.GetUInt64() == 0);
+  };
+
+  if (!is_ordered && ((lhs.IsNullPtrType() && is_nullptr_or_zero(rhs)) ||
+                      (is_nullptr_or_zero(lhs) && rhs.IsNullPtrType()))) {
+    return CreateValueFromBool(target_, op == clang::tok::equalequal);
+  }
+
   ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
   return Value();
 }
 
 Value Interpreter::EvaluateUnaryPlus(Value rhs) {
   // Integer values may require integral promotion.
-  if (rhs.IsInteger()) {
+  if (rhs.IsInteger() || rhs.IsUnscopedEnum()) {
     return IntegralPromotion(target_, rhs);
   }
 
@@ -585,7 +635,7 @@ Value Interpreter::EvaluateUnaryPlus(Value rhs) {
 
 Value Interpreter::EvaluateUnaryMinus(Value rhs) {
   // Integer values may require integral promotion.
-  if (rhs.IsInteger()) {
+  if (rhs.IsInteger() || rhs.IsUnscopedEnum()) {
     rhs = IntegralPromotion(target_, rhs);
     llvm::APSInt v = rhs.GetInteger();
     v.negate();
@@ -604,6 +654,7 @@ Value Interpreter::EvaluateUnaryMinus(Value rhs) {
 
 Value Interpreter::EvaluateUnaryNegation(Value rhs) {
   if (!BoolConvertible(rhs)) {
+    ReportTypeError(kInvalidOperandsToUnaryExpression, rhs);
     return Value();
   }
 
@@ -612,7 +663,7 @@ Value Interpreter::EvaluateUnaryNegation(Value rhs) {
 
 Value Interpreter::EvaluateUnaryBitwiseNot(Value rhs) {
   // Integer values may require integral promotion.
-  if (rhs.IsInteger()) {
+  if (rhs.IsInteger() || rhs.IsUnscopedEnum()) {
     rhs = IntegralPromotion(target_, rhs);
     llvm::APSInt v = rhs.GetInteger();
     v.flipAllBits();
@@ -626,17 +677,19 @@ Value Interpreter::EvaluateUnaryBitwiseNot(Value rhs) {
 Value Interpreter::EvaluateBinaryAddition(Value lhs, Value rhs) {
   // Operation '+' works for:
   //
-  //  scalar <-> scalar
-  //  integer <-> pointer
-  //  pointer <-> integer
+  //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
+  //  integer <-> {pointer,unscoped_enum}
+  //  {pointer,unscoped_enum} <-> integer
 
-  if (lhs.IsScalar() && rhs.IsScalar()) {
+  if ((lhs.IsScalar() || lhs.IsUnscopedEnum()) &&
+      (rhs.IsScalar() || rhs.IsUnscopedEnum())) {
     lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
     return EvaluateArithmeticOp(target_, ArithmeticOp::ADD, lhs, rhs, rtype);
   }
 
-  bool pointer_arithmetic_operation = (lhs.IsPointer() && rhs.IsInteger()) ||
-                                      (lhs.IsInteger() && rhs.IsPointer());
+  bool pointer_arithmetic_operation =
+      (lhs.IsPointer() && (rhs.IsInteger() || rhs.IsUnscopedEnum())) ||
+      ((lhs.IsInteger() || lhs.IsUnscopedEnum()) && rhs.IsPointer());
 
   if (pointer_arithmetic_operation) {
     // Figure out which operand is the pointer and which one is the offset.
@@ -665,16 +718,17 @@ Value Interpreter::EvaluateBinaryAddition(Value lhs, Value rhs) {
 Value Interpreter::EvaluateBinarySubtraction(Value lhs, Value rhs) {
   // Operation '-' works for:
   //
-  //  scalar <-> scalar
-  //  pointer <-> integer
+  //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
+  //  pointer <-> {integer,unscoped_enum}
   //  pointer <-> pointer (if pointee types are compatible)
 
-  if (lhs.IsScalar() && rhs.IsScalar()) {
+  if ((lhs.IsScalar() || lhs.IsUnscopedEnum()) &&
+      (rhs.IsScalar() || rhs.IsUnscopedEnum())) {
     lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
     return EvaluateArithmeticOp(target_, ArithmeticOp::SUB, lhs, rhs, rtype);
   }
 
-  if (lhs.IsPointer() && rhs.IsInteger()) {
+  if (lhs.IsPointer() && (rhs.IsInteger() || rhs.IsUnscopedEnum())) {
     if (lhs.IsPointerToVoid()) {
       ReportTypeError("arithmetic on a pointer to void");
       return Value();
@@ -713,58 +767,73 @@ Value Interpreter::EvaluateBinarySubtraction(Value lhs, Value rhs) {
 }
 
 Value Interpreter::EvaluateBinaryMultiplication(Value lhs, Value rhs) {
-  if (!lhs.IsScalar() || !rhs.IsScalar()) {
-    ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
-    return Value();
+  // Operation '*' works for:
+  //
+  //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
+
+  if ((lhs.IsScalar() || lhs.IsUnscopedEnum()) &&
+      (rhs.IsScalar() || rhs.IsUnscopedEnum())) {
+    lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
+    return EvaluateArithmeticOp(target_, ArithmeticOp::MUL, lhs, rhs, rtype);
   }
 
-  lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
-  return EvaluateArithmeticOp(target_, ArithmeticOp::MUL, lhs, rhs, rtype);
+  ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
+  return Value();
 }
 
 Value Interpreter::EvaluateBinaryDivision(Value lhs, Value rhs) {
-  if (!lhs.IsScalar() || !rhs.IsScalar()) {
-    ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
-    return Value();
+  // Operation '/' works for:
+  //
+  //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
+
+  if ((lhs.IsScalar() || lhs.IsUnscopedEnum()) &&
+      (rhs.IsScalar() || rhs.IsUnscopedEnum())) {
+    // Check if one of the arguments is float. Is this case we can safely
+    // proceed, there will be no zero division.
+    bool float_div = lhs.IsFloat() || rhs.IsFloat();
+
+    if (!float_div && rhs.GetInt64() == 0) {
+      // This is UB and the compiler would generate a warning:
+      //
+      //  warning: division by zero is undefined [-Wdivision-by-zero]
+      //
+      return CreateValueZero(target_);
+    }
+
+    lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
+    return EvaluateArithmeticOp(target_, ArithmeticOp::DIV, lhs, rhs, rtype);
   }
 
-  // Check if one of the arguments is float. Is this case we can safely proceed,
-  // there will be no zero division.
-  bool float_div = lhs.IsFloat() || rhs.IsFloat();
-
-  if (!float_div && rhs.GetInt64() == 0) {
-    // This is UB and the compiler would generate a warning:
-    //
-    //  warning: division by zero is undefined [-Wdivision-by-zero]
-    //
-    return CreateValueZero(target_);
-  }
-
-  lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
-  return EvaluateArithmeticOp(target_, ArithmeticOp::DIV, lhs, rhs, rtype);
+  ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
+  return Value();
 }
 
 Value Interpreter::EvaluateBinaryRemainder(Value lhs, Value rhs) {
-  // Remainder is defined only for integral types.
-  if (!lhs.IsInteger() || !rhs.IsInteger()) {
-    ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
-    return Value();
+  // Operation '%' works for:
+  //
+  //  {integer,unscoped_enum} <-> {integer,unscoped_enum}
+
+  if ((lhs.IsInteger() || lhs.IsUnscopedEnum()) &&
+      (rhs.IsInteger() || rhs.IsUnscopedEnum())) {
+    if (rhs.GetInt64() == 0) {
+      // This is UB and the compiler would generate a warning:
+      //
+      //  warning: remainder by zero is undefined [-Wdivision-by-zero]
+      //
+      return CreateValueZero(target_);
+    }
+
+    lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
+    return EvaluateArithmeticOp(target_, ArithmeticOp::REM, lhs, rhs, rtype);
   }
 
-  if (rhs.GetInt64() == 0) {
-    // This is UB and the compiler would generate a warning:
-    //
-    //  warning: remainder by zero is undefined [-Wdivision-by-zero]
-    //
-    return CreateValueZero(target_);
-  }
-
-  lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
-  return EvaluateArithmeticOp(target_, ArithmeticOp::REM, lhs, rhs, rtype);
+  ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
+  return Value();
 }
 
 Value Interpreter::EvaluateBinaryBitAnd(Value lhs, Value rhs) {
-  if (lhs.IsInteger() && rhs.IsInteger()) {
+  if ((lhs.IsInteger() || lhs.IsUnscopedEnum()) &&
+      (rhs.IsInteger() || rhs.IsUnscopedEnum())) {
     lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
     return EvaluateArithmeticOp(target_, ArithmeticOp::BIT_AND, lhs, rhs,
                                 rtype);
@@ -775,7 +844,8 @@ Value Interpreter::EvaluateBinaryBitAnd(Value lhs, Value rhs) {
 }
 
 Value Interpreter::EvaluateBinaryBitOr(Value lhs, Value rhs) {
-  if (lhs.IsInteger() && rhs.IsInteger()) {
+  if ((lhs.IsInteger() || lhs.IsUnscopedEnum()) &&
+      (rhs.IsInteger() || rhs.IsUnscopedEnum())) {
     lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
     return EvaluateArithmeticOp(target_, ArithmeticOp::BIT_OR, lhs, rhs, rtype);
   }
@@ -785,7 +855,8 @@ Value Interpreter::EvaluateBinaryBitOr(Value lhs, Value rhs) {
 }
 
 Value Interpreter::EvaluateBinaryBitXor(Value lhs, Value rhs) {
-  if (lhs.IsInteger() && rhs.IsInteger()) {
+  if ((lhs.IsInteger() || lhs.IsUnscopedEnum()) &&
+      (rhs.IsInteger() || rhs.IsUnscopedEnum())) {
     lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
     return EvaluateArithmeticOp(target_, ArithmeticOp::BIT_XOR, lhs, rhs,
                                 rtype);
@@ -796,7 +867,8 @@ Value Interpreter::EvaluateBinaryBitXor(Value lhs, Value rhs) {
 }
 
 Value Interpreter::EvaluateBinaryBitShl(Value lhs, Value rhs) {
-  if (lhs.IsInteger() && rhs.IsInteger()) {
+  if ((lhs.IsInteger() || lhs.IsUnscopedEnum()) &&
+      (rhs.IsInteger() || rhs.IsUnscopedEnum())) {
     lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
     return EvaluateArithmeticOp(target_, ArithmeticOp::BIT_SHL, lhs, rhs,
                                 rtype);
@@ -807,7 +879,8 @@ Value Interpreter::EvaluateBinaryBitShl(Value lhs, Value rhs) {
 }
 
 Value Interpreter::EvaluateBinaryBitShr(Value lhs, Value rhs) {
-  if (lhs.IsInteger() && rhs.IsInteger()) {
+  if ((lhs.IsInteger() || lhs.IsUnscopedEnum()) &&
+      (rhs.IsInteger() || rhs.IsUnscopedEnum())) {
     lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
     return EvaluateArithmeticOp(target_, ArithmeticOp::BIT_SHR, lhs, rhs,
                                 rtype);
@@ -818,7 +891,7 @@ Value Interpreter::EvaluateBinaryBitShr(Value lhs, Value rhs) {
 }
 
 bool Interpreter::BoolConvertible(Value val) {
-  if (val.IsScalar() || val.IsPointer()) {
+  if (val.IsScalar() || val.IsUnscopedEnum() || val.IsPointer()) {
     return true;
   }
 

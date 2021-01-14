@@ -76,8 +76,8 @@ class Context {
   lldb::SBExecutionContext GetExecutionContext() const { return ctx_; }
 
  public:
-  lldb::SBType ResolveTypeByName(const char* name) const;
-  lldb::SBValue LookupIdentifier(const char* name) const;
+  lldb::SBType ResolveTypeByName(const std::string& name) const;
+  lldb::SBValue LookupIdentifier(const std::string& name) const;
 
  private:
   Context(std::string expr, lldb::SBExecutionContext ctx, lldb::SBValue scope,

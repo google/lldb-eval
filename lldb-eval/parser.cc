@@ -681,7 +681,7 @@ ExprResult Parser::ParsePrimaryExpression() {
     // Save the source location for the diagnostics message.
     clang::SourceLocation loc = token_.getLocation();
     auto identifier = ParseIdExpression();
-    auto value = ctx_->LookupIdentifier(identifier.c_str());
+    auto value = ctx_->LookupIdentifier(identifier);
     if (!value) {
       BailOut(ErrorCode::kUndeclaredIdentifier,
               llvm::formatv("use of undeclared identifier '{0}'", identifier),
@@ -1079,7 +1079,7 @@ lldb::SBType Parser::ResolveTypeFromTypeDecl(const TypeDeclaration& type_decl) {
   }
 
   // Resolve the type in the current expression context.
-  return ctx_->ResolveTypeByName(type_decl.GetBaseName().c_str());
+  return ctx_->ResolveTypeByName(type_decl.GetBaseName());
 }
 
 lldb::SBType Parser::ResolveTypeDeclarators(lldb::SBType type,

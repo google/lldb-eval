@@ -62,6 +62,30 @@ static T ConvertTo(lldb::SBValue value) {
   }
 }
 
+template <typename T>
+bool IsScopedEnum_V(T type) {
+  // SBType::IsScopedEnumerationType was introduced in
+  // https://reviews.llvm.org/D93690. If it's not available yet, fallback to the
+  // "default" implementation.
+  if constexpr (HAS_METHOD(T, IsScopedEnumerationType())) {
+    return type.IsScopedEnumerationType();
+  }
+  return false;
+}
+
+template <typename T>
+lldb::SBType GetEnumerationIntegerType_V(T type, lldb::SBTarget target) {
+  // SBType::GetEnumerationIntegerType was introduced in
+  // https://reviews.llvm.org/D93696. If it's not available yet, fallback to the
+  // "default" implementation.
+  if constexpr (HAS_METHOD(T, GetEnumerationIntegerType())) {
+    return type.GetEnumerationIntegerType();
+  } else {
+    // Assume "int" by default and hope for the best.
+    return target.GetBasicType(lldb::eBasicTypeInt);
+  }
+}
+
 bool Value::IsScalar() {
   return type_.GetCanonicalType().GetTypeFlags() & lldb::eTypeIsScalar;
 }
@@ -89,8 +113,14 @@ bool Value::IsNullPtrType() {
 
 bool Value::IsSigned() { return type_.GetTypeFlags() & lldb::eTypeIsSigned; }
 
+bool Value::IsEnum() { return type_.GetTypeFlags() & lldb::eTypeIsEnumeration; }
+
+bool Value::IsScopedEnum() { return IsScopedEnum_V<lldb::SBType>(type_); }
+
+bool Value::IsUnscopedEnum() { return IsEnum() && !IsScopedEnum(); }
+
 bool Value::GetBool() {
-  if (IsInteger() || IsPointer()) {
+  if (IsInteger() || IsUnscopedEnum() || IsPointer()) {
     return GetInteger().getBoolValue();
   }
   if (IsFloat()) {
@@ -142,9 +172,11 @@ llvm::APFloat Value::GetFloat() {
 
 Value IntegralPromotion(lldb::SBTarget target, Value value) {
   // Perform itergal promotion on the operand:
-  // http://eel.is/c++draft/conv.prom
+  // https://eel.is/c++draft/conv.prom
 
-  // TODO(werat): Assert it's an integer?
+  assert((value.IsInteger() || value.IsUnscopedEnum()) &&
+         "Integral promotion works only for integers and unscoped enums.");
+
   using IntegralPromotionResult =
       std::variant<int, unsigned int, long, unsigned long, long long,
                    unsigned long long>;
@@ -152,7 +184,14 @@ Value IntegralPromotion(lldb::SBTarget target, Value value) {
   lldb::SBError error;
   IntegralPromotionResult ipr;
 
-  switch (value.type().GetCanonicalType().GetBasicType()) {
+  // Get the value type. In case of an unscoped enumeration drill down to the
+  // underlying type.
+  lldb::SBType type =
+      value.IsUnscopedEnum()
+          ? GetEnumerationIntegerType_V<lldb::SBType>(value.type(), target)
+          : value.type();
+
+  switch (type.GetCanonicalType().GetBasicType()) {
 #define CASE(basic_type, builtin_type)                  \
   case basic_type:                                      \
     ipr = ReadValue<builtin_type>(value.inner_value()); \
@@ -161,9 +200,15 @@ Value IntegralPromotion(lldb::SBTarget target, Value value) {
     LLDB_TYPE_BUILTIN_PROMOTABLE_INTEGER(CASE)
 #undef CASE
 
-    default:
+    default: {
+      // Unscoped enumerations need to be unwrapped into the underlying type.
+      if (value.IsUnscopedEnum()) {
+        uint64_t bytes = value.GetUInt64();
+        return CreateValueFromBytes(target, &bytes, type);
+      }
       // Other types don't need integral promotion.
       return value.GetRvalueRef();
+    }
   }
 
   if (error) {
@@ -185,7 +230,7 @@ Value IntegralPromotion(lldb::SBTarget target, Value value) {
 
 size_t ConversionRank(lldb::BasicType basic_type) {
   // Get integer conversion rank
-  // http://eel.is/c++draft/conv.rank
+  // https://eel.is/c++draft/conv.rank
   switch (basic_type) {
     case lldb::eBasicTypeBool:
       return 1;
@@ -303,15 +348,15 @@ void PerformArithmeticConversions(lldb::SBTarget target, Value* l, Value* r) {
 lldb::SBType UsualArithmeticConversions(lldb::SBTarget target, Value* lhs,
                                         Value* rhs) {
   // Perform usual arithmetic conversions on the operands:
-  // http://eel.is/c++draft/expr.arith.conv
+  // https://eel.is/c++draft/expr.arith.conv
 
   // If the operand passed to an arithmetic operator is integral or unscoped
   // enumeration type, then before any other action (but after lvalue-to-rvalue
   // conversion, if applicable), the operand undergoes integral promotion.
-  if (lhs->IsInteger()) {
+  if (lhs->IsInteger() || lhs->IsUnscopedEnum()) {
     *lhs = IntegralPromotion(target, *lhs);
   }
-  if (rhs->IsInteger()) {
+  if (rhs->IsInteger() || rhs->IsUnscopedEnum()) {
     *rhs = IntegralPromotion(target, *rhs);
   }
 
@@ -362,6 +407,11 @@ Value CastScalarToBasicType(lldb::SBTarget target, Value val,
   }
 
   return ret;
+}
+
+Value CastEnumToBasicType(lldb::SBTarget target, Value val, lldb::SBType type) {
+  uint64_t bytes = val.GetUInt64();
+  return CreateValueFromBytes(target, &bytes, type);
 }
 
 Value CastPointerToBasicType(lldb::SBTarget target, Value val,

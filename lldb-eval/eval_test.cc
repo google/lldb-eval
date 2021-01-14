@@ -20,6 +20,7 @@
 
 #include "lldb-eval/api.h"
 #include "lldb-eval/runner.h"
+#include "lldb-eval/traits.h"
 #include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBProcess.h"
@@ -164,6 +165,7 @@ class IsOkMatcher : public MatcherInterface<EvalResult> {
                   << "lldb     : "
                   << result.lldb_value.value().GetError().GetCString();
         return false;
+
       } else if (actual != result.lldb_value.value().GetValue()) {
         *listener << "values produced by lldb-eval and LLDB don't match\n"
                   << "lldb-eval: " << actual << "\n"
@@ -201,12 +203,20 @@ class IsEqualMatcher : public MatcherInterface<EvalResult> {
     }
 
     // Compare only if we tried to evaluate with LLDB.
-    if (result.lldb_value.has_value() &&
-        actual != result.lldb_value.value().GetValue()) {
-      *listener << "values produced by lldb-eval and LLDB don't match\n"
-                << "lldb-eval: " << actual << "\n"
-                << "lldb     : " << result.lldb_value.value().GetValue();
-      return false;
+    if (result.lldb_value.has_value()) {
+      if (result.lldb_value.value().GetError().GetError()) {
+        *listener << "values produced by lldb-eval and LLDB don't match\n"
+                  << "lldb-eval: " << actual << "\n"
+                  << "lldb     : "
+                  << result.lldb_value.value().GetError().GetCString();
+        return false;
+
+      } else if (actual != result.lldb_value.value().GetValue()) {
+        *listener << "values produced by lldb-eval and LLDB don't match\n"
+                  << "lldb-eval: " << actual << "\n"
+                  << "lldb     : " << result.lldb_value.value().GetValue();
+        return false;
+      }
     }
 
     return true;
@@ -652,9 +662,25 @@ TEST_F(EvalTest, TestLogicalOperators) {
   EXPECT_THAT(Eval("p_nullptr || true"), IsEqual("true"));
   EXPECT_THAT(Eval("p_nullptr || false"), IsEqual("false"));
 
+  EXPECT_THAT(Eval("nullptr == 0"), IsEqual("true"));
+  EXPECT_THAT(Eval("0 != nullptr"), IsEqual("false"));
+
+  EXPECT_THAT(Eval("nullptr == nullptr"), IsEqual("true"));
+  EXPECT_THAT(Eval("nullptr != nullptr"), IsEqual("false"));
+
   EXPECT_THAT(
-      Eval("!s || false"),
-      IsError("value of type 'S' is not contextually convertible to 'bool'"));
+      Eval("nullptr > 0"),
+      IsError("invalid operands to binary expression ('nullptr_t' and 'int')"));
+  EXPECT_THAT(
+      Eval("1 == nullptr"),
+      IsError("invalid operands to binary expression ('int' and 'nullptr_t')"));
+
+  EXPECT_THAT(Eval("nullptr > nullptr"),
+              IsError("invalid operands to binary expression ('nullptr_t' and "
+                      "'nullptr_t')"));
+
+  EXPECT_THAT(Eval("!s || false"),
+              IsError("invalid argument type 'S' to unary expression"));
   EXPECT_THAT(
       Eval("s || false"),
       IsError("value of type 'S' is not contextually convertible to 'bool'"));
@@ -956,6 +982,16 @@ TEST_F(EvalTest, TestCStyleCastPointer) {
                                          "to a reference of type 'int &'"));
 }
 
+TEST_F(EvalTest, TestCStyleCastNullptrType) {
+  EXPECT_THAT(
+      Eval("(int)nullptr"),
+      IsError("cast from pointer to smaller type 'int' loses information"));
+  EXPECT_THAT(Eval("(uint64_t)nullptr"), IsEqual("0"));
+
+  EXPECT_THAT(Eval("(void*)nullptr"), IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("(char*)nullptr"), IsEqual("0x0000000000000000"));
+}
+
 TEST_F(EvalTest, TestCStyleCastReference) {
   EXPECT_THAT(Eval("((InnerFoo&)arr[1]).a"), IsEqual("2"));
   EXPECT_THAT(Eval("((InnerFoo&)arr[1]).b"), IsEqual("3"));
@@ -1188,4 +1224,129 @@ TEST_F(EvalTest, TestContextVariablesSubset) {
               IsError("use of undeclared identifier '$ptr'"));
   EXPECT_THAT(Scope("s").EvalWithContext("$var + *$ptr", ptr),
               IsError("use of undeclared identifier '$var'"));
+}
+
+TEST_F(EvalTest, TestScopedEnum) {
+  EXPECT_THAT(Eval("enum_foo"), IsEqual("kFoo"));
+  EXPECT_THAT(Eval("enum_bar"), IsEqual("kBar"));
+
+  EXPECT_THAT(Eval("enum_foo == enum_foo"), IsEqual("true"));
+  EXPECT_THAT(Eval("enum_foo != enum_foo"), IsEqual("false"));
+  EXPECT_THAT(Eval("enum_foo == enum_bar"), IsEqual("false"));
+  EXPECT_THAT(Eval("enum_foo < enum_bar"), IsEqual("true"));
+
+  EXPECT_THAT(Eval("enum_foo == ScopedEnum::kFoo"), IsEqual("true"));
+  EXPECT_THAT(Eval("enum_foo == ScopedEnum::kBar"), IsEqual("false"));
+  EXPECT_THAT(Eval("enum_foo != ScopedEnum::kBar"), IsEqual("true"));
+  EXPECT_THAT(Eval("enum_foo < ScopedEnum::kBar"), IsEqual("true"));
+
+  EXPECT_THAT(Eval("(ScopedEnum)0"), IsEqual("kFoo"));
+  EXPECT_THAT(Eval("(ScopedEnum)1"), IsEqual("kBar"));
+  EXPECT_THAT(Eval("(ScopedEnum)0.1"), IsEqual("kFoo"));
+  EXPECT_THAT(Eval("(ScopedEnum)1.1"), IsEqual("kBar"));
+  EXPECT_THAT(Eval("(ScopedEnum)-1"), IsOk());
+  EXPECT_THAT(Eval("(ScopedEnum)256"), IsOk());
+  EXPECT_THAT(Eval("(ScopedEnum)257"), IsOk());
+}
+
+TEST_F(EvalTest, TestScopedEnumArithmetic) {
+  if (!HAS_METHOD(lldb::SBType, IsScopedEnumerationType())) {
+    GTEST_SKIP();
+  }
+
+  EXPECT_THAT(Eval("enum_foo == 1"),
+              IsError("invalid operands to binary expression"));
+  EXPECT_THAT(Eval("enum_foo + 1"),
+              IsError("invalid operands to binary expression"));
+  EXPECT_THAT(Eval("enum_foo * 2"),
+              IsError("invalid operands to binary expression"));
+  EXPECT_THAT(Eval("enum_bar / 2"),
+              IsError("invalid operands to binary expression"));
+  EXPECT_THAT(Eval("enum_foo % 2"),
+              IsError("invalid operands to binary expression"));
+  EXPECT_THAT(Eval("enum_bar & 2"),
+              IsError("invalid operands to binary expression"));
+  EXPECT_THAT(Eval("enum_bar | 0x01"),
+              IsError("invalid operands to binary expression"));
+  EXPECT_THAT(Eval("enum_bar ^ 0b11"),
+              IsError("invalid operands to binary expression"));
+  EXPECT_THAT(Eval("enum_bar >> 1"),
+              IsError("invalid operands to binary expression"));
+  EXPECT_THAT(Eval("enum_bar << 1"),
+              IsError("invalid operands to binary expression"));
+  EXPECT_THAT(Eval("(int*)1 + enum_foo"),
+              IsError("invalid operands to binary expression"));
+  EXPECT_THAT(Eval("(int*)5 - enum_foo"),
+              IsError("invalid operands to binary expression"));
+  EXPECT_THAT(Eval("+enum_foo"), IsError("invalid argument type"));
+  EXPECT_THAT(Eval("-enum_foo"), IsError("invalid argument type"));
+  EXPECT_THAT(
+      Eval("!enum_foo"),
+      IsError("invalid argument type 'ScopedEnum' to unary expression"));
+}
+
+TEST_F(EvalTest, TestScopedEnumWithUnderlyingType) {
+  EXPECT_THAT(Eval("(ScopedEnumUInt8)-1"), IsOk());
+  EXPECT_THAT(Eval("(ScopedEnumUInt8)256"), IsEqual("kFoo"));
+  EXPECT_THAT(Eval("(ScopedEnumUInt8)257"), IsEqual("kBar"));
+}
+
+TEST_F(EvalTest, TestUnscopedEnum) {
+  EXPECT_THAT(Eval("enum_one"), IsEqual("kOne"));
+  EXPECT_THAT(Eval("enum_two"), IsEqual("kTwo"));
+
+  EXPECT_THAT(Eval("enum_one == enum_one"), IsEqual("true"));
+  EXPECT_THAT(Eval("enum_one != enum_one"), IsEqual("false"));
+  EXPECT_THAT(Eval("enum_one == enum_two"), IsEqual("false"));
+  EXPECT_THAT(Eval("enum_one < enum_two"), IsEqual("true"));
+
+  EXPECT_THAT(Eval("enum_one == UnscopedEnum::kOne"), IsEqual("true"));
+  EXPECT_THAT(Eval("enum_one == UnscopedEnum::kTwo"), IsEqual("false"));
+  EXPECT_THAT(Eval("enum_one != UnscopedEnum::kTwo"), IsEqual("true"));
+  EXPECT_THAT(Eval("enum_one < UnscopedEnum::kTwo"), IsEqual("true"));
+
+  EXPECT_THAT(Eval("(UnscopedEnum)0"), IsEqual("kZero"));
+  EXPECT_THAT(Eval("(UnscopedEnum)1"), IsEqual("kOne"));
+  EXPECT_THAT(Eval("(UnscopedEnum)0.1"), IsEqual("kZero"));
+  EXPECT_THAT(Eval("(UnscopedEnum)1.1"), IsEqual("kOne"));
+  EXPECT_THAT(Eval("(UnscopedEnum)-1"), IsOk());
+  EXPECT_THAT(Eval("(UnscopedEnum)256"), IsOk());
+  EXPECT_THAT(Eval("(UnscopedEnum)257"), IsOk());
+  EXPECT_THAT(Eval("(UnscopedEnum)(UnscopedEnum)0"), IsEqual("kZero"));
+  EXPECT_THAT(Eval("(void*)(UnscopedEnum)1"), IsEqual("0x0000000000000001"));
+
+  EXPECT_THAT(Eval("enum_one == 1"), IsEqual("true"));
+  EXPECT_THAT(Eval("enum_one + 1"), IsEqual("2"));
+  EXPECT_THAT(Eval("enum_one * 2"), IsEqual("2"));
+  EXPECT_THAT(Eval("enum_two / 2"), IsEqual("1"));
+  EXPECT_THAT(Eval("enum_one % 2"), IsEqual("1"));
+  EXPECT_THAT(Eval("enum_two & 2"), IsEqual("2"));
+  EXPECT_THAT(Eval("enum_two | 0x01"), IsEqual("3"));
+  EXPECT_THAT(Eval("enum_two ^ 0b11"), IsEqual("1"));
+  EXPECT_THAT(Eval("enum_two >> 1"), IsEqual("1"));
+  EXPECT_THAT(Eval("enum_two << 1"), IsEqual("4"));
+  EXPECT_THAT(Eval("+enum_one"), IsEqual("1"));
+  EXPECT_THAT(Eval("!enum_one"), IsEqual("false"));
+  EXPECT_THAT(Eval("(int*)1 + enum_one"), IsEqual("0x0000000000000005"));
+  EXPECT_THAT(Eval("(int*)5 - enum_one"), IsEqual("0x0000000000000001"));
+}
+
+TEST_F(EvalTest, TestUnscopedEnumNegation) {
+  // Sometimes LLDB is confused about signedness and uses "unsigned int" as an
+  // underlying type. Technically, underlying type for the unscoped enum is
+  // implementation defined, but it should convert to "int" nonetheless.
+  this->compare_with_lldb_ = false;
+
+  EXPECT_THAT(Eval("-enum_one"), IsEqual("-1"));
+  EXPECT_THAT(Eval("-(UnscopedEnumEmpty)1"), IsOk());
+}
+
+TEST_F(EvalTest, TestUnscopedEnumWithUnderlyingType) {
+  EXPECT_THAT(Eval("(UnscopedEnumUInt8)-1"), IsOk());
+  EXPECT_THAT(Eval("(UnscopedEnumUInt8)256"), IsEqual("kZeroU8"));
+  EXPECT_THAT(Eval("(UnscopedEnumUInt8)257"), IsEqual("kOneU8"));
+}
+
+TEST_F(EvalTest, TestUnscopedEnumEmpty) {
+  EXPECT_THAT(Eval("(UnscopedEnumEmpty)1"), IsOk());
 }

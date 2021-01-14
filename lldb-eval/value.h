@@ -42,7 +42,7 @@ class Value {
   explicit operator bool() { return IsValid(); }
 
   lldb::SBValue inner_value() const { return value_; }
-  lldb::SBType type() const { return type_; };
+  lldb::SBType& type() { return type_; };
 
   bool IsRvalue() const { return is_rvalue_; }
   bool IsScalar();
@@ -52,6 +52,9 @@ class Value {
   bool IsPointerToVoid();
   bool IsNullPtrType();
   bool IsSigned();
+  bool IsEnum();
+  bool IsScopedEnum();
+  bool IsUnscopedEnum();
 
   bool GetBool();
   int64_t GetInt64();
@@ -79,6 +82,8 @@ lldb::SBType UsualArithmeticConversions(lldb::SBTarget target, Value* lhs,
 
 Value CastScalarToBasicType(lldb::SBTarget target, Value val,
                             lldb::SBType type);
+
+Value CastEnumToBasicType(lldb::SBTarget target, Value val, lldb::SBType type);
 
 Value CastPointerToBasicType(lldb::SBTarget target, Value val,
                              lldb::SBType type);

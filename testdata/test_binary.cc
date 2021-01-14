@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdint>
 #include <limits>
 #include <string>
 
@@ -255,6 +256,7 @@ static void TestCStyleCast() {
   // BREAK(TestCStyleCastBuiltins)
   // BREAK(TestCStyleCastBasicType)
   // BREAK(TestCStyleCastPointer)
+  // BREAK(TestCStyleCastNullptrType)
 }
 
 static void TestCStyleCastToReference() {
@@ -486,6 +488,45 @@ void TestContextVariables() {
   // BREAK(TestContextVariablesSubset)
 }
 
+// Referenced by TestScopedEnum.
+enum class ScopedEnum { kFoo, kBar };
+enum class ScopedEnumUInt8 : uint8_t { kFoo, kBar };
+
+void TestScopedEnum() {
+  auto enum_foo = ScopedEnum::kFoo;
+  auto enum_bar = ScopedEnum::kBar;
+
+  auto enum_u8_foo = ScopedEnumUInt8::kFoo;
+  auto enum_u8_bar = ScopedEnumUInt8::kBar;
+
+  // BREAK(TestScopedEnum)
+  // BREAK(TestScopedEnumArithmetic)
+  // BREAK(TestScopedEnumWithUnderlyingType)
+}
+
+enum UnscopedEnum { kZero, kOne, kTwo };
+enum UnscopedEnumUInt8 : uint8_t { kZeroU8, kOneU8, kTwoU8 };
+enum UnscopedEnumEmpty : uint8_t {};
+
+// UnscopedEnum global_enum = UnscopedEnum::kOne;
+
+void TestUnscopedEnum() {
+  auto enum_zero = UnscopedEnum::kZero;
+  auto enum_one = UnscopedEnum::kOne;
+  auto enum_two = UnscopedEnum::kTwo;
+
+  auto enum_zero_u8 = UnscopedEnumUInt8::kZeroU8;
+  auto enum_one_u8 = UnscopedEnumUInt8::kOneU8;
+  auto enum_two_u8 = UnscopedEnumUInt8::kTwoU8;
+
+  UnscopedEnumEmpty enum_empty;
+
+  // BREAK(TestUnscopedEnum)
+  // BREAK(TestUnscopedEnumNegation)
+  // BREAK(TestUnscopedEnumWithUnderlyingType)
+  // BREAK(TestUnscopedEnumEmpty)
+}
+
 namespace test_binary {
 
 void main() {
@@ -511,6 +552,8 @@ void main() {
   TestValueScope();
   TestBitField();
   TestContextVariables();
+  TestScopedEnum();
+  TestUnscopedEnum();
 
   // break here
 }
