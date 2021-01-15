@@ -131,7 +131,7 @@ bool PointerType::operator!=(const PointerType& rhs) const {
   return type_ != rhs.type_;
 }
 
-std::ostream& operator<<(std::ostream& os, const NullptrType& type) {
+std::ostream& operator<<(std::ostream& os, const NullptrType&) {
   return os << "std::nullptr_t";
 }
 bool NullptrType::operator==(const NullptrType&) const { return true; }
@@ -609,7 +609,7 @@ size_t hash<TaggedType>::operator()(const TaggedType& type) const {
   return hash_combine(HashingTypeKind::TaggedType, type.name());
 }
 
-size_t hash<NullptrType>::operator()(const NullptrType& type) const {
+size_t hash<NullptrType>::operator()(const NullptrType&) const {
   return hash_combine(HashingTypeKind::NullptrType);
 }
 

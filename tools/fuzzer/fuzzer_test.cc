@@ -318,7 +318,7 @@ class FakeGeneratorRng : public GeneratorRng {
     tagged_types_.push_back(e);
   }
 
-  void operator()(const NullptrType& e) {
+  void operator()(const NullptrType&) {
     type_kinds_.push_back(TypeKind::NullptrType);
   }
 
