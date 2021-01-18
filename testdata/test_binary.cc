@@ -566,7 +566,8 @@ void TestTernaryOperator() {
   int i = 1;
   int* pi = &i;
   char c = 2;
-  struct T {} t;
+  struct T {
+  } t;
   // BREAK(TestTernaryOperator)
 }
 

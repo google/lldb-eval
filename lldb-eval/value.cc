@@ -88,17 +88,11 @@ Type::Type() {}
 
 Type::Type(const lldb::SBType& type) : lldb::SBType(type) {}
 
-bool Type::IsScalar() {
-  return GetCanonicalType().GetTypeFlags() & lldb::eTypeIsScalar;
-}
+bool Type::IsScalar() { return GetTypeFlags() & lldb::eTypeIsScalar; }
 
-bool Type::IsInteger() {
-  return GetCanonicalType().GetTypeFlags() & lldb::eTypeIsInteger;
-}
+bool Type::IsInteger() { return GetTypeFlags() & lldb::eTypeIsInteger; }
 
-bool Type::IsFloat() {
-  return GetCanonicalType().GetTypeFlags() & lldb::eTypeIsFloat;
-}
+bool Type::IsFloat() { return GetTypeFlags() & lldb::eTypeIsFloat; }
 
 bool Type::IsPointerToVoid() {
   return IsPointerType() &&

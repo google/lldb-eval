@@ -252,8 +252,7 @@ void Interpreter::Visit(const CStyleCastNode* node) {
 }
 
 void Interpreter::Visit(const MemberOfNode* node) {
-  assert(node->member_index().size() > 0 &&
-         "invalid ast: member index is empty");
+  assert(!node->member_index().empty() && "invalid ast: member index is empty");
 
   Value lhs = EvalNode(node->lhs());
   if (!lhs) {
@@ -540,6 +539,9 @@ Value Interpreter::EvaluateBinarySubtraction(Value lhs, Value rhs) {
 
   // "pointer - pointer" operation.
   assert(rhs.IsPointer() && "invalid ast: rhs must an integer or a pointer");
+  assert((lhs.type().GetPointeeType().GetByteSize() ==
+          rhs.type().GetPointeeType().GetByteSize()) &&
+         "invalid ast: pointees should be the same size");
 
   // Since pointers have compatible types, both have the same pointee size.
   uint64_t item_size = lhs.type().GetPointeeType().GetByteSize();

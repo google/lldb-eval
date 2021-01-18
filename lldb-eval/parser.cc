@@ -408,8 +408,8 @@ static lldb::SBType UsualArithmeticConversions(lldb::SBTarget target,
 
 static lldb::SBTypeMember GetFieldWithNameIndexPath(
     lldb::SBType type, const std::string& name, std::vector<uint32_t>* idx) {
-  // Direct base classes are location before fields, so field members needs to
-  // be offsetted by the number of base classes.
+  // Direct base classes are located before fields, so field members needs to be
+  // offset by the number of base classes.
   uint32_t num_fields = type.GetNumberOfFields();
   uint32_t num_direct_bases = type.GetNumberOfDirectBaseClasses();
 
@@ -1643,9 +1643,8 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
                 location);
         return std::make_unique<ErrorNode>();
       }
-    }
-    // Otherwise accept only arithmetic types and enums.
-    else if (!rhs_type.IsScalar() && !rhs_type.IsEnum()) {
+    } else if (!rhs_type.IsScalar() && !rhs_type.IsEnum()) {
+      // Otherwise accept only arithmetic types and enums.
       BailOut(ErrorCode::kInvalidOperandType,
               llvm::formatv(
                   "cannot convert '{0}' to '{1}' without a conversion operator",
@@ -1654,9 +1653,9 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
       return std::make_unique<ErrorNode>();
     }
     kind = CStyleCastKind::kArithmetic;
-  }
-  // Cast to enum type.
-  else if (type.IsEnum()) {
+
+  } else if (type.IsEnum()) {
+    // Cast to enum type.
     if (!rhs_type.IsScalarOrUnscopedEnum()) {
       BailOut(ErrorCode::kInvalidOperandType,
               llvm::formatv("C-style cast from '{0}' to '{1}' is not allowed",
@@ -1665,9 +1664,9 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
       return std::make_unique<ErrorNode>();
     }
     kind = CStyleCastKind::kEnumeration;
-  }
-  // Cast to pointer type.
-  else if (type.IsPointerType()) {
+
+  } else if (type.IsPointerType()) {
+    // Cast to pointer type.
     if (!rhs_type.IsIntegerOrUnscopedEnum() && !rhs_type.IsPointerType() &&
         !rhs_type.IsNullPtrType()) {
       BailOut(ErrorCode::kInvalidOperandType,
@@ -1677,14 +1676,14 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
       return std::make_unique<ErrorNode>();
     }
     kind = CStyleCastKind::kPointer;
-  }
-  // Cast to a reference type.
-  else if (type.IsReferenceType()) {
+
+  } else if (type.IsReferenceType()) {
+    // Cast to a reference type.
     // TODO(werat): Do we need to check anything here?
     kind = CStyleCastKind::kReference;
-  }
-  // Unsupported cast.
-  else {
+
+  } else {
+    // Unsupported cast.
     BailOut(ErrorCode::kNotImplemented,
             llvm::formatv("casting of '{0}' to '{1}' is not implemented yet",
                           rhs_type.GetName(), type.GetName()),
