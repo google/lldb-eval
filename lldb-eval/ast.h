@@ -70,9 +70,9 @@ class LiteralNode : public AstNode {
 class IdentifierNode : public AstNode {
  public:
   IdentifierNode(std::string name, Value value, bool is_rvalue)
-      : name_(std::move(name)),
-        value_(std::move(value)),
-        is_rvalue_(is_rvalue) {}
+      : is_rvalue_(is_rvalue),
+        name_(std::move(name)),
+        value_(std::move(value)) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return is_rvalue_; }
@@ -212,11 +212,11 @@ class TernaryOpNode : public AstNode {
  public:
   TernaryOpNode(lldb::SBType result_type, ExprResult cond, ExprResult lhs,
                 ExprResult rhs, bool is_rvalue)
-      : result_type_(result_type),
+      : is_rvalue_(is_rvalue),
+        result_type_(result_type),
         cond_(std::move(cond)),
         lhs_(std::move(lhs)),
-        rhs_(std::move(rhs)),
-        is_rvalue_(is_rvalue) {}
+        rhs_(std::move(rhs)) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return is_rvalue_; }

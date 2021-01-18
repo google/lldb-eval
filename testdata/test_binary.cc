@@ -599,7 +599,6 @@ void main() {
   TestUnscopedEnum();
   TestTernaryOperator();
 
-
   // break here
 }
 
