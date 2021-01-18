@@ -27,14 +27,41 @@
 
 namespace lldb_eval {
 
+/// Wrapper for lldb::SBType adding some convenience methods.
+class Type : public lldb::SBType {
+ public:
+  Type();
+  Type(const lldb::SBType& type);
+
+  bool IsScalar();
+  bool IsInteger();
+  bool IsFloat();
+  bool IsPointerToVoid();
+  bool IsNullPtrType();
+  bool IsSigned();
+  bool IsEnum();
+  bool IsScopedEnum();
+  bool IsUnscopedEnum();
+  bool IsScalarOrUnscopedEnum();
+  bool IsIntegerOrUnscopedEnum();
+  bool IsRecordType();
+  bool IsPromotableIntegerType();
+
+  bool IsContextuallyConvertibleToBool();
+
+  lldb::BasicType GetBuiltinType();
+  lldb::SBType GetEnumerationIntegerType(lldb::SBTarget target);
+};
+
+bool CompareTypes(lldb::SBType lhs, lldb::SBType rhs);
+
 class Value {
  public:
   Value() {}
 
-  explicit Value(lldb::SBValue value, bool is_rvalue = false) {
+  explicit Value(lldb::SBValue value) {
     value_ = value;
     type_ = value_.GetType();
-    is_rvalue_ = is_rvalue;
   }
 
  public:
@@ -42,14 +69,12 @@ class Value {
   explicit operator bool() { return IsValid(); }
 
   lldb::SBValue inner_value() const { return value_; }
-  lldb::SBType& type() { return type_; };
+  Type type() const { return type_; };
 
-  bool IsRvalue() const { return is_rvalue_; }
   bool IsScalar();
   bool IsInteger();
   bool IsFloat();
   bool IsPointer();
-  bool IsPointerToVoid();
   bool IsNullPtrType();
   bool IsSigned();
   bool IsEnum();
@@ -57,9 +82,7 @@ class Value {
   bool IsUnscopedEnum();
 
   bool GetBool();
-  int64_t GetInt64();
   uint64_t GetUInt64();
-  Value GetRvalueRef() const;
 
   Value AddressOf();
   Value Dereference();
@@ -69,16 +92,8 @@ class Value {
 
  private:
   lldb::SBValue value_;
-  bool is_rvalue_;
-
-  // Same as value_.GetType(). Just a shortcut, because it's used extensively.
-  lldb::SBType type_;
+  mutable Type type_;
 };
-
-Value IntegralPromotion(lldb::SBTarget target, Value value);
-
-lldb::SBType UsualArithmeticConversions(lldb::SBTarget target, Value* lhs,
-                                        Value* rhs);
 
 Value CastScalarToBasicType(lldb::SBTarget target, Value val,
                             lldb::SBType type);

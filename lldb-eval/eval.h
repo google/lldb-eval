@@ -52,6 +52,8 @@ class Interpreter : Visitor {
 
   void Visit(const MemberOfNode* node) override;
 
+  void Visit(const ArraySubscriptOpNode* node) override;
+
   void Visit(const BinaryOpNode* node) override;
 
   void Visit(const UnaryOpNode* node) override;
@@ -61,10 +63,8 @@ class Interpreter : Visitor {
  private:
   Value EvalNode(const AstNode* node);
 
-  Value EvaluateSubscript(Value lhs, Value rhs);
   Value EvaluateComparison(clang::tok::TokenKind op, Value lhs, Value rhs);
 
-  Value EvaluateUnaryPlus(Value rhs);
   Value EvaluateUnaryMinus(Value rhs);
   Value EvaluateUnaryNegation(Value rhs);
   Value EvaluateUnaryBitwiseNot(Value rhs);
@@ -74,18 +74,7 @@ class Interpreter : Visitor {
   Value EvaluateBinaryMultiplication(Value lhs, Value rhs);
   Value EvaluateBinaryDivision(Value lhs, Value rhs);
   Value EvaluateBinaryRemainder(Value lhs, Value rhs);
-
-  Value EvaluateBinaryBitAnd(Value lhs, Value rhs);
-  Value EvaluateBinaryBitOr(Value lhs, Value rhs);
-  Value EvaluateBinaryBitXor(Value lhs, Value rhs);
-  Value EvaluateBinaryBitShl(Value lhs, Value rhs);
-  Value EvaluateBinaryBitShr(Value lhs, Value rhs);
-
-  bool BoolConvertible(Value val);
-
-  void ReportTypeError(const char* fmr);
-  void ReportTypeError(const char* fmt, Value val);
-  void ReportTypeError(const char* fmt, Value lhs, Value rhs);
+  Value EvaluateBinaryBitwise(clang::tok::TokenKind kind, Value lhs, Value rhs);
 
   Value PointerAdd(Value lhs, int64_t offset);
 
@@ -101,22 +90,6 @@ class Interpreter : Visitor {
   Value result_;
   Error error_;
 };
-
-enum class ArithmeticOp {
-  ADD,
-  SUB,
-  DIV,
-  MUL,
-  REM,
-  BIT_AND,
-  BIT_OR,
-  BIT_XOR,
-  BIT_SHL,
-  BIT_SHR,
-};
-
-Value EvaluateArithmeticOp(lldb::SBTarget target, ArithmeticOp op, Value lhs,
-                           Value rhs, lldb::SBType rtype);
 
 }  // namespace lldb_eval
 

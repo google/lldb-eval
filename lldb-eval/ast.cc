@@ -16,6 +16,11 @@
 
 namespace lldb_eval {
 
+lldb::SBType AstNode::result_type_deref() {
+  lldb::SBType type = result_type();
+  return type.IsReferenceType() ? type.GetDereferencedType() : type;
+}
+
 void ErrorNode::Accept(Visitor* v) const { v->Visit(this); }
 
 void LiteralNode::Accept(Visitor* v) const { v->Visit(this); }
@@ -25,6 +30,8 @@ void IdentifierNode::Accept(Visitor* v) const { v->Visit(this); }
 void CStyleCastNode::Accept(Visitor* v) const { v->Visit(this); }
 
 void MemberOfNode::Accept(Visitor* v) const { v->Visit(this); }
+
+void ArraySubscriptOpNode::Accept(Visitor* v) const { v->Visit(this); }
 
 void BinaryOpNode::Accept(Visitor* v) const { v->Visit(this); }
 

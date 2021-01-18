@@ -127,6 +127,38 @@ class Parser {
 
   std::string TokenDescription(const clang::Token& token);
 
+  ExprResult BuildCStyleCast(Type type, ExprResult rhs,
+                             clang::SourceLocation location);
+
+  ExprResult BuildUnaryOp(clang::tok::TokenKind kind, ExprResult rhs,
+                          clang::SourceLocation location);
+  ExprResult BuildBinaryOp(clang::tok::TokenKind kind, ExprResult lhs,
+                           ExprResult rhs, clang::SourceLocation location);
+
+  ExprResult BuildBinaryAddition(ExprResult lhs, ExprResult rhs,
+                                 clang::SourceLocation location);
+  ExprResult BuildBinarySubtraction(ExprResult lhs, ExprResult rhs,
+                                    clang::SourceLocation location);
+  ExprResult BuildBinaryMulDiv(clang::tok::TokenKind kind, ExprResult lhs,
+                               ExprResult rhs, clang::SourceLocation location);
+  ExprResult BuildBinaryRemainder(ExprResult lhs, ExprResult rhs,
+                                  clang::SourceLocation location);
+  ExprResult BuildBinaryBitwise(clang::tok::TokenKind kind, ExprResult lhs,
+                                ExprResult rhs, clang::SourceLocation location);
+  ExprResult BuildBinaryComparison(clang::tok::TokenKind kind, ExprResult lhs,
+                                   ExprResult rhs,
+                                   clang::SourceLocation location);
+  ExprResult BuildBinaryLogical(clang::tok::TokenKind kind, ExprResult lhs,
+                                ExprResult rhs, clang::SourceLocation location);
+  ExprResult BuildBinarySubscript(ExprResult lhs, ExprResult rhs,
+                                  clang::SourceLocation location);
+
+  ExprResult BuildTernaryOp(ExprResult cond, ExprResult lhs, ExprResult rhs,
+                            clang::SourceLocation location);
+
+  ExprResult BuildMemberOf(ExprResult lhs, std::string member_id, bool is_arrow,
+                           clang::SourceLocation location);
+
  private:
   friend class TentativeParsingAction;
 
