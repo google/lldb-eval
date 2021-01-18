@@ -188,10 +188,13 @@ int main() {
   int array2d[3][3] = {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}};
   (void)array2d;
 
+  std::nullptr_t null_ptr = nullptr;
+  (void)null_ptr;
+
   MultiInheritDerived multi;
   DeadlyDiamondSubclass diamond;
   VirtualDiamondSubclass virtual_diamond;
-  (void)multi, (void)diamond, (void)diamond;
+  (void)multi, (void)diamond, (void)virtual_diamond;
 
   const char* null_char_ptr = nullptr;
   const char* test_str = "Hee hee hee";

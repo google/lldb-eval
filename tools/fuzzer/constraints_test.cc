@@ -104,16 +104,25 @@ TEST(Constraints, PointerTypes) {
       SpecificTypes(ScalarMask{ScalarType::SignedInt}));
   SpecificTypes void_ptr = SpecificTypes::make_pointer_constraints(
       SpecificTypes(), VoidPointerConstraint::Allow);
+  SpecificTypes null_ptr = SpecificTypes(NullptrType{});
 
   EXPECT_THAT(int_ptr.allows_any_of(ScalarMask::all_set()), IsFalse());
   EXPECT_THAT(int_ptr.allowed_tagged_types(), IsEmpty());
   EXPECT_THAT(int_ptr.allows_non_void_pointer(), IsTrue());
   EXPECT_THAT(int_ptr.allows_void_pointer(), IsFalse());
+  EXPECT_THAT(int_ptr.allows_nullptr(), IsFalse());
 
   EXPECT_THAT(void_ptr.allows_any_of(ScalarMask::all_set()), IsFalse());
   EXPECT_THAT(void_ptr.allowed_tagged_types(), IsEmpty());
   EXPECT_THAT(void_ptr.allows_non_void_pointer(), IsFalse());
   EXPECT_THAT(void_ptr.allows_void_pointer(), IsTrue());
+  EXPECT_THAT(void_ptr.allows_nullptr(), IsFalse());
+
+  EXPECT_THAT(null_ptr.allows_any_of(ScalarMask::all_set()), IsFalse());
+  EXPECT_THAT(null_ptr.allowed_tagged_types(), IsEmpty());
+  EXPECT_THAT(null_ptr.allows_non_void_pointer(), IsFalse());
+  EXPECT_THAT(null_ptr.allows_void_pointer(), IsFalse());
+  EXPECT_THAT(null_ptr.allows_nullptr(), IsTrue());
 
   PointerType const_int_ptr{
       QualifiedType(ScalarType::SignedInt, CvQualifier::Const)};
@@ -122,18 +131,27 @@ TEST(Constraints, PointerTypes) {
 
   TypeConstraints int_ptr_constraints = int_ptr;
   TypeConstraints void_ptr_constraints = void_ptr;
+  TypeConstraints null_ptr_constraints = null_ptr;
 
   TypeConstraints int_constraints = int_ptr.allowed_to_point_to();
   TypeConstraints void_constraints = void_ptr.allowed_to_point_to();
 
   EXPECT_THAT(int_ptr_constraints.allows_type(const_int_ptr), IsTrue());
   EXPECT_THAT(int_ptr_constraints.allows_type(volatile_void_ptr), IsFalse());
+  EXPECT_THAT(int_ptr_constraints.allows_type(NullptrType{}), IsFalse());
   EXPECT_THAT(int_constraints.allows_any_of(ScalarType::SignedInt), IsTrue());
   EXPECT_THAT(int_constraints.allows_any_of(ScalarType::Void), IsFalse());
 
   EXPECT_THAT(void_ptr_constraints.allows_type(const_int_ptr), IsFalse());
   EXPECT_THAT(void_ptr_constraints.allows_type(volatile_void_ptr), IsTrue());
+  EXPECT_THAT(void_ptr_constraints.allows_type(NullptrType{}), IsFalse());
   EXPECT_THAT(void_constraints.allows_any_of(ScalarType::SignedInt), IsFalse());
+
+  EXPECT_THAT(null_ptr_constraints.allows_type(NullptrType{}), IsTrue());
+  EXPECT_THAT(null_ptr_constraints.allows_type(const_int_ptr), IsFalse());
+  EXPECT_THAT(null_ptr_constraints.allows_type(volatile_void_ptr), IsFalse());
+  EXPECT_THAT(null_ptr_constraints.allowed_to_point_to().satisfiable(),
+              IsFalse());
 
   // Due to the way we represent constraints, we cannot state that we support
   // void types :(
@@ -144,9 +162,11 @@ TEST(Constraints, PointerTypes) {
 
   EXPECT_THAT(any.allows_type(const_int_ptr), IsTrue());
   EXPECT_THAT(any.allows_type(volatile_void_ptr), IsTrue());
+  EXPECT_THAT(any.allows_type(NullptrType{}), IsTrue());
 
   EXPECT_THAT(none.allows_type(const_int_ptr), IsFalse());
   EXPECT_THAT(none.allows_type(volatile_void_ptr), IsFalse());
+  EXPECT_THAT(none.allows_type(NullptrType{}), IsFalse());
 }
 
 TEST(Constraints, Unsatisfiability) {

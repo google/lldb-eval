@@ -84,6 +84,17 @@ std::optional<Expr> ExprGenerator::gen_boolean_constant(
   return BooleanConstant(rng_->gen_boolean());
 }
 
+std::optional<Expr> ExprGenerator::gen_nullptr_constant(
+    const ExprConstraints& constraints) {
+  const auto& type_constraints = constraints.type_constraints();
+
+  if (constraints.must_be_lvalue() || !type_constraints.allows_nullptr()) {
+    return {};
+  }
+
+  return NullptrConstant();
+}
+
 std::optional<Expr> ExprGenerator::gen_integer_constant(
     const ExprConstraints& constraints) {
   if (constraints.must_be_lvalue()) {
@@ -97,7 +108,8 @@ std::optional<Expr> ExprGenerator::gen_integer_constant(
     return rng_->gen_integer_constant(cfg_.int_const_min, cfg_.int_const_max);
   }
 
-  if (type_constraints.allows_void_pointer()) {
+  if (type_constraints.allows_void_pointer() ||
+      type_constraints.allows_nullptr()) {
     return IntegerConstant(0);
   }
 
@@ -209,6 +221,12 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
             const auto& type = maybe_type.value();
             lhs_types = SpecificTypes(type);
             rhs_types = SpecificTypes(type);
+
+            // `nullptr` is only allowed with equality and ineqality operators.
+            if (op != BinOp::Eq && op != BinOp::Ne) {
+              lhs_types.disallow_nullptr();
+              rhs_types.disallow_nullptr();
+            }
           }
         }
       } break;
@@ -476,6 +494,8 @@ std::optional<Expr> ExprGenerator::gen_cast_expr(
     return {};
   } else if (std::holds_alternative<PointerType>(type)) {
     expr_types = SpecificTypes::make_any_pointer_constraints();
+  } else if (std::holds_alternative<NullptrType>(type)) {
+    expr_types = SpecificTypes(type);
   } else {
     expr_types = INT_TYPES | FLOAT_TYPES;
   }
@@ -672,6 +692,10 @@ std::optional<Expr> ExprGenerator::gen_with_weights(
         maybe_expr = gen_boolean_constant(constraints);
         break;
 
+      case ExprKind::NullptrConstant:
+        maybe_expr = gen_nullptr_constant(constraints);
+        break;
+
       case ExprKind::CastExpr:
         maybe_expr = gen_cast_expr(new_weights, constraints);
         break;
@@ -747,6 +771,9 @@ std::optional<Type> ExprGenerator::gen_type(
   if (!type_constraints.allows_void_pointer()) {
     mask[TypeKind::VoidPointerType] = false;
   }
+  if (!type_constraints.allows_nullptr()) {
+    mask[TypeKind::NullptrType] = false;
+  }
 
   while (mask.any()) {
     auto choice = rng_->gen_type_kind(new_weights, mask);
@@ -772,6 +799,10 @@ std::optional<Type> ExprGenerator::gen_type(
 
       case TypeKind::VoidPointerType:
         maybe_type = gen_void_pointer_type(type_constraints);
+        break;
+
+      case TypeKind::NullptrType:
+        maybe_type = NullptrType{};
         break;
     }
 

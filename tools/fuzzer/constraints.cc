@@ -45,6 +45,11 @@ SpecificTypes::SpecificTypes(const Type& type) {
     ptr_types_ = std::make_shared<SpecificTypes>(inner);
     return;
   }
+
+  if (std::holds_alternative<NullptrType>(type)) {
+    allows_nullptr_ = true;
+    return;
+  }
 }
 
 SpecificTypes SpecificTypes::make_pointer_constraints(
@@ -59,6 +64,9 @@ SpecificTypes SpecificTypes::make_pointer_constraints(
     retval.ptr_types_ = std::make_shared<SpecificTypes>(std::move(constraints));
   }
   retval.allows_void_pointer_ = (bool)void_ptr_constraint;
+
+  // We should never allow `nullptr` because dereferencing it is illegal.
+  retval.allows_nullptr_ = false;
 
   return retval;
 }
@@ -147,6 +155,10 @@ bool TypeConstraints::allows_type(const Type& type) const {
 
     const auto can_point_to = allowed_to_point_to();
     return can_point_to.allows_type(inner);
+  }
+
+  if (std::holds_alternative<NullptrType>(type)) {
+    return allows_nullptr();
   }
 
   return false;

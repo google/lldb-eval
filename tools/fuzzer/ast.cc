@@ -131,6 +131,12 @@ bool PointerType::operator!=(const PointerType& rhs) const {
   return type_ != rhs.type_;
 }
 
+std::ostream& operator<<(std::ostream& os, const NullptrType&) {
+  return os << "std::nullptr_t";
+}
+bool NullptrType::operator==(const NullptrType&) const { return true; }
+bool NullptrType::operator!=(const NullptrType&) const { return false; }
+
 QualifiedType::QualifiedType(Type type, CvQualifiers cv_qualifiers)
     : type_(std::make_shared<Type>(std::move(type))),
       cv_qualifiers_(cv_qualifiers) {}
@@ -393,6 +399,10 @@ std::ostream& operator<<(std::ostream& os, const BooleanConstant& expr) {
   return os << to_print;
 }
 
+std::ostream& operator<<(std::ostream& os, const NullptrConstant&) {
+  return os << "nullptr";
+}
+
 std::ostream& operator<<(std::ostream& os, const Expr& e) {
   std::visit([&os](const auto& expr) { os << expr; }, e);
   return os;
@@ -431,6 +441,11 @@ class ExprDumper {
   void operator()(const DoubleConstant& e) {
     emit_marked_indentation();
     printf("Double constant with value `%f`\n", e.value());
+  }
+
+  void operator()(const NullptrConstant&) {
+    emit_marked_indentation();
+    printf("Pointer constant: `nullptr`\n");
   }
 
   void operator()(const UnaryExpr& e) {
@@ -571,10 +586,12 @@ enum class HashingTypeKind {
   PointerType,
   QualifiedType,
   TaggedType,
+  NullptrType,
 };
 
 namespace std {
 
+using fuzzer::NullptrType;
 using fuzzer::PointerType;
 using fuzzer::QualifiedType;
 using fuzzer::TaggedType;
@@ -590,6 +607,10 @@ size_t hash<QualifiedType>::operator()(const QualifiedType& type) const {
 
 size_t hash<TaggedType>::operator()(const TaggedType& type) const {
   return hash_combine(HashingTypeKind::TaggedType, type.name());
+}
+
+size_t hash<NullptrType>::operator()(const NullptrType&) const {
+  return hash_combine(HashingTypeKind::NullptrType);
 }
 
 }  // namespace std

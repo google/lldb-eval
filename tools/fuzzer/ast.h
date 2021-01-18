@@ -32,8 +32,9 @@ namespace fuzzer {
 enum class ScalarType : unsigned char;
 class TaggedType;
 class PointerType;
+class NullptrType;
 
-using Type = std::variant<ScalarType, TaggedType, PointerType>;
+using Type = std::variant<ScalarType, TaggedType, PointerType, NullptrType>;
 std::ostream& operator<<(std::ostream& os, const Type& type);
 
 enum class CvQualifier : unsigned char {
@@ -126,6 +127,15 @@ class PointerType {
   QualifiedType type_;
 };
 
+class NullptrType {
+ public:
+  NullptrType() = default;
+
+  friend std::ostream& operator<<(std::ostream& os, const QualifiedType& type);
+  bool operator==(const NullptrType& type) const;
+  bool operator!=(const NullptrType& type) const;
+};
+
 class BinaryExpr;
 class UnaryExpr;
 class VariableExpr;
@@ -140,6 +150,7 @@ class TernaryExpr;
 class CastExpr;
 class DereferenceExpr;
 class BooleanConstant;
+class NullptrConstant;
 
 enum class UnOp : unsigned char {
   // Used to determine the first enum element.
@@ -184,10 +195,11 @@ enum class BinOp : unsigned char {
 inline constexpr size_t NUM_BIN_OPS = (size_t)BinOp::EnumLast + 1;
 int bin_op_precedence(BinOp op);
 
-using Expr = std::variant<IntegerConstant, DoubleConstant, VariableExpr,
-                          UnaryExpr, BinaryExpr, AddressOf, MemberOf,
-                          MemberOfPtr, ArrayIndex, TernaryExpr, CastExpr,
-                          DereferenceExpr, BooleanConstant, ParenthesizedExpr>;
+using Expr =
+    std::variant<IntegerConstant, DoubleConstant, VariableExpr, UnaryExpr,
+                 BinaryExpr, AddressOf, MemberOf, MemberOfPtr, ArrayIndex,
+                 TernaryExpr, CastExpr, DereferenceExpr, BooleanConstant,
+                 NullptrConstant, ParenthesizedExpr>;
 inline constexpr size_t NUM_EXPR_KINDS = std::variant_size_v<Expr>;
 void dump_expr(const Expr& expr);
 std::ostream& operator<<(std::ostream& os, const Expr& expr);
@@ -509,6 +521,18 @@ class BooleanConstant {
   bool value_ = false;
 };
 
+class NullptrConstant {
+ public:
+  static constexpr int PRECEDENCE = 0;
+
+  NullptrConstant() = default;
+
+  friend std::ostream& operator<<(std::ostream& os,
+                                  const NullptrConstant& expr);
+
+  int precedence() const { return PRECEDENCE; }
+};
+
 }  // namespace fuzzer
 
 // Forward declarations of hash specializations
@@ -527,6 +551,11 @@ struct hash<fuzzer::QualifiedType> {
 template <>
 struct hash<fuzzer::TaggedType> {
   size_t operator()(const fuzzer::TaggedType& type) const;
+};
+
+template <>
+struct hash<fuzzer::NullptrType> {
+  size_t operator()(const fuzzer::NullptrType& type) const;
 };
 
 }  // namespace std
