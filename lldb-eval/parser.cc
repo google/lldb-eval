@@ -2229,12 +2229,32 @@ ExprResult Parser::BuildTernaryOp(ExprResult cond, ExprResult lhs,
                                            is_rvalue);
   }
 
-  // TODO(werat): Implement more type compatibility checks. For now just pick
-  // the LHS type hoping for the best.
-  lldb::SBType result_type = lhs->result_type();
-  bool is_rvalue = lhs->is_rvalue() || rhs->is_rvalue();
-  return std::make_unique<TernaryOpNode>(
-      result_type, std::move(cond), std::move(lhs), std::move(rhs), is_rvalue);
+  // If one operand is a pointer and the other one is arithmeric, convert
+  // arithmetic operand to a pointer.
+  if ((lhs_type.IsPointerType() || lhs_type.IsNullPtrType()) &&
+      rhs_type.IsScalarOrUnscopedEnum()) {
+    rhs = std::make_unique<CStyleCastNode>(lhs_type, std::move(rhs),
+                                           CStyleCastKind::kPointer);
+
+    bool is_rvalue = lhs->is_rvalue() || rhs->is_rvalue();
+    return std::make_unique<TernaryOpNode>(
+        lhs_type, std::move(cond), std::move(lhs), std::move(rhs), is_rvalue);
+  }
+  if ((rhs_type.IsPointerType() || rhs_type.IsNullPtrType()) &&
+      lhs_type.IsScalarOrUnscopedEnum()) {
+    lhs = std::make_unique<CStyleCastNode>(rhs_type, std::move(lhs),
+                                           CStyleCastKind::kPointer);
+
+    bool is_rvalue = lhs->is_rvalue() || rhs->is_rvalue();
+    return std::make_unique<TernaryOpNode>(
+        rhs_type, std::move(cond), std::move(lhs), std::move(rhs), is_rvalue);
+  }
+
+  BailOut(ErrorCode::kInvalidOperandType,
+          llvm::formatv("incompatible operand types ('{0}' and '{1}')",
+                        lhs_type.GetName(), rhs_type.GetName()),
+          location);
+  return std::make_unique<ErrorNode>();
 }
 
 ExprResult Parser::BuildMemberOf(ExprResult lhs, std::string member_id,

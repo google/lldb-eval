@@ -1393,5 +1393,15 @@ TEST_F(EvalTest, TestTernaryOperator) {
   // TODO(werat): Add test for:
   // "true ? (int*)15 : 1" -> "incompatible operand types ('int *' and 'int')"
   EXPECT_THAT(Eval("true ? (int*)15 : 0"), IsEqual("0x000000000000000f"));
+  EXPECT_THAT(Eval("true ? 0 : (int*)15"), IsEqual("0x0000000000000000"));
   EXPECT_THAT(Eval("*(true ? pi : 0)"), IsEqual("1"));
+
+  EXPECT_THAT(Eval("true ? t : 1"),
+              IsError("incompatible operand types ('T' and 'int')\n"
+                      "true ? t : 1\n"
+                      "     ^"));
+  EXPECT_THAT(Eval("true ? 1 : t"),
+              IsError("incompatible operand types ('int' and 'T')\n"
+                      "true ? 1 : t\n"
+                      "     ^"));
 }
