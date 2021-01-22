@@ -2192,7 +2192,7 @@ ExprResult Parser::BuildBinarySubscript(ExprResult lhs, ExprResult rhs,
     lldb_eval_unreachable("Subscripted value must be either array or pointer.");
   }
 
-  return std::make_unique<ArraySubscriptOpNode>(
+  return std::make_unique<ArraySubscriptNode>(
       result_type, std::move(*base), std::move(*index), is_pointer_base);
 }
 

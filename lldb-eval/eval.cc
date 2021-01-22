@@ -277,7 +277,7 @@ void Interpreter::Visit(const MemberOfNode* node) {
   result_ = Value(member_val);
 }
 
-void Interpreter::Visit(const ArraySubscriptOpNode* node) {
+void Interpreter::Visit(const ArraySubscriptNode* node) {
   auto base = EvalNode(node->base());
   if (!base) {
     return;

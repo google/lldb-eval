@@ -137,10 +137,10 @@ class MemberOfNode : public AstNode {
   bool is_arrow_;
 };
 
-class ArraySubscriptOpNode : public AstNode {
+class ArraySubscriptNode : public AstNode {
  public:
-  ArraySubscriptOpNode(lldb::SBType result_type, ExprResult base,
-                       ExprResult index, bool is_pointer_base)
+  ArraySubscriptNode(lldb::SBType result_type, ExprResult base,
+                     ExprResult index, bool is_pointer_base)
       : result_type_(result_type),
         base_(std::move(base)),
         index_(std::move(index)),
@@ -242,7 +242,7 @@ class Visitor {
   virtual void Visit(const IdentifierNode* node) = 0;
   virtual void Visit(const CStyleCastNode* node) = 0;
   virtual void Visit(const MemberOfNode* node) = 0;
-  virtual void Visit(const ArraySubscriptOpNode* node) = 0;
+  virtual void Visit(const ArraySubscriptNode* node) = 0;
   virtual void Visit(const BinaryOpNode* node) = 0;
   virtual void Visit(const UnaryOpNode* node) = 0;
   virtual void Visit(const TernaryOpNode* node) = 0;

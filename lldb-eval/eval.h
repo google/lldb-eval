@@ -43,21 +43,13 @@ class Interpreter : Visitor {
 
  private:
   void Visit(const ErrorNode* node) override;
-
   void Visit(const LiteralNode* node) override;
-
   void Visit(const IdentifierNode* node) override;
-
   void Visit(const CStyleCastNode* node) override;
-
   void Visit(const MemberOfNode* node) override;
-
-  void Visit(const ArraySubscriptOpNode* node) override;
-
+  void Visit(const ArraySubscriptNode* node) override;
   void Visit(const BinaryOpNode* node) override;
-
   void Visit(const UnaryOpNode* node) override;
-
   void Visit(const TernaryOpNode* node) override;
 
  private:
