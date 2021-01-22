@@ -59,17 +59,6 @@ cc_test(
     ],
 )
 
-cc_test(
-    name = "parser_test",
-    srcs = ["parser_test.cc"],
-    deps = [
-        ":lldb-eval",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
-        "@llvm_project//:lldb-api",
-    ],
-)
-
 cc_library(
     name = "runner",
     srcs = ["runner.cc"],

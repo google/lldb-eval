@@ -126,6 +126,38 @@ static void TestMemberOf() {
   // BREAK(TestMemberOf)
 }
 
+static void TestMemberOfInheritance() {
+  struct A {
+    int a_;
+  } a{1};
+
+  struct B {
+    int b_;
+  } b{2};
+
+  struct C : A, B {
+    int c_;
+  } c{{1}, {2}, 3};
+
+  struct D : C {
+    int d_;
+    A fa_;
+  } d{{{1}, {2}, 3}, 4, {5}};
+
+  // Virtual inheritance example.
+  struct Animal {
+    virtual ~Animal() = default;
+    int weight_;
+  };
+  struct Mammal : virtual Animal {};
+  struct WingedAnimal : virtual Animal {};
+  struct Bat : Mammal, WingedAnimal {
+  } bat;
+  bat.weight_ = 10;
+
+  // BREAK(TestMemberOfInheritance)
+}
+
 static void TestIndirection() {
   int val = 1;
   int* p = &val;
@@ -172,6 +204,8 @@ class TestMethods {
 
     std::string s = "hello";
     const char* s_str = s.c_str();
+
+    char c = 1;
 
     // BREAK(TestAddressOf)
   }
@@ -474,6 +508,7 @@ void TestBitField() {
   AlignedBitFieldStruct abf = (AlignedBitFieldStruct&)data;
 
   // BREAK(TestBitField)
+  // BREAK(TestBitFieldPromotion)
 }
 
 void TestContextVariables() {
@@ -527,6 +562,15 @@ void TestUnscopedEnum() {
   // BREAK(TestUnscopedEnumEmpty)
 }
 
+void TestTernaryOperator() {
+  int i = 1;
+  int* pi = &i;
+  char c = 2;
+  struct T {
+  } t;
+  // BREAK(TestTernaryOperator)
+}
+
 namespace test_binary {
 
 void main() {
@@ -540,6 +584,7 @@ void main() {
   TestLogicalOperators();
   TestLocalVariables();
   TestMemberOf();
+  TestMemberOfInheritance();
   tm.TestInstanceVariables();
   TestIndirection();
   tm.TestAddressOf(42);
@@ -554,6 +599,7 @@ void main() {
   TestContextVariables();
   TestScopedEnum();
   TestUnscopedEnum();
+  TestTernaryOperator();
 
   // break here
 }

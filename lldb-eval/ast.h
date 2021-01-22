@@ -35,12 +35,22 @@ class AstNode {
   virtual ~AstNode() {}
 
   virtual void Accept(Visitor* v) const = 0;
+
+  virtual bool is_rvalue() const = 0;
+  virtual lldb::SBType result_type() const = 0;
+
+  // The expression result type, but dereferenced in case it's a reference. This
+  // is for convenience, since for the purposes of the semantic analysis only
+  // the dereferenced type matters.
+  lldb::SBType result_type_deref();
 };
 
 using ExprResult = std::unique_ptr<AstNode>;
 
 class ErrorNode : public AstNode {
   void Accept(Visitor* v) const override;
+  bool is_rvalue() const override { return false; }
+  lldb::SBType result_type() const override { return lldb::SBType(); }
 };
 
 class LiteralNode : public AstNode {
@@ -48,6 +58,8 @@ class LiteralNode : public AstNode {
   LiteralNode(Value value) : value_(std::move(value)) {}
 
   void Accept(Visitor* v) const override;
+  bool is_rvalue() const override { return true; }
+  lldb::SBType result_type() const override { return value_.type(); }
 
   Value value() const { return value_; }
 
@@ -57,63 +69,110 @@ class LiteralNode : public AstNode {
 
 class IdentifierNode : public AstNode {
  public:
-  IdentifierNode(std::string name, Value value)
-      : name_(std::move(name)), value_(std::move(value)) {}
+  IdentifierNode(std::string name, Value value, bool is_rvalue)
+      : is_rvalue_(is_rvalue),
+        name_(std::move(name)),
+        value_(std::move(value)) {}
 
   void Accept(Visitor* v) const override;
+  bool is_rvalue() const override { return is_rvalue_; }
+  lldb::SBType result_type() const override { return value_.type(); }
 
   std::string name() const { return name_; }
   Value value() const { return value_; }
 
  private:
+  bool is_rvalue_;
   std::string name_;
   Value value_;
 };
 
+enum class CStyleCastKind {
+  kArithmetic,
+  kEnumeration,
+  kPointer,
+  kReference,
+};
+
 class CStyleCastNode : public AstNode {
  public:
-  CStyleCastNode(lldb::SBType type, ExprResult rhs)
-      : type_(std::move(type)), rhs_(std::move(rhs)) {}
+  CStyleCastNode(lldb::SBType type, ExprResult rhs, CStyleCastKind kind)
+      : type_(std::move(type)), rhs_(std::move(rhs)), kind_(kind) {}
 
   void Accept(Visitor* v) const override;
+  bool is_rvalue() const override { return true; }
+  lldb::SBType result_type() const override { return type_; }
 
   lldb::SBType type() const { return type_; }
   AstNode* rhs() const { return rhs_.get(); }
+  CStyleCastKind kind() const { return kind_; }
 
  private:
   lldb::SBType type_;
   ExprResult rhs_;
+  CStyleCastKind kind_;
 };
 
 class MemberOfNode : public AstNode {
  public:
-  enum class Type {
-    OF_OBJECT,
-    OF_POINTER,
-  };
-
- public:
-  MemberOfNode(Type type, ExprResult lhs, std::string member_id)
-      : type_(type), lhs_(std::move(lhs)), member_id_(std::move(member_id)) {}
+  MemberOfNode(lldb::SBType result_type, ExprResult lhs,
+               std::vector<uint32_t> member_index, bool is_arrow)
+      : result_type_(result_type),
+        lhs_(std::move(lhs)),
+        member_index_(std::move(member_index)),
+        is_arrow_(is_arrow) {}
 
   void Accept(Visitor* v) const override;
+  bool is_rvalue() const override { return false; }
+  lldb::SBType result_type() const override { return result_type_; }
 
-  Type type() const { return type_; }
   AstNode* lhs() const { return lhs_.get(); }
-  std::string member_id() const { return member_id_; }
+  const std::vector<uint32_t>& member_index() const { return member_index_; }
+  bool is_arrow() const { return is_arrow_; }
 
  private:
-  Type type_;
+  lldb::SBType result_type_;
   ExprResult lhs_;
-  std::string member_id_;
+  std::vector<uint32_t> member_index_;
+  bool is_arrow_;
+};
+
+class ArraySubscriptOpNode : public AstNode {
+ public:
+  ArraySubscriptOpNode(lldb::SBType result_type, ExprResult base,
+                       ExprResult index, bool is_pointer_base)
+      : result_type_(result_type),
+        base_(std::move(base)),
+        index_(std::move(index)),
+        is_pointer_base_(is_pointer_base) {}
+
+  void Accept(Visitor* v) const override;
+  bool is_rvalue() const override { return false; }
+  lldb::SBType result_type() const override { return result_type_; }
+
+  AstNode* base() const { return base_.get(); }
+  AstNode* index() const { return index_.get(); }
+  bool is_pointer_base() const { return is_pointer_base_; }
+
+ private:
+  lldb::SBType result_type_;
+  ExprResult base_;
+  ExprResult index_;
+  bool is_pointer_base_;
 };
 
 class BinaryOpNode : public AstNode {
  public:
-  BinaryOpNode(clang::tok::TokenKind op, ExprResult lhs, ExprResult rhs)
-      : op_(op), lhs_(std::move(lhs)), rhs_(std::move(rhs)) {}
+  BinaryOpNode(lldb::SBType result_type, clang::tok::TokenKind op,
+               ExprResult lhs, ExprResult rhs)
+      : result_type_(result_type),
+        op_(op),
+        lhs_(std::move(lhs)),
+        rhs_(std::move(rhs)) {}
 
   void Accept(Visitor* v) const override;
+  bool is_rvalue() const override { return true; }
+  lldb::SBType result_type() const override { return result_type_; }
 
   clang::tok::TokenKind op() const { return op_; }
   std::string op_name() const { return clang::tok::getTokenName(op_); }
@@ -121,6 +180,7 @@ class BinaryOpNode : public AstNode {
   AstNode* rhs() const { return rhs_.get(); }
 
  private:
+  lldb::SBType result_type_;
   // TODO(werat): Use custom enum with binary operators.
   clang::tok::TokenKind op_;
   ExprResult lhs_;
@@ -129,16 +189,20 @@ class BinaryOpNode : public AstNode {
 
 class UnaryOpNode : public AstNode {
  public:
-  UnaryOpNode(clang::tok::TokenKind op, ExprResult rhs)
-      : op_(op), rhs_(std::move(rhs)) {}
+  UnaryOpNode(lldb::SBType result_type, clang::tok::TokenKind op,
+              ExprResult rhs)
+      : result_type_(result_type), op_(op), rhs_(std::move(rhs)) {}
 
   void Accept(Visitor* v) const override;
+  bool is_rvalue() const override { return op_ != clang::tok::star; }
+  lldb::SBType result_type() const override { return result_type_; }
 
   clang::tok::TokenKind op() const { return op_; }
   std::string op_name() const { return clang::tok::getTokenName(op_); }
   AstNode* rhs() const { return rhs_.get(); }
 
  private:
+  lldb::SBType result_type_;
   // TODO(werat): Use custom enum with unary operators.
   clang::tok::TokenKind op_;
   ExprResult rhs_;
@@ -146,16 +210,25 @@ class UnaryOpNode : public AstNode {
 
 class TernaryOpNode : public AstNode {
  public:
-  TernaryOpNode(ExprResult cond, ExprResult lhs, ExprResult rhs)
-      : cond_(std::move(cond)), lhs_(std::move(lhs)), rhs_(std::move(rhs)) {}
+  TernaryOpNode(lldb::SBType result_type, ExprResult cond, ExprResult lhs,
+                ExprResult rhs, bool is_rvalue)
+      : is_rvalue_(is_rvalue),
+        result_type_(result_type),
+        cond_(std::move(cond)),
+        lhs_(std::move(lhs)),
+        rhs_(std::move(rhs)) {}
 
   void Accept(Visitor* v) const override;
+  bool is_rvalue() const override { return is_rvalue_; }
+  lldb::SBType result_type() const override { return result_type_; }
 
   AstNode* cond() const { return cond_.get(); }
   AstNode* lhs() const { return lhs_.get(); }
   AstNode* rhs() const { return rhs_.get(); }
 
  private:
+  bool is_rvalue_;
+  lldb::SBType result_type_;
   ExprResult cond_;
   ExprResult lhs_;
   ExprResult rhs_;
@@ -169,6 +242,7 @@ class Visitor {
   virtual void Visit(const IdentifierNode* node) = 0;
   virtual void Visit(const CStyleCastNode* node) = 0;
   virtual void Visit(const MemberOfNode* node) = 0;
+  virtual void Visit(const ArraySubscriptOpNode* node) = 0;
   virtual void Visit(const BinaryOpNode* node) = 0;
   virtual void Visit(const UnaryOpNode* node) = 0;
   virtual void Visit(const TernaryOpNode* node) = 0;

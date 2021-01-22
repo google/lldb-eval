@@ -20,6 +20,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <vector>
 
@@ -49,6 +50,15 @@
 #include "llvm/Support/Host.h"
 
 namespace {
+
+const char* kInvalidOperandsToUnaryExpression =
+    "invalid argument type '{0}' to unary expression";
+
+const char* kInvalidOperandsToBinaryExpression =
+    "invalid operands to binary expression ('{0}' and '{1}')";
+
+const char* kValueIsNotConvertibleToBool =
+    "value of type '{0}' is not contextually convertible to 'bool'";
 
 void StringReplace(std::string& str, const std::string& old_value,
                    const std::string& new_value) {
@@ -114,8 +124,8 @@ std::string FormatDiagnostics(const clang::SourceManager& sm,
                        llvm::fmt_pad("^", arrow - 1, arrow_rpad));
 }
 
-lldb::BasicType PickIntegerType(const clang::NumericLiteralParser& literal,
-                                const llvm::APInt& value) {
+std::tuple<lldb::BasicType, bool> PickIntegerType(
+    const clang::NumericLiteralParser& literal, const llvm::APInt& value) {
   unsigned int_size = type_width<int>();
   unsigned long_size = type_width<long>();
   unsigned long_long_size = type_width<long long>();
@@ -127,28 +137,28 @@ lldb::BasicType PickIntegerType(const clang::NumericLiteralParser& literal,
   // Try int/unsigned int.
   if (!literal.isLong && !literal.isLongLong && value.isIntN(int_size)) {
     if (!literal.isUnsigned && value.isIntN(int_size - 1)) {
-      return lldb::eBasicTypeInt;
+      return {lldb::eBasicTypeInt, false};
     }
     if (unsigned_is_allowed) {
-      return lldb::eBasicTypeUnsignedInt;
+      return {lldb::eBasicTypeUnsignedInt, true};
     }
   }
   // Try long/unsigned long.
   if (!literal.isLongLong && value.isIntN(long_size)) {
     if (!literal.isUnsigned && value.isIntN(long_size - 1)) {
-      return lldb::eBasicTypeLong;
+      return {lldb::eBasicTypeLong, false};
     }
     if (unsigned_is_allowed) {
-      return lldb::eBasicTypeUnsignedLong;
+      return {lldb::eBasicTypeUnsignedLong, true};
     }
   }
   // Try long long/unsigned long long.
   if (value.isIntN(long_long_size)) {
     if (!literal.isUnsigned && value.isIntN(long_long_size - 1)) {
-      return lldb::eBasicTypeLongLong;
+      return {lldb::eBasicTypeLongLong, false};
     }
     if (unsigned_is_allowed) {
-      return lldb::eBasicTypeUnsignedLongLong;
+      return {lldb::eBasicTypeUnsignedLongLong, true};
     }
   }
 
@@ -158,12 +168,287 @@ lldb::BasicType PickIntegerType(const clang::NumericLiteralParser& literal,
   //  warning: integer literal is too large to be represented in a signed
   //  integer type, interpreting as unsigned [-Wimplicitly-unsigned-literal]
   //
-  return lldb::eBasicTypeUnsignedLongLong;
+  return {lldb::eBasicTypeUnsignedLongLong, true};
 }
 
 }  // namespace
 
 namespace lldb_eval {
+
+static lldb::SBType DoIntegralPromotion(lldb::SBTarget target, Type from) {
+  assert((from.IsInteger() || from.IsUnscopedEnum()) &&
+         "Integral promotion works only for integers and unscoped enums.");
+
+  // Don't do anything if the type doesn't need to be promoted.
+  if (!from.IsPromotableIntegerType()) {
+    return from;
+  }
+
+  if (from.IsUnscopedEnum()) {
+    // Get the enumeration underlying type and promote it.
+    return DoIntegralPromotion(target, from.GetEnumerationIntegerType(target));
+  }
+
+  // At this point the type should an integer.
+  assert(from.IsInteger() && "invalid type: must be an integer");
+
+  // Get the underlying builtin representation.
+  lldb::BasicType builtin_type = from.GetBuiltinType();
+
+  if (builtin_type == lldb::eBasicTypeWChar ||
+      builtin_type == lldb::eBasicTypeSignedWChar ||
+      builtin_type == lldb::eBasicTypeUnsignedWChar ||
+      builtin_type == lldb::eBasicTypeChar16 ||
+      builtin_type == lldb::eBasicTypeChar32) {
+    // Find the type that can hold the entire range of values for our type.
+    bool is_signed = from.IsSigned();
+    uint64_t from_size = from.GetByteSize();
+
+    lldb::SBType promote_types[] = {
+        target.GetBasicType(lldb::eBasicTypeInt),
+        target.GetBasicType(lldb::eBasicTypeUnsignedInt),
+        target.GetBasicType(lldb::eBasicTypeLong),
+        target.GetBasicType(lldb::eBasicTypeUnsignedLong),
+        target.GetBasicType(lldb::eBasicTypeLongLong),
+        target.GetBasicType(lldb::eBasicTypeUnsignedLongLong),
+    };
+    for (lldb::SBType& type : promote_types) {
+      if (from_size < type.GetByteSize() ||
+          (from_size == type.GetByteSize() &&
+           is_signed == (bool)(type.GetTypeFlags() & lldb::eTypeIsSigned))) {
+        return type;
+      }
+    }
+
+    lldb_eval_unreachable("char type should fit into long long");
+  }
+
+  // Here we can promote only to "int" or "unsigned int".
+  lldb::SBType int_type = target.GetBasicType(lldb::eBasicTypeInt);
+
+  // Signed integer types can be safely promoted to "int".
+  if (from.IsSigned()) {
+    return int_type;
+  }
+  // Unsigned integer types are promoted to "unsigned int" if "int" cannot hold
+  // their entire value range.
+  return (from.GetByteSize() == int_type.GetByteSize())
+             ? target.GetBasicType(lldb::eBasicTypeUnsignedInt)
+             : int_type;
+}
+
+static ExprResult UsualUnaryConversions(lldb::SBTarget target,
+                                        ExprResult expr) {
+  // Perform usual conversions for unary operators. At the moment this includes
+  // only the integral promotion for eligible types.
+  Type result_type = expr->result_type();
+
+  // TODO(werat): Promote bitfields: e.g. uint32_t:10 -> int (not unsigned int).
+
+  if (result_type.IsInteger() || result_type.IsUnscopedEnum()) {
+    lldb::SBType promoted_type = DoIntegralPromotion(target, result_type);
+
+    // Insert a cast if the type promotion is happening.
+    // TODO(werat): Make this an implicit static_cast.
+    if (!CompareTypes(promoted_type, result_type)) {
+      expr = std::make_unique<CStyleCastNode>(promoted_type, std::move(expr),
+                                              CStyleCastKind::kArithmetic);
+    }
+  }
+
+  return expr;
+}
+
+static size_t ConversionRank(lldb::SBType type) {
+  // Get integer conversion rank
+  // https://eel.is/c++draft/conv.rank
+  switch (type.GetCanonicalType().GetBasicType()) {
+    case lldb::eBasicTypeBool:
+      return 1;
+    case lldb::eBasicTypeChar:
+    case lldb::eBasicTypeSignedChar:
+    case lldb::eBasicTypeUnsignedChar:
+      return 2;
+    case lldb::eBasicTypeShort:
+    case lldb::eBasicTypeUnsignedShort:
+      return 3;
+    case lldb::eBasicTypeInt:
+    case lldb::eBasicTypeUnsignedInt:
+      return 4;
+    case lldb::eBasicTypeLong:
+    case lldb::eBasicTypeUnsignedLong:
+      return 5;
+    case lldb::eBasicTypeLongLong:
+    case lldb::eBasicTypeUnsignedLongLong:
+      return 6;
+
+      // TODO: The ranks of char16_t, char32_t, and wchar_t are equal to the
+      // ranks of their underlying types.
+    case lldb::eBasicTypeWChar:
+    case lldb::eBasicTypeSignedWChar:
+    case lldb::eBasicTypeUnsignedWChar:
+      return 3;
+    case lldb::eBasicTypeChar16:
+      return 3;
+    case lldb::eBasicTypeChar32:
+      return 4;
+
+    default:
+      break;
+  }
+  return 0;
+}
+
+static lldb::BasicType BasicTypeToUnsigned(lldb::BasicType basic_type) {
+  switch (basic_type) {
+    case lldb::eBasicTypeInt:
+      return lldb::eBasicTypeUnsignedInt;
+    case lldb::eBasicTypeLong:
+      return lldb::eBasicTypeUnsignedLong;
+    case lldb::eBasicTypeLongLong:
+      return lldb::eBasicTypeUnsignedLongLong;
+    default:
+      return basic_type;
+  }
+}
+
+static void PerformIntegerConversions(lldb::SBTarget target, ExprResult& l,
+                                      ExprResult& r) {
+  // Assert that rank(l) < rank(r).
+  Type l_type = l->result_type();
+  Type r_type = r->result_type();
+
+  // if `r` is signed and `l` is unsigned, check whether it can represent all
+  // of the values of the type of the `l`. If not, then promote `r` to the
+  // unsigned version of its type.
+  if (r_type.IsSigned() && !l_type.IsSigned()) {
+    uint64_t l_size = l_type.GetByteSize();
+    uint64_t r_size = r_type.GetByteSize();
+
+    assert(l_size <= r_size && "left value must not be larger then the right!");
+
+    if (r_size == l_size) {
+      lldb::SBType r_type_unsigned =
+          target.GetBasicType(BasicTypeToUnsigned(r_type.GetBuiltinType()));
+      r = std::make_unique<CStyleCastNode>(r_type_unsigned, std::move(r),
+                                           CStyleCastKind::kArithmetic);
+    }
+  }
+
+  l = std::make_unique<CStyleCastNode>(r->result_type(), std::move(l),
+                                       CStyleCastKind::kArithmetic);
+}
+
+static lldb::SBType UsualArithmeticConversions(lldb::SBTarget target,
+                                               ExprResult& lhs,
+                                               ExprResult& rhs) {
+  // Apply unary conversions (e.g. intergal promotion) for both operands.
+  lhs = UsualUnaryConversions(target, std::move(lhs));
+  rhs = UsualUnaryConversions(target, std::move(rhs));
+
+  Type lhs_type = lhs->result_type_deref();
+  Type rhs_type = rhs->result_type_deref();
+
+  if (CompareTypes(lhs_type, rhs_type)) {
+    return lhs_type;
+  }
+
+  // If either of the operands is not arithmetic (e.g. pointer), we're done.
+  if (!lhs_type.IsScalar() || !rhs_type.IsScalar()) {
+    return {};
+  }
+
+  // Handle conversions for floating types (float, double).
+  if (lhs_type.IsFloat() || rhs_type.IsFloat()) {
+    // If both are floats, convert the smaller operand to the bigger.
+    if (lhs_type.IsFloat() && rhs_type.IsFloat()) {
+      int order = lhs_type.GetBasicType() - rhs_type.GetBasicType();
+      if (order > 0) {
+        rhs = std::make_unique<CStyleCastNode>(lhs_type, std::move(rhs),
+                                               CStyleCastKind::kArithmetic);
+        return lhs_type;
+      }
+      assert(order < 0 && "illegal operands: must not be of the same type");
+      lhs = std::make_unique<CStyleCastNode>(rhs_type, std::move(lhs),
+                                             CStyleCastKind::kArithmetic);
+      return rhs_type;
+    }
+
+    if (lhs_type.IsFloat()) {
+      assert(rhs_type.IsInteger() && "illegal operand: must be an integer");
+      rhs = std::make_unique<CStyleCastNode>(lhs_type, std::move(rhs),
+                                             CStyleCastKind::kArithmetic);
+      return lhs_type;
+    }
+    assert(rhs_type.IsFloat() && "illegal operand: must be a float");
+    lhs = std::make_unique<CStyleCastNode>(rhs_type, std::move(lhs),
+                                           CStyleCastKind::kArithmetic);
+    return rhs_type;
+  }
+
+  // Handle conversion for integer types.
+  assert((lhs_type.IsInteger() && rhs_type.IsInteger()) &&
+         "illegal operands: must be both integers");
+
+  using Rank = std::tuple<size_t, bool>;
+  Rank l_rank = {ConversionRank(lhs_type), !lhs_type.IsSigned()};
+  Rank r_rank = {ConversionRank(rhs_type), !rhs_type.IsSigned()};
+
+  if (l_rank < r_rank) {
+    PerformIntegerConversions(target, lhs, rhs);
+  } else if (l_rank > r_rank) {
+    PerformIntegerConversions(target, rhs, lhs);
+  }
+
+  assert(CompareTypes(lhs->result_type_deref(), rhs->result_type_deref()) &&
+         "operands result types must be the same");
+
+  return lhs->result_type_deref().GetCanonicalType();
+}
+
+static lldb::SBTypeMember GetFieldWithNameIndexPath(
+    lldb::SBType type, const std::string& name, std::vector<uint32_t>* idx) {
+  // Direct base classes are located before fields, so field members needs to be
+  // offset by the number of base classes.
+  uint32_t num_fields = type.GetNumberOfFields();
+  uint32_t num_direct_bases = type.GetNumberOfDirectBaseClasses();
+
+  // Go through the fields first.
+  for (uint32_t i = 0; i < num_fields; ++i) {
+    lldb::SBTypeMember field = type.GetFieldAtIndex(i);
+    // Name can be null if this is a padding field.
+    if (const char* field_name = field.GetName()) {
+      if (field_name == name) {
+        if (idx) {
+          idx->push_back(i + num_direct_bases);
+        }
+        return field;
+      }
+    }
+  }
+
+  // Go through the base classes and look for the field there.
+  for (uint32_t i = 0; i < num_direct_bases; ++i) {
+    lldb::SBType base = type.GetDirectBaseClassAtIndex(i).GetType();
+    lldb::SBTypeMember field = GetFieldWithNameIndexPath(base, name, idx);
+    if (field) {
+      if (idx) {
+        idx->push_back(i);
+      }
+      return field;
+    }
+  }
+
+  return lldb::SBTypeMember();
+}
+
+static std::tuple<lldb::SBTypeMember, std::vector<uint32_t>> GetFieldWithName(
+    lldb::SBType type, const std::string& name) {
+  std::vector<uint32_t> idx;
+  lldb::SBTypeMember member = GetFieldWithNameIndexPath(type, name, &idx);
+  std::reverse(idx.begin(), idx.end());
+  return {member, std::move(idx)};
+}
 
 std::string TypeDeclaration::GetName() const {
   // Full name is a combination of a base name and pointer operators.
@@ -323,13 +608,14 @@ ExprResult Parser::ParseConditionalExpression() {
   auto lhs = ParseLogicalOrExpression();
 
   if (token_.is(clang::tok::question)) {
+    clang::Token token = token_;
     ConsumeToken();
     auto true_val = ParseExpression();
     Expect(clang::tok::colon);
     ConsumeToken();
     auto false_val = ParseAssignmentExpression();
-    lhs = std::make_unique<TernaryOpNode>(std::move(lhs), std::move(true_val),
-                                          std::move(false_val));
+    lhs = BuildTernaryOp(std::move(lhs), std::move(true_val),
+                         std::move(false_val), token.getLocation());
   }
 
   return lhs;
@@ -344,10 +630,11 @@ ExprResult Parser::ParseLogicalOrExpression() {
   auto lhs = ParseLogicalAndExpression();
 
   while (token_.is(clang::tok::pipepipe)) {
-    clang::tok::TokenKind kind = token_.getKind();
+    clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseLogicalAndExpression();
-    lhs = std::make_unique<BinaryOpNode>(kind, std::move(lhs), std::move(rhs));
+    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
+                        token.getLocation());
   }
 
   return lhs;
@@ -362,10 +649,11 @@ ExprResult Parser::ParseLogicalAndExpression() {
   auto lhs = ParseInclusiveOrExpression();
 
   while (token_.is(clang::tok::ampamp)) {
-    clang::tok::TokenKind kind = token_.getKind();
+    clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseInclusiveOrExpression();
-    lhs = std::make_unique<BinaryOpNode>(kind, std::move(lhs), std::move(rhs));
+    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
+                        token.getLocation());
   }
 
   return lhs;
@@ -380,10 +668,11 @@ ExprResult Parser::ParseInclusiveOrExpression() {
   auto lhs = ParseExclusiveOrExpression();
 
   while (token_.is(clang::tok::pipe)) {
-    clang::tok::TokenKind kind = token_.getKind();
+    clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseExclusiveOrExpression();
-    lhs = std::make_unique<BinaryOpNode>(kind, std::move(lhs), std::move(rhs));
+    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
+                        token.getLocation());
   }
 
   return lhs;
@@ -398,10 +687,11 @@ ExprResult Parser::ParseExclusiveOrExpression() {
   auto lhs = ParseAndExpression();
 
   while (token_.is(clang::tok::caret)) {
-    clang::tok::TokenKind kind = token_.getKind();
+    clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseAndExpression();
-    lhs = std::make_unique<BinaryOpNode>(kind, std::move(lhs), std::move(rhs));
+    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
+                        token.getLocation());
   }
 
   return lhs;
@@ -416,10 +706,11 @@ ExprResult Parser::ParseAndExpression() {
   auto lhs = ParseEqualityExpression();
 
   while (token_.is(clang::tok::amp)) {
-    clang::tok::TokenKind kind = token_.getKind();
+    clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseEqualityExpression();
-    lhs = std::make_unique<BinaryOpNode>(kind, std::move(lhs), std::move(rhs));
+    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
+                        token.getLocation());
   }
 
   return lhs;
@@ -435,10 +726,11 @@ ExprResult Parser::ParseEqualityExpression() {
   auto lhs = ParseRelationalExpression();
 
   while (token_.isOneOf(clang::tok::equalequal, clang::tok::exclaimequal)) {
-    clang::tok::TokenKind kind = token_.getKind();
+    clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseRelationalExpression();
-    lhs = std::make_unique<BinaryOpNode>(kind, std::move(lhs), std::move(rhs));
+    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
+                        token.getLocation());
   }
 
   return lhs;
@@ -457,10 +749,11 @@ ExprResult Parser::ParseRelationalExpression() {
 
   while (token_.isOneOf(clang::tok::less, clang::tok::greater,
                         clang::tok::lessequal, clang::tok::greaterequal)) {
-    clang::tok::TokenKind kind = token_.getKind();
+    clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseShiftExpression();
-    lhs = std::make_unique<BinaryOpNode>(kind, std::move(lhs), std::move(rhs));
+    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
+                        token.getLocation());
   }
 
   return lhs;
@@ -476,10 +769,11 @@ ExprResult Parser::ParseShiftExpression() {
   auto lhs = ParseAdditiveExpression();
 
   while (token_.isOneOf(clang::tok::lessless, clang::tok::greatergreater)) {
-    clang::tok::TokenKind kind = token_.getKind();
+    clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseAdditiveExpression();
-    lhs = std::make_unique<BinaryOpNode>(kind, std::move(lhs), std::move(rhs));
+    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
+                        token.getLocation());
   }
 
   return lhs;
@@ -495,10 +789,11 @@ ExprResult Parser::ParseAdditiveExpression() {
   auto lhs = ParseMultiplicativeExpression();
 
   while (token_.isOneOf(clang::tok::plus, clang::tok::minus)) {
-    clang::tok::TokenKind kind = token_.getKind();
+    clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseMultiplicativeExpression();
-    lhs = std::make_unique<BinaryOpNode>(kind, std::move(lhs), std::move(rhs));
+    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
+                        token.getLocation());
   }
 
   return lhs;
@@ -516,10 +811,11 @@ ExprResult Parser::ParseMultiplicativeExpression() {
 
   while (token_.isOneOf(clang::tok::star, clang::tok::slash,
                         clang::tok::percent)) {
-    clang::tok::TokenKind kind = token_.getKind();
+    clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseCastExpression();
-    lhs = std::make_unique<BinaryOpNode>(kind, std::move(lhs), std::move(rhs));
+    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
+                        token.getLocation());
   }
 
   return lhs;
@@ -534,6 +830,8 @@ ExprResult Parser::ParseMultiplicativeExpression() {
 ExprResult Parser::ParseCastExpression() {
   // This can be a C-style cast, try parsing the contents as a type declaration.
   if (token_.is(clang::tok::l_paren)) {
+    clang::Token token = token_;
+
     // Enable lexer backtracking, so that we can rollback in case it's not
     // actually a type declaration.
     TentativeParsingAction tentative_parsing(this);
@@ -565,7 +863,7 @@ ExprResult Parser::ParseCastExpression() {
       ConsumeToken();
       auto rhs = ParseCastExpression();
 
-      return std::make_unique<CStyleCastNode>(type, std::move(rhs));
+      return BuildCStyleCast(type, std::move(rhs), token.getLocation());
 
     } else {
       // Failed to parse the contents of the parentheses as a type declaration.
@@ -598,10 +896,10 @@ ExprResult Parser::ParseUnaryExpression() {
                      clang::tok::star, clang::tok::amp, clang::tok::plus,
                      clang::tok::minus, clang::tok::exclaim,
                      clang::tok::tilde)) {
-    clang::tok::TokenKind kind = token_.getKind();
+    clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseCastExpression();
-    return std::make_unique<UnaryOpNode>(kind, std::move(rhs));
+    return BuildUnaryOp(token.getKind(), std::move(rhs), token.getLocation());
   }
 
   return ParsePostfixExpression();
@@ -622,24 +920,23 @@ ExprResult Parser::ParsePostfixExpression() {
   while (token_.isOneOf(clang::tok::l_square, clang::tok::period,
                         clang::tok::arrow, clang::tok::plusplus,
                         clang::tok::minusminus)) {
-    switch (token_.getKind()) {
+    clang::Token token = token_;
+    switch (token.getKind()) {
       case clang::tok::period:
       case clang::tok::arrow: {
-        auto type = token_.getKind() == clang::tok::period
-                        ? MemberOfNode::Type::OF_OBJECT
-                        : MemberOfNode::Type::OF_POINTER;
         ConsumeToken();
         auto member_id = ParseIdExpression();
-        lhs = std::make_unique<MemberOfNode>(type, std::move(lhs),
-                                             std::move(member_id));
+        lhs = BuildMemberOf(std::move(lhs), std::move(member_id),
+                            token.getKind() == clang::tok::arrow,
+                            token.getLocation());
         break;
       }
       case clang::tok::plusplus:
       case clang::tok::minusminus: {
         BailOut(ErrorCode::kNotImplemented,
                 llvm::formatv("We don't support postfix inc/dec yet: {0}",
-                              TokenDescription(token_)),
-                token_.getLocation());
+                              TokenDescription(token)),
+                token.getLocation());
         return std::make_unique<ErrorNode>();
       }
       case clang::tok::l_square: {
@@ -647,8 +944,8 @@ ExprResult Parser::ParsePostfixExpression() {
         auto rhs = ParseExpression();
         Expect(clang::tok::r_square);
         ConsumeToken();
-        lhs = std::make_unique<BinaryOpNode>(clang::tok::l_square,
-                                             std::move(lhs), std::move(rhs));
+        lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
+                            token.getLocation());
         break;
       }
 
@@ -688,8 +985,8 @@ ExprResult Parser::ParsePrimaryExpression() {
               loc);
       return std::make_unique<ErrorNode>();
     }
-    return std::make_unique<IdentifierNode>(identifier,
-                                            Value(value, /*is_rvalue*/ false));
+    return std::make_unique<IdentifierNode>(identifier, Value(value),
+                                            /*is_rvalue*/ false);
   } else if (token_.is(clang::tok::kw_this)) {
     // Save the source location for the diagnostics message.
     clang::SourceLocation loc = token_.getLocation();
@@ -702,8 +999,8 @@ ExprResult Parser::ParsePrimaryExpression() {
       return std::make_unique<ErrorNode>();
     }
     // Special case for "this" pointer. As per C++ standard, it's a prvalue.
-    return std::make_unique<IdentifierNode>("this",
-                                            Value(value, /*is_rvalue*/ true));
+    return std::make_unique<IdentifierNode>("this", Value(value),
+                                            /*is_rvalue*/ true);
   } else if (token_.is(clang::tok::l_paren)) {
     ConsumeToken();
     auto expr = ParseExpression();
@@ -1089,10 +1386,11 @@ lldb::SBType Parser::ResolveTypeDeclarators(lldb::SBType type,
     if (tk == clang::tok::star) {
       // Pointers to reference types are forbidden.
       if (type.IsReferenceType()) {
-        std::string msg = llvm::formatv(
-            "'type name' declared as a pointer to a reference of type '{0}'",
-            type.GetName());
-        BailOut(ErrorCode::kInvalidOperandType, msg, token_.getLocation());
+        BailOut(ErrorCode::kInvalidOperandType,
+                llvm::formatv("'type name' declared as a pointer to a "
+                              "reference of type '{0}'",
+                              type.GetName()),
+                token_.getLocation());
         return lldb::SBType();
       }
       // Get pointer type for the base type: e.g. int* -> int**.
@@ -1309,18 +1607,706 @@ ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
     return std::make_unique<ErrorNode>();
   }
 
-  lldb::BasicType type = PickIntegerType(literal, raw_value);
-
-  // TODO(werat): fix this hack.
-  bool is_unsigned = (type == lldb::eBasicTypeUnsignedInt ||
-                      type == lldb::eBasicTypeUnsignedLong ||
-                      type == lldb::eBasicTypeUnsignedLongLong);
+  auto [type, is_unsigned] = PickIntegerType(literal, raw_value);
 
   Value value =
       CreateValueFromAPInt(target_, llvm::APSInt(raw_value, is_unsigned),
                            target_.GetBasicType(type));
 
   return std::make_unique<LiteralNode>(std::move(value));
+}
+
+ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
+                                   clang::SourceLocation location) {
+  CStyleCastKind kind;
+  Type rhs_type = rhs->result_type_deref();
+
+  // Cast to basic type (integer/float).
+  if (type.IsScalar()) {
+    // Pointers can be cast to integers of the same or larger size.
+    if (rhs_type.IsPointerType() || rhs_type.IsNullPtrType()) {
+      // C-style cast from pointer to float/double is not allowed.
+      if (type.IsFloat()) {
+        BailOut(ErrorCode::kInvalidOperandType,
+                llvm::formatv("C-style cast from '{0}' to '{1}' is not allowed",
+                              rhs_type.GetName(), type.GetName()),
+                location);
+        return std::make_unique<ErrorNode>();
+      }
+      // Check if the result type is at least as big as the pointer size.
+      // TODO(werat): Use target pointer size, not host.
+      if (type.GetByteSize() < sizeof(void*)) {
+        BailOut(ErrorCode::kInvalidOperandType,
+                llvm::formatv(
+                    "cast from pointer to smaller type '{0}' loses information",
+                    type.GetName()),
+                location);
+        return std::make_unique<ErrorNode>();
+      }
+    } else if (!rhs_type.IsScalar() && !rhs_type.IsEnum()) {
+      // Otherwise accept only arithmetic types and enums.
+      BailOut(ErrorCode::kInvalidOperandType,
+              llvm::formatv(
+                  "cannot convert '{0}' to '{1}' without a conversion operator",
+                  rhs_type.GetName(), type.GetName()),
+              location);
+      return std::make_unique<ErrorNode>();
+    }
+    kind = CStyleCastKind::kArithmetic;
+
+  } else if (type.IsEnum()) {
+    // Cast to enum type.
+    if (!rhs_type.IsScalarOrUnscopedEnum()) {
+      BailOut(ErrorCode::kInvalidOperandType,
+              llvm::formatv("C-style cast from '{0}' to '{1}' is not allowed",
+                            rhs_type.GetName(), type.GetName()),
+              location);
+      return std::make_unique<ErrorNode>();
+    }
+    kind = CStyleCastKind::kEnumeration;
+
+  } else if (type.IsPointerType()) {
+    // Cast to pointer type.
+    if (!rhs_type.IsIntegerOrUnscopedEnum() && !rhs_type.IsPointerType() &&
+        !rhs_type.IsNullPtrType()) {
+      BailOut(ErrorCode::kInvalidOperandType,
+              llvm::formatv("cannot cast from type '{0}' to pointer type '{1}'",
+                            rhs_type.GetName(), type.GetName()),
+              location);
+      return std::make_unique<ErrorNode>();
+    }
+    kind = CStyleCastKind::kPointer;
+
+  } else if (type.IsReferenceType()) {
+    // Cast to a reference type.
+    // TODO(werat): Do we need to check anything here?
+    kind = CStyleCastKind::kReference;
+
+  } else {
+    // Unsupported cast.
+    BailOut(ErrorCode::kNotImplemented,
+            llvm::formatv("casting of '{0}' to '{1}' is not implemented yet",
+                          rhs_type.GetName(), type.GetName()),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  return std::make_unique<CStyleCastNode>(type, std::move(rhs), kind);
+}
+
+ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind kind, ExprResult rhs,
+                                clang::SourceLocation location) {
+  lldb::SBType result_type;
+  Type rhs_type = rhs->result_type_deref();
+
+  switch (kind) {
+    case clang::tok::star: {
+      if (rhs_type.IsPointerType()) {
+        result_type = rhs_type.GetPointeeType();
+      } else {
+        BailOut(ErrorCode::kInvalidOperandType,
+                llvm::formatv(
+                    "indirection requires pointer operand. ('{0}' invalid)",
+                    rhs_type.GetName()),
+                location);
+        return std::make_unique<ErrorNode>();
+      }
+      break;
+    }
+    case clang::tok::amp: {
+      if (rhs->is_rvalue()) {
+        BailOut(
+            ErrorCode::kInvalidOperandType,
+            llvm::formatv("cannot take the address of an rvalue of type '{0}'",
+                          rhs_type.GetName()),
+            location);
+        return std::make_unique<ErrorNode>();
+      }
+      result_type = rhs_type.GetPointerType();
+      break;
+    }
+    case clang::tok::plus:
+    case clang::tok::minus: {
+      rhs = UsualUnaryConversions(target_, std::move(rhs));
+      if (rhs_type.IsScalar() || rhs_type.IsUnscopedEnum() ||
+          // Unary plus is allowed for pointers.
+          (kind == clang::tok::plus && rhs_type.IsPointerType())) {
+        result_type = rhs->result_type();
+      }
+      break;
+    }
+    case clang::tok::tilde: {
+      rhs = UsualUnaryConversions(target_, std::move(rhs));
+      if (rhs_type.IsInteger() || rhs_type.IsUnscopedEnum()) {
+        result_type = rhs->result_type();
+      }
+      break;
+    }
+    case clang::tok::exclaim: {
+      if (rhs_type.IsContextuallyConvertibleToBool()) {
+        result_type = target_.GetBasicType(lldb::eBasicTypeBool);
+      }
+      break;
+    }
+
+    default:
+      break;
+  }
+
+  if (!result_type) {
+    BailOut(
+        ErrorCode::kInvalidOperandType,
+        llvm::formatv(kInvalidOperandsToUnaryExpression, rhs_type.GetName()),
+        location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  return std::make_unique<UnaryOpNode>(result_type, kind, std::move(rhs));
+}
+
+ExprResult Parser::BuildBinaryOp(clang::tok::TokenKind kind, ExprResult lhs,
+                                 ExprResult rhs,
+                                 clang::SourceLocation location) {
+  switch (kind) {
+    case clang::tok::plus:
+      return BuildBinaryAddition(std::move(lhs), std::move(rhs), location);
+
+    case clang::tok::minus:
+      return BuildBinarySubtraction(std::move(lhs), std::move(rhs), location);
+
+    case clang::tok::star:
+    case clang::tok::slash:
+      return BuildBinaryMulDiv(kind, std::move(lhs), std::move(rhs), location);
+
+    case clang::tok::percent:
+      return BuildBinaryRemainder(std::move(lhs), std::move(rhs), location);
+
+    case clang::tok::amp:
+    case clang::tok::pipe:
+    case clang::tok::caret:
+    case clang::tok::lessless:
+    case clang::tok::greatergreater:
+      return BuildBinaryBitwise(kind, std::move(lhs), std::move(rhs), location);
+
+    case clang::tok::equalequal:
+    case clang::tok::exclaimequal:
+    case clang::tok::less:
+    case clang::tok::lessequal:
+    case clang::tok::greater:
+    case clang::tok::greaterequal:
+      return BuildBinaryComparison(kind, std::move(lhs), std::move(rhs),
+                                   location);
+
+    case clang::tok::ampamp:
+    case clang::tok::pipepipe:
+      return BuildBinaryLogical(kind, std::move(lhs), std::move(rhs), location);
+
+    // "l_square" is a subscript operator -- array[index].
+    case clang::tok::l_square:
+      return BuildBinarySubscript(std::move(lhs), std::move(rhs), location);
+
+    default:
+      break;
+  }
+
+  BailOut(ErrorCode::kInvalidOperandType,
+          llvm::formatv(kInvalidOperandsToBinaryExpression,
+                        lhs->result_type_deref().GetName(),
+                        rhs->result_type_deref().GetName()),
+          location);
+  return std::make_unique<ErrorNode>();
+}
+
+ExprResult Parser::BuildBinaryAddition(ExprResult lhs, ExprResult rhs,
+                                       clang::SourceLocation location) {
+  // Operation '+' works for:
+  //
+  //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
+  //  {integer,unscoped_enum} <-> pointer
+  //  pointer <-> {integer,unscoped_enum}
+
+  // TODO(werat): Get the "original" type (i.e. the one before implicit casts)
+  // from the ExprResult.
+  lldb::SBType orig_lhs_type = lhs->result_type_deref();
+  lldb::SBType orig_rhs_type = rhs->result_type_deref();
+
+  Type result_type = UsualArithmeticConversions(target_, lhs, rhs);
+
+  if (result_type.IsScalar()) {
+    return std::make_unique<BinaryOpNode>(result_type, clang::tok::plus,
+                                          std::move(lhs), std::move(rhs));
+  }
+
+  Type lhs_type = lhs->result_type_deref();
+  Type rhs_type = rhs->result_type_deref();
+
+  // Check for pointer arithmetic operation.
+  Type ptr_type, integer_type;
+
+  if (lhs_type.IsPointerType()) {
+    ptr_type = lhs_type;
+    integer_type = rhs_type;
+  } else if (rhs_type.IsPointerType()) {
+    integer_type = lhs_type;
+    ptr_type = rhs_type;
+  }
+
+  if (!ptr_type || !integer_type.IsInteger()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv(kInvalidOperandsToBinaryExpression,
+                          orig_lhs_type.GetName(), orig_rhs_type.GetName()),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  if (ptr_type.IsPointerToVoid()) {
+    BailOut(ErrorCode::kInvalidOperandType, "arithmetic on a pointer to void",
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  return std::make_unique<BinaryOpNode>(ptr_type, clang::tok::plus,
+                                        std::move(lhs), std::move(rhs));
+}
+
+ExprResult Parser::BuildBinarySubtraction(ExprResult lhs, ExprResult rhs,
+                                          clang::SourceLocation location) {
+  // Operation '-' works for:
+  //
+  //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
+  //  pointer <-> {integer,unscoped_enum}
+  //  pointer <-> pointer (if pointee types are compatible)
+
+  lldb::SBType orig_lhs_type = lhs->result_type_deref();
+  lldb::SBType orig_rhs_type = rhs->result_type_deref();
+
+  Type result_type = UsualArithmeticConversions(target_, lhs, rhs);
+
+  if (result_type.IsScalar()) {
+    return std::make_unique<BinaryOpNode>(result_type, clang::tok::minus,
+                                          std::move(lhs), std::move(rhs));
+  }
+
+  Type lhs_type = lhs->result_type_deref();
+  Type rhs_type = rhs->result_type_deref();
+
+  if (lhs_type.IsPointerType() && rhs_type.IsIntegerOrUnscopedEnum()) {
+    if (lhs_type.IsPointerToVoid()) {
+      BailOut(ErrorCode::kInvalidOperandType, "arithmetic on a pointer to void",
+              location);
+      return std::make_unique<ErrorNode>();
+    }
+
+    return std::make_unique<BinaryOpNode>(lhs_type, clang::tok::minus,
+                                          std::move(lhs), std::move(rhs));
+  }
+
+  if (lhs_type.IsPointerType() && rhs_type.IsPointerType()) {
+    if (lhs_type.IsPointerToVoid() && rhs_type.IsPointerToVoid()) {
+      BailOut(ErrorCode::kInvalidOperandType, "arithmetic on pointers to void",
+              location);
+      return std::make_unique<ErrorNode>();
+    }
+
+    // Compare canonical unqualified pointer types.
+    bool comparable =
+        CompareTypes(lhs_type.GetCanonicalType().GetUnqualifiedType(),
+                     rhs_type.GetCanonicalType().GetUnqualifiedType());
+
+    if (!comparable) {
+      BailOut(
+          ErrorCode::kInvalidOperandType,
+          llvm::formatv("'{0}' and '{1}' are not pointers to compatible types",
+                        lhs_type.GetName(), rhs_type.GetName()),
+          location);
+      return std::make_unique<ErrorNode>();
+    }
+
+    // Pointer difference is technically ptrdiff_t, but the important part is
+    // that it is signed.
+    lldb::SBType ptrdiff_ty = target_.GetBasicType(lldb::eBasicTypeLongLong);
+    return std::make_unique<BinaryOpNode>(ptrdiff_ty, clang::tok::minus,
+                                          std::move(lhs), std::move(rhs));
+  }
+
+  BailOut(ErrorCode::kInvalidOperandType,
+          llvm::formatv(kInvalidOperandsToBinaryExpression,
+                        orig_lhs_type.GetName(), orig_rhs_type.GetName()),
+          location);
+  return std::make_unique<ErrorNode>();
+}
+
+ExprResult Parser::BuildBinaryMulDiv(clang::tok::TokenKind kind, ExprResult lhs,
+                                     ExprResult rhs,
+                                     clang::SourceLocation location) {
+  // Operations {'*', '/'} work for:
+  //
+  //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
+
+  Type lhs_type = lhs->result_type_deref();
+  Type rhs_type = rhs->result_type_deref();
+
+  if (lhs_type.IsScalarOrUnscopedEnum() && rhs_type.IsScalarOrUnscopedEnum()) {
+    // TODO(werat): Check for arithmetic zero division.
+    lldb::SBType result_type = UsualArithmeticConversions(target_, lhs, rhs);
+    return std::make_unique<BinaryOpNode>(result_type, kind, std::move(lhs),
+                                          std::move(rhs));
+  }
+
+  BailOut(ErrorCode::kInvalidOperandType,
+          llvm::formatv(kInvalidOperandsToBinaryExpression, lhs_type.GetName(),
+                        rhs_type.GetName()),
+          location);
+  return std::make_unique<ErrorNode>();
+}
+
+ExprResult Parser::BuildBinaryRemainder(ExprResult lhs, ExprResult rhs,
+                                        clang::SourceLocation location) {
+  // Operation '%' works for:
+  //
+  //  {integer,unscoped_enum} <-> {integer,unscoped_enum}
+
+  Type orig_lhs_type = lhs->result_type_deref();
+  Type orig_rhs_type = rhs->result_type_deref();
+
+  Type result_type = UsualArithmeticConversions(target_, lhs, rhs);
+  // TODO(werat): Check for arithmetic zero division.
+  if (result_type.IsInteger()) {
+    return std::make_unique<BinaryOpNode>(result_type, clang::tok::percent,
+                                          std::move(lhs), std::move(rhs));
+  }
+
+  BailOut(ErrorCode::kInvalidOperandType,
+          llvm::formatv(kInvalidOperandsToBinaryExpression,
+                        orig_lhs_type.GetName(), orig_rhs_type.GetName()),
+          location);
+  return std::make_unique<ErrorNode>();
+}
+
+ExprResult Parser::BuildBinaryBitwise(clang::tok::TokenKind kind,
+                                      ExprResult lhs, ExprResult rhs,
+                                      clang::SourceLocation location) {
+  // Operations {'&', '|', '^', '>>', '<<'} work for:
+  //
+  //  {Integer,unscoped_enum} <-> {Integer,unscoped_enum}
+
+  Type orig_lhs_type = lhs->result_type_deref();
+  Type orig_rhs_type = rhs->result_type_deref();
+
+  Type result_type = UsualArithmeticConversions(target_, lhs, rhs);
+
+  if (result_type.IsInteger()) {
+    return std::make_unique<BinaryOpNode>(result_type, kind, std::move(lhs),
+                                          std::move(rhs));
+  }
+
+  BailOut(ErrorCode::kInvalidOperandType,
+          llvm::formatv(kInvalidOperandsToBinaryExpression,
+                        orig_lhs_type.GetName(), orig_rhs_type.GetName()),
+          location);
+  return std::make_unique<ErrorNode>();
+}
+
+ExprResult Parser::BuildBinaryComparison(clang::tok::TokenKind kind,
+                                         ExprResult lhs, ExprResult rhs,
+                                         clang::SourceLocation location) {
+  // Comparison works for:
+  //
+  //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
+  //  scoped_enum <-> scoped_enum (if the same type)
+  //  pointer <-> pointer (if pointee types are compatible)
+  //  pointer <-> {integer,unscoped_enum,nullptr_t}
+  //  {integer,unscoped_enum,nullptr_t} <-> pointer
+  //  nullptr_t <-> {nullptr_t,integer} (if integer is literal zero)
+  //  {nullptr_t,integer} <-> nullptr_t (if integer is literal zero)
+
+  Type orig_lhs_type = lhs->result_type_deref();
+  Type orig_rhs_type = rhs->result_type_deref();
+
+  // If the operands has arithmetic or enumeration type (scoped or unscoped),
+  // usual arithmetic conversions are performed on both operands following the
+  // rules for arithmetic operators.
+  Type _ = UsualArithmeticConversions(target_, lhs, rhs);
+
+  Type lhs_type = lhs->result_type_deref();
+  Type rhs_type = rhs->result_type_deref();
+
+  // The result of the comparison is always bool.
+  lldb::SBType boolean_ty = target_.GetBasicType(lldb::eBasicTypeBool);
+
+  if (lhs_type.IsScalarOrUnscopedEnum() && rhs_type.IsScalarOrUnscopedEnum()) {
+    return std::make_unique<BinaryOpNode>(boolean_ty, kind, std::move(lhs),
+                                          std::move(rhs));
+  }
+
+  // Scoped enums can be compared only to the instances of the same type.
+  if (lhs_type.IsScopedEnum() || rhs_type.IsScopedEnum()) {
+    if (CompareTypes(lhs_type, rhs_type)) {
+      return std::make_unique<BinaryOpNode>(boolean_ty, kind, std::move(lhs),
+                                            std::move(rhs));
+    }
+
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv(kInvalidOperandsToBinaryExpression,
+                          orig_lhs_type.GetName(), orig_rhs_type.GetName()),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  bool is_ordered =
+      (kind == clang::tok::less || kind == clang::tok::lessequal ||
+       kind == clang::tok::greater || kind == clang::tok::greaterequal);
+
+  // Check if the value can be compared to a pointer. We allow all pointers,
+  // integers, unscoped enumerations and a nullptr literal if it's an
+  // equality/inequality comparison. For "pointer <-> integer" C++ allows only
+  // equality/inequality comparison against literal zero and nullptr. However in
+  // the debugger context it's often useful to compare a pointer with an integer
+  // representing an address. That said, this also allows comparing nullptr and
+  // any integer, not just literal zero, e.g. "nullptr == 1 -> false". C++
+  // doesn't allow it, but we implement this for convenience.
+  auto comparable_to_pointer = [&](Type t) {
+    return t.IsPointerType() || t.IsInteger() || t.IsUnscopedEnum() ||
+           (!is_ordered && t.IsNullPtrType());
+  };
+
+  if ((lhs_type.IsPointerType() && comparable_to_pointer(rhs_type)) ||
+      (comparable_to_pointer(lhs_type) && rhs_type.IsPointerType())) {
+    // If both are pointers, check if they have comparable types. Comparing
+    // pointers to void is always allowed.
+    if ((lhs_type.IsPointerType() && !lhs_type.IsPointerToVoid()) &&
+        (rhs_type.IsPointerType() && !rhs_type.IsPointerToVoid())) {
+      // Compare canonical unqualified pointer types.
+      bool comparable =
+          CompareTypes(lhs_type.GetCanonicalType().GetUnqualifiedType(),
+                       rhs_type.GetCanonicalType().GetUnqualifiedType());
+
+      if (!comparable) {
+        BailOut(ErrorCode::kInvalidOperandType,
+                llvm::formatv(
+                    "comparison of distinct pointer types ('{0}' and '{1}')",
+                    orig_lhs_type.GetName(), orig_rhs_type.GetName()),
+                location);
+        return std::make_unique<ErrorNode>();
+      }
+    }
+
+    return std::make_unique<BinaryOpNode>(boolean_ty, kind, std::move(lhs),
+                                          std::move(rhs));
+  }
+
+  auto is_nullptr_or_zero = [&](Type t) {
+    // Technically only literal zero is allowed here, but we don't have the
+    // information about the value being literal to implement the restriction.
+    // TODO(werat): Propagate the information about literal zero.
+    return t.IsNullPtrType() || t.IsInteger();
+  };
+
+  if (!is_ordered &&
+      ((lhs_type.IsNullPtrType() && is_nullptr_or_zero(rhs_type)) ||
+       (is_nullptr_or_zero(lhs_type) && rhs_type.IsNullPtrType()))) {
+    return std::make_unique<BinaryOpNode>(boolean_ty, kind, std::move(lhs),
+                                          std::move(rhs));
+  }
+
+  BailOut(ErrorCode::kInvalidOperandType,
+          llvm::formatv(kInvalidOperandsToBinaryExpression,
+                        orig_lhs_type.GetName(), orig_rhs_type.GetName()),
+          location);
+  return std::make_unique<ErrorNode>();
+}
+
+ExprResult Parser::BuildBinaryLogical(clang::tok::TokenKind kind,
+                                      ExprResult lhs, ExprResult rhs,
+                                      clang::SourceLocation location) {
+  Type lhs_type = lhs->result_type_deref();
+  Type rhs_type = rhs->result_type_deref();
+
+  if (!lhs_type.IsContextuallyConvertibleToBool()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv(kValueIsNotConvertibleToBool, lhs_type.GetName()),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  if (!rhs_type.IsContextuallyConvertibleToBool()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv(kValueIsNotConvertibleToBool, rhs_type.GetName()),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  // The result of the logical operator is always bool.
+  lldb::SBType boolean_ty = target_.GetBasicType(lldb::eBasicTypeBool);
+  return std::make_unique<BinaryOpNode>(boolean_ty, kind, std::move(lhs),
+                                        std::move(rhs));
+}
+
+ExprResult Parser::BuildBinarySubscript(ExprResult lhs, ExprResult rhs,
+                                        clang::SourceLocation location) {
+  // C99 6.5.2.1p2: the expression e1[e2] is by definition precisely
+  // equivalent to the expression *((e1)+(e2)).
+  // We need to figure out which expression is "base" and which is "index".
+
+  ExprResult* base;
+  ExprResult* index;
+
+  Type lhs_type = lhs->result_type_deref();
+  Type rhs_type = rhs->result_type_deref();
+
+  if (lhs_type.IsArrayType() || lhs_type.IsPointerType()) {
+    base = &lhs;
+    index = &rhs;
+  } else if (rhs_type.IsArrayType() || rhs_type.IsPointerType()) {
+    base = &rhs;
+    index = &lhs;
+  } else {
+    BailOut(ErrorCode::kInvalidOperandType,
+            "subscripted value is not an array or pointer", location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  // Index can be a typedef of a typedef of a typedef of a typedef...
+  // Get canonical underlying type.
+  Type index_type = index->get()->result_type_deref();
+
+  // Check if the index is of an integral type.
+  if (!index_type.IsInteger()) {
+    BailOut(ErrorCode::kInvalidOperandType, "array subscript is not an integer",
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  Type base_type = base->get()->result_type_deref();
+
+  lldb::SBType result_type;
+  bool is_pointer_base;
+
+  if (base_type.IsPointerType()) {
+    result_type = base_type.GetPointeeType();
+    is_pointer_base = true;
+  } else if (base_type.IsArrayType()) {
+    result_type = base_type.GetArrayElementType();
+    is_pointer_base = false;
+  } else {
+    lldb_eval_unreachable("Subscripted value must be either array or pointer.");
+  }
+
+  return std::make_unique<ArraySubscriptOpNode>(
+      result_type, std::move(*base), std::move(*index), is_pointer_base);
+}
+
+ExprResult Parser::BuildTernaryOp(ExprResult cond, ExprResult lhs,
+                                  ExprResult rhs,
+                                  clang::SourceLocation location) {
+  // First check if the condition contextually converted to bool.
+  Type cond_type = cond->result_type_deref();
+  if (!cond_type.IsContextuallyConvertibleToBool()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv(kValueIsNotConvertibleToBool, cond_type.GetName()),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  Type lhs_type = lhs->result_type_deref();
+  Type rhs_type = rhs->result_type_deref();
+
+  // If operands have the same type, don't do any promotions.
+  if (CompareTypes(lhs_type, rhs_type)) {
+    bool is_rvalue = lhs->is_rvalue() || rhs->is_rvalue();
+    return std::make_unique<TernaryOpNode>(
+        lhs_type, std::move(cond), std::move(lhs), std::move(rhs), is_rvalue);
+  }
+
+  // If both operands have arithmetic type, apply the usual arithmetic
+  // conversions to bring them to a common type.
+  if (lhs_type.IsScalarOrUnscopedEnum() && rhs_type.IsScalarOrUnscopedEnum()) {
+    lldb::SBType result_type = UsualArithmeticConversions(target_, lhs, rhs);
+    bool is_rvalue = lhs->is_rvalue() || rhs->is_rvalue();
+    return std::make_unique<TernaryOpNode>(result_type, std::move(cond),
+                                           std::move(lhs), std::move(rhs),
+                                           is_rvalue);
+  }
+
+  // If one operand is a pointer and the other one is arithmeric, convert
+  // arithmetic operand to a pointer.
+  if ((lhs_type.IsPointerType() || lhs_type.IsNullPtrType()) &&
+      rhs_type.IsScalarOrUnscopedEnum()) {
+    rhs = std::make_unique<CStyleCastNode>(lhs_type, std::move(rhs),
+                                           CStyleCastKind::kPointer);
+
+    bool is_rvalue = lhs->is_rvalue() || rhs->is_rvalue();
+    return std::make_unique<TernaryOpNode>(
+        lhs_type, std::move(cond), std::move(lhs), std::move(rhs), is_rvalue);
+  }
+  if ((rhs_type.IsPointerType() || rhs_type.IsNullPtrType()) &&
+      lhs_type.IsScalarOrUnscopedEnum()) {
+    lhs = std::make_unique<CStyleCastNode>(rhs_type, std::move(lhs),
+                                           CStyleCastKind::kPointer);
+
+    bool is_rvalue = lhs->is_rvalue() || rhs->is_rvalue();
+    return std::make_unique<TernaryOpNode>(
+        rhs_type, std::move(cond), std::move(lhs), std::move(rhs), is_rvalue);
+  }
+
+  BailOut(ErrorCode::kInvalidOperandType,
+          llvm::formatv("incompatible operand types ('{0}' and '{1}')",
+                        lhs_type.GetName(), rhs_type.GetName()),
+          location);
+  return std::make_unique<ErrorNode>();
+}
+
+ExprResult Parser::BuildMemberOf(ExprResult lhs, std::string member_id,
+                                 bool is_arrow,
+                                 clang::SourceLocation location) {
+  Type lhs_type = lhs->result_type_deref();
+
+  if (is_arrow) {
+    // "member of pointer" operator, check that LHS is a pointer and
+    // dereference it.
+    if (!lhs_type.IsPointerType()) {
+      BailOut(ErrorCode::kInvalidOperandType,
+              llvm::formatv("member reference type '{0}' is not a pointer; did "
+                            "you mean to use '.'?",
+                            lhs_type.GetName()),
+              location);
+      return std::make_unique<ErrorNode>();
+    }
+    lhs_type = lhs_type.GetPointeeType();
+
+  } else {
+    // "member of object" operator, check that LHS is an object.
+    if (lhs_type.IsPointerType()) {
+      BailOut(ErrorCode::kInvalidOperandType,
+              llvm::formatv("member reference type '{0}' is a pointer; "
+                            "did you mean to use '->'?",
+                            lhs_type.GetName()),
+              location);
+      return std::make_unique<ErrorNode>();
+    }
+  }
+
+  // Check if LHS is a record type, i.e. class/struct or union.
+  if (!lhs_type.IsRecordType()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv(
+                "member reference base type '{0}' is not a structure or union",
+                lhs_type.GetName()),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  auto [member, idx] = GetFieldWithName(lhs_type, member_id);
+  if (!member) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv("no member named '{0}' in '{1}'", member_id,
+                          lhs_type.GetUnqualifiedType().GetName()),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  return std::make_unique<MemberOfNode>(member.GetType(), std::move(lhs),
+                                        std::move(idx), is_arrow);
 }
 
 }  // namespace lldb_eval

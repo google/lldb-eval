@@ -14,8 +14,6 @@
 
 #include "lldb-eval/value.h"
 
-#include <variant>
-
 #include "lldb-eval/defines.h"
 #include "lldb-eval/traits.h"
 #include "lldb/API/SBTarget.h"
@@ -86,26 +84,110 @@ lldb::SBType GetEnumerationIntegerType_V(T type, lldb::SBTarget target) {
   }
 }
 
-bool Value::IsScalar() {
-  return type_.GetCanonicalType().GetTypeFlags() & lldb::eTypeIsScalar;
+Type::Type() {}
+
+Type::Type(const lldb::SBType& type) : lldb::SBType(type) {}
+
+bool Type::IsScalar() { return GetTypeFlags() & lldb::eTypeIsScalar; }
+
+bool Type::IsInteger() { return GetTypeFlags() & lldb::eTypeIsInteger; }
+
+bool Type::IsFloat() { return GetTypeFlags() & lldb::eTypeIsFloat; }
+
+bool Type::IsPointerToVoid() {
+  return IsPointerType() &&
+         GetPointeeType().GetBasicType() == lldb::eBasicTypeVoid;
 }
 
-bool Value::IsInteger() {
-  return type_.GetCanonicalType().GetTypeFlags() & lldb::eTypeIsInteger;
+bool Type::IsNullPtrType() { return GetBasicType() == lldb::eBasicTypeNullPtr; }
+
+bool Type::IsSigned() { return GetTypeFlags() & lldb::eTypeIsSigned; }
+
+bool Type::IsEnum() { return GetTypeFlags() & lldb::eTypeIsEnumeration; }
+
+bool Type::IsScopedEnum() { return IsScopedEnum_V<lldb::SBType>(*this); }
+
+bool Type::IsUnscopedEnum() { return IsEnum() && !IsScopedEnum(); }
+
+bool Type::IsScalarOrUnscopedEnum() { return IsScalar() || IsUnscopedEnum(); }
+
+bool Type::IsIntegerOrUnscopedEnum() { return IsInteger() || IsUnscopedEnum(); }
+
+bool Type::IsRecordType() {
+  return GetTypeClass() & (lldb::eTypeClassClass | lldb::eTypeClassStruct |
+                           lldb::eTypeClassUnion);
 }
 
-bool Value::IsFloat() {
-  return type_.GetCanonicalType().GetTypeFlags() & lldb::eTypeIsFloat;
+bool Type::IsPromotableIntegerType() {
+  // Unscoped enums are always considered as promotable, even if their
+  // underlying type does not need to be promoted (e.g. "int").
+  if (IsUnscopedEnum()) {
+    return true;
+  }
+
+  switch (GetCanonicalType().GetBasicType()) {
+    case lldb::eBasicTypeBool:
+    case lldb::eBasicTypeChar:
+    case lldb::eBasicTypeSignedChar:
+    case lldb::eBasicTypeUnsignedChar:
+    case lldb::eBasicTypeShort:
+    case lldb::eBasicTypeUnsignedShort:
+    case lldb::eBasicTypeWChar:
+    case lldb::eBasicTypeSignedWChar:
+    case lldb::eBasicTypeUnsignedWChar:
+    case lldb::eBasicTypeChar16:
+    case lldb::eBasicTypeChar32:
+      return true;
+
+    default:
+      return false;
+  }
 }
 
-bool Value::IsPointer() {
-  return type_.GetCanonicalType().GetTypeFlags() & lldb::eTypeIsPointer;
+bool Type::IsContextuallyConvertibleToBool() {
+  return IsScalar() || IsUnscopedEnum() || IsPointerType() || IsNullPtrType();
 }
 
-bool Value::IsPointerToVoid() {
-  return type_.IsPointerType() &&
-         type_.GetPointeeType().GetBasicType() == lldb::eBasicTypeVoid;
+lldb::BasicType Type::GetBuiltinType() {
+  return GetCanonicalType().GetBasicType();
 }
+
+lldb::SBType Type::GetEnumerationIntegerType(lldb::SBTarget target) {
+  return GetEnumerationIntegerType_V<lldb::SBType>(*this, target);
+}
+
+bool CompareTypes(lldb::SBType lhs, lldb::SBType rhs) {
+  if (lhs == rhs) {
+    return true;
+  }
+
+  // TODO(werat): Figure out why the equality doesn't work sometimes. For now
+  // workaround by comparing underlying types for builtins and pointers.
+  lldb::BasicType lhs_basic_type = lhs.GetCanonicalType().GetBasicType();
+  lldb::BasicType rhs_basic_type = rhs.GetCanonicalType().GetBasicType();
+  if (lhs_basic_type != lldb::eBasicTypeInvalid &&
+      lhs_basic_type == rhs_basic_type) {
+    return true;
+  }
+
+  if (lhs.IsPointerType() && rhs.IsPointerType()) {
+    lldb::SBType lhs_pointee = lhs.GetPointeeType().GetCanonicalType();
+    lldb::SBType rhs_pointee = rhs.GetPointeeType().GetCanonicalType();
+    if (CompareTypes(lhs_pointee, rhs_pointee)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool Value::IsScalar() { return type_.IsScalar(); }
+
+bool Value::IsInteger() { return type_.IsInteger(); }
+
+bool Value::IsFloat() { return type_.IsFloat(); }
+
+bool Value::IsPointer() { return type_.IsPointerType(); }
 
 bool Value::IsNullPtrType() {
   return type_.GetBasicType() == lldb::eBasicTypeNullPtr;
@@ -130,8 +212,6 @@ bool Value::GetBool() {
   return false;
 }
 
-int64_t Value::GetInt64() { return value_.GetValueAsSigned(); }
-
 uint64_t Value::GetUInt64() {
   // GetValueAsUnsigned performs overflow according to the underlying type. For
   // example, if the underlying type is `int32_t` and the value is `-1`,
@@ -139,20 +219,14 @@ uint64_t Value::GetUInt64() {
   return IsSigned() ? value_.GetValueAsSigned() : value_.GetValueAsUnsigned();
 }
 
-Value Value::AddressOf() {
-  return Value(value_.AddressOf(), /* is_rvalue */ true);
-}
+Value Value::AddressOf() { return Value(value_.AddressOf()); }
 
 Value Value::Dereference() { return Value(value_.Dereference()); }
-
-Value Value::GetRvalueRef() const {
-  return Value{value_, /* is_rvalue */ true};
-}
 
 llvm::APSInt Value::GetInteger() {
   unsigned bit_width = static_cast<unsigned>(type_.GetByteSize() * CHAR_BIT);
   uint64_t value = value_.GetValueAsUnsigned();
-  bool is_signed = type_.GetTypeFlags() & lldb::eTypeIsSigned;
+  bool is_signed = IsSigned();
 
   return llvm::APSInt(llvm::APInt(bit_width, value, is_signed), !is_signed);
 }
@@ -165,225 +239,11 @@ llvm::APFloat Value::GetFloat() {
       return llvm::APFloat(ReadValue<float>(value_));
     case lldb::eBasicTypeDouble:
       return llvm::APFloat(ReadValue<double>(value_));
+    case lldb::eBasicTypeLongDouble:
+      return llvm::APFloat(ReadValue<double>(value_));
     default:
       return llvm::APFloat(NAN);
   }
-}
-
-Value IntegralPromotion(lldb::SBTarget target, Value value) {
-  // Perform itergal promotion on the operand:
-  // https://eel.is/c++draft/conv.prom
-
-  assert((value.IsInteger() || value.IsUnscopedEnum()) &&
-         "Integral promotion works only for integers and unscoped enums.");
-
-  using IntegralPromotionResult =
-      std::variant<int, unsigned int, long, unsigned long, long long,
-                   unsigned long long>;
-
-  lldb::SBError error;
-  IntegralPromotionResult ipr;
-
-  // Get the value type. In case of an unscoped enumeration drill down to the
-  // underlying type.
-  lldb::SBType type =
-      value.IsUnscopedEnum()
-          ? GetEnumerationIntegerType_V<lldb::SBType>(value.type(), target)
-          : value.type();
-
-  switch (type.GetCanonicalType().GetBasicType()) {
-#define CASE(basic_type, builtin_type)                  \
-  case basic_type:                                      \
-    ipr = ReadValue<builtin_type>(value.inner_value()); \
-    break;
-
-    LLDB_TYPE_BUILTIN_PROMOTABLE_INTEGER(CASE)
-#undef CASE
-
-    default: {
-      // Unscoped enumerations need to be unwrapped into the underlying type.
-      if (value.IsUnscopedEnum()) {
-        uint64_t bytes = value.GetUInt64();
-        return CreateValueFromBytes(target, &bytes, type);
-      }
-      // Other types don't need integral promotion.
-      return value.GetRvalueRef();
-    }
-  }
-
-  if (error) {
-    // Some error happened, integral promotion result is likely invalid.
-    return Value();
-  }
-
-  // Assign a value from integral promotion result.
-  Value ret = std::visit(
-      [target](auto&& arg) {
-        return CreateValueFromBytes(
-            target, &arg,
-            builtin_to_lldb_type<std::decay_t<decltype(arg)>>::value);
-      },
-      ipr);
-
-  return ret;
-}
-
-size_t ConversionRank(lldb::BasicType basic_type) {
-  // Get integer conversion rank
-  // https://eel.is/c++draft/conv.rank
-  switch (basic_type) {
-    case lldb::eBasicTypeBool:
-      return 1;
-    case lldb::eBasicTypeChar:
-    case lldb::eBasicTypeSignedChar:
-    case lldb::eBasicTypeUnsignedChar:
-      return 2;
-    case lldb::eBasicTypeShort:
-    case lldb::eBasicTypeUnsignedShort:
-      return 3;
-    case lldb::eBasicTypeInt:
-    case lldb::eBasicTypeUnsignedInt:
-      return 4;
-    case lldb::eBasicTypeLong:
-    case lldb::eBasicTypeUnsignedLong:
-      return 5;
-    case lldb::eBasicTypeLongLong:
-    case lldb::eBasicTypeUnsignedLongLong:
-      return 6;
-
-      // TODO: The ranks of char16_t, char32_t, and wchar_t are equal to the
-      // ranks of their underlying types.
-    case lldb::eBasicTypeWChar:
-    case lldb::eBasicTypeSignedWChar:
-    case lldb::eBasicTypeUnsignedWChar:
-      return 3;
-    case lldb::eBasicTypeChar16:
-      return 3;
-    case lldb::eBasicTypeChar32:
-      return 4;
-
-      // Technically float and double don't have a conversion rank, but we give
-      // them one for uniform ordering.
-    case lldb::eBasicTypeFloat:
-      return 1;
-    case lldb::eBasicTypeDouble:
-      return 2;
-
-    default:
-      break;
-  }
-  return 0;
-}
-
-lldb::BasicType BasicTypeToUnsigned(lldb::BasicType basic_type) {
-  switch (basic_type) {
-    case lldb::eBasicTypeInt:
-      return lldb::eBasicTypeUnsignedInt;
-    case lldb::eBasicTypeLong:
-      return lldb::eBasicTypeUnsignedLong;
-    case lldb::eBasicTypeLongLong:
-      return lldb::eBasicTypeUnsignedLongLong;
-    default:
-      return basic_type;
-  }
-}
-
-void PerformArithmeticConversions(lldb::SBTarget target, Value* l, Value* r) {
-  if (r->IsFloat()) {
-    // Convert the candidate to the appropriate floating point value.
-    if (l->IsInteger()) {
-      // Integral value -> floating point value.
-      llvm::APFloat f = llvm::APFloat(r->GetFloat().getSemantics());
-      llvm::APSInt i = l->GetInteger();
-      f.convertFromAPInt(i, i.isSigned(), llvm::APFloat::rmNearestTiesToEven);
-
-      *l = CreateValueFromAPFloat(target, f, r->type());
-      return;
-    }
-
-    if (l->IsFloat()) {
-      // Floating point -> floating point value.
-      llvm::APFloat f = l->GetFloat();
-      bool ignore;
-      f.convert(r->GetFloat().getSemantics(),
-                llvm::APFloat::rmNearestTiesToEven, &ignore);
-
-      *l = CreateValueFromAPFloat(target, f, r->type());
-      return;
-    }
-  }
-
-  if (r->IsInteger()) {
-    // if `r` is signed and `l` is unsigned, check whether it can represent all
-    // of the values of the type of the `l`. If not, then promote `r` to the
-    // unsigned version of its type.
-    if (r->IsSigned() && !l->IsSigned()) {
-      auto l_size = l->type().GetByteSize();
-      auto r_size = r->type().GetByteSize();
-
-      assert(l_size <= r_size &&
-             "left value must not be larger then the right!");
-
-      if (r_size == l_size) {
-        llvm::APSInt i = r->GetInteger();
-        i.setIsUnsigned(true);
-
-        auto type = target.GetBasicType(
-            BasicTypeToUnsigned(r->type().GetCanonicalType().GetBasicType()));
-        *r = CreateValueFromAPInt(target, i, type);
-      }
-    }
-
-    llvm::APSInt i = l->GetInteger();
-    i = i.extOrTrunc(static_cast<uint32_t>(r->type().GetByteSize() * CHAR_BIT));
-    i.setIsSigned(r->IsSigned());
-
-    *l = CreateValueFromAPInt(target, i, r->type());
-    return;
-  }
-
-  lldb_eval_unreachable("Invalid arithmetic type");
-}
-
-lldb::SBType UsualArithmeticConversions(lldb::SBTarget target, Value* lhs,
-                                        Value* rhs) {
-  // Perform usual arithmetic conversions on the operands:
-  // https://eel.is/c++draft/expr.arith.conv
-
-  // If the operand passed to an arithmetic operator is integral or unscoped
-  // enumeration type, then before any other action (but after lvalue-to-rvalue
-  // conversion, if applicable), the operand undergoes integral promotion.
-  if (lhs->IsInteger() || lhs->IsUnscopedEnum()) {
-    *lhs = IntegralPromotion(target, *lhs);
-  }
-  if (rhs->IsInteger() || rhs->IsUnscopedEnum()) {
-    *rhs = IntegralPromotion(target, *rhs);
-  }
-
-  // Tuples are ordered element-wise, e.g. (2, 1) > (1, 2) > (1, 2). We use this
-  // property to figure out the operant with overall highest rank (e.g. `float`
-  // is higher than any of the integral types).
-  //
-  // <is_float, conversion_rank, is_unsigned>
-  using Rank = std::tuple<bool, size_t, bool>;
-
-  auto GetRank = [](Value v) {
-    return Rank{v.IsFloat(),
-                ConversionRank(v.type().GetCanonicalType().GetBasicType()),
-                !v.IsSigned()};
-  };
-
-  auto l_rank = GetRank(*lhs);
-  auto r_rank = GetRank(*rhs);
-
-  if (l_rank < r_rank) {
-    PerformArithmeticConversions(target, lhs, rhs);
-  } else if (l_rank > r_rank) {
-    PerformArithmeticConversions(target, rhs, lhs);
-  }
-
-  // TODO: make sure the types match.
-  return lhs->type().GetCanonicalType();
 }
 
 Value CastScalarToBasicType(lldb::SBTarget target, Value val,
@@ -446,10 +306,7 @@ Value CreateValueFromBytes(lldb::SBTarget target, const void* bytes,
 
   // CreateValueFromData copies the data referenced by `bytes` to its own
   // storage. `value` should be valid up until this point.
-  lldb::SBValue v = target.CreateValueFromData("result", data, type);
-
-  // Values created from data (i.e. _not_ acquired from LLDB) are rvalues.
-  return Value(v, /* is_rvalue */ true);
+  return Value(target.CreateValueFromData("result", data, type));
 }
 
 Value CreateValueFromBytes(lldb::SBTarget target, const void* bytes,

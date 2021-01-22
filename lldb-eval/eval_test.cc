@@ -423,6 +423,11 @@ TEST_F(EvalTest, TestArithmetic) {
   EXPECT_THAT(Eval("(unsigned int) fdenorm"), IsEqual("0"));
   EXPECT_THAT(Eval("(unsigned int) (1.0f + fdenorm)"), IsEqual("1"));
 
+  // Invalid remainder.
+  EXPECT_THAT(
+      Eval("1.1 % 2"),
+      IsError("invalid operands to binary expression ('double' and 'int')"));
+
   // References and typedefs.
   EXPECT_THAT(Eval("r + 1"), IsEqual("3"));
   EXPECT_THAT(Eval("r - 1"), IsEqual("1"));
@@ -599,6 +604,7 @@ TEST_F(EvalTest, PointerIntegerComparison) {
 
   EXPECT_THAT(Eval("nullptr == nullptr"), IsEqual("true"));
   EXPECT_THAT(Eval("nullptr != nullptr"), IsEqual("false"));
+
   EXPECT_THAT(Eval("nullptr == 0"), IsEqual("true"));
   EXPECT_THAT(Eval("0 != nullptr"), IsEqual("false"));
 
@@ -606,6 +612,20 @@ TEST_F(EvalTest, PointerIntegerComparison) {
       Eval("(void*)0 > nullptr"),
       IsError(
           "invalid operands to binary expression ('void *' and 'nullptr_t')"));
+
+  EXPECT_THAT(
+      Eval("nullptr > 0"),
+      IsError("invalid operands to binary expression ('nullptr_t' and 'int')"));
+
+  // TODO(werat): Disable until the literal zero is supported:
+  // EXPECT_THAT(
+  //     Eval("1 == nullptr"),
+  //     IsError(
+  //       "invalid operands to binary expression ('int' and 'nullptr_t')"));
+
+  EXPECT_THAT(Eval("nullptr > nullptr"),
+              IsError("invalid operands to binary expression ('nullptr_t' and "
+                      "'nullptr_t')"));
 
   // These are not allowed by C++, but we support it as an extension.
   EXPECT_THAT(Eval("(void*)1 == 1"), IsEqual("true"));
@@ -662,25 +682,10 @@ TEST_F(EvalTest, TestLogicalOperators) {
   EXPECT_THAT(Eval("p_nullptr || true"), IsEqual("true"));
   EXPECT_THAT(Eval("p_nullptr || false"), IsEqual("false"));
 
-  EXPECT_THAT(Eval("nullptr == 0"), IsEqual("true"));
-  EXPECT_THAT(Eval("0 != nullptr"), IsEqual("false"));
-
-  EXPECT_THAT(Eval("nullptr == nullptr"), IsEqual("true"));
-  EXPECT_THAT(Eval("nullptr != nullptr"), IsEqual("false"));
-
-  EXPECT_THAT(
-      Eval("nullptr > 0"),
-      IsError("invalid operands to binary expression ('nullptr_t' and 'int')"));
-  EXPECT_THAT(
-      Eval("1 == nullptr"),
-      IsError("invalid operands to binary expression ('int' and 'nullptr_t')"));
-
-  EXPECT_THAT(Eval("nullptr > nullptr"),
-              IsError("invalid operands to binary expression ('nullptr_t' and "
-                      "'nullptr_t')"));
-
-  EXPECT_THAT(Eval("!s || false"),
-              IsError("invalid argument type 'S' to unary expression"));
+  EXPECT_THAT(Eval("false || !s"),
+              IsError("invalid argument type 'S' to unary expression\n"
+                      "false || !s\n"
+                      "         ^"));
   EXPECT_THAT(
       Eval("s || false"),
       IsError("value of type 'S' is not contextually convertible to 'bool'"));
@@ -738,6 +743,20 @@ TEST_F(EvalTest, TestInstanceVariables) {
                                          "pointer; did you mean to use '.'?"));
 }
 
+TEST_F(EvalTest, TestMemberOfInheritance) {
+  EXPECT_THAT(Eval("a.a_"), IsEqual("1"));
+  EXPECT_THAT(Eval("b.b_"), IsEqual("2"));
+  EXPECT_THAT(Eval("c.a_"), IsEqual("1"));
+  EXPECT_THAT(Eval("c.b_"), IsEqual("2"));
+  EXPECT_THAT(Eval("c.c_"), IsEqual("3"));
+  EXPECT_THAT(Eval("d.a_"), IsEqual("1"));
+  EXPECT_THAT(Eval("d.b_"), IsEqual("2"));
+  EXPECT_THAT(Eval("d.c_"), IsEqual("3"));
+  EXPECT_THAT(Eval("d.d_"), IsEqual("4"));
+  EXPECT_THAT(Eval("d.fa_.a_"), IsEqual("5"));
+  EXPECT_THAT(Eval("bat.weight_"), IsEqual("10"));
+}
+
 TEST_F(EvalTest, TestIndirection) {
   EXPECT_THAT(Eval("*p"), IsEqual("1"));
   EXPECT_THAT(Eval("p"), IsOk());
@@ -785,6 +804,16 @@ TEST_F(EvalTest, TestAddressOf) {
   EXPECT_THAT(
       Eval("&(&s_str)"),
       IsError("cannot take the address of an rvalue of type 'const char **'"));
+
+  EXPECT_THAT(Eval("&(true ? x : x)"), IsOk());
+  EXPECT_THAT(Eval("&(true ? 1 : 1)"),
+              IsError("cannot take the address of an rvalue of type 'int'"));
+
+  EXPECT_THAT(Eval("&(true ? c : c)"), IsOk());
+  EXPECT_THAT(Eval("&(true ? c : (char)1)"),
+              IsError("cannot take the address of an rvalue of type 'char'"));
+  EXPECT_THAT(Eval("&(true ? c : 1)"),
+              IsError("cannot take the address of an rvalue of type 'int'"));
 }
 
 TEST_F(EvalTest, TestSubscript) {
@@ -1153,6 +1182,11 @@ TEST_F(EvalTest, TestBitField) {
   EXPECT_THAT(Scope("abf").Eval("0 + c"), IsEqual("3"));
 }
 
+// TODO(werat): Enable when bitfield promotion is implemented.
+TEST_F(EvalTest, DISABLED_TestBitFieldPromotion) {
+  EXPECT_THAT(Eval("bf.a - 10"), IsEqual("-1"));
+}
+
 TEST_F(EvalTest, TestContextVariables) {
   // Context variables don't exist yet.
   EXPECT_THAT(EvalWithContext("$var", vars_),
@@ -1174,13 +1208,11 @@ TEST_F(EvalTest, TestContextVariables) {
 
   // Context variable is a pointer.
   EXPECT_TRUE(CreateContextVariable("$ptr", "s.ptr"));
-  // TODO(tsabolcec): Change the following line once the pointer
-  // comparison issue is fixed.
-  EXPECT_THAT(EvalWithContext("$ptr == s.ptr", vars_),
-              IsError("comparison of distinct pointer types"));
+  EXPECT_THAT(EvalWithContext("$ptr == s.ptr", vars_), IsEqual("true"));
   EXPECT_THAT(EvalWithContext("*$ptr", vars_), IsEqual("'h'"));
   EXPECT_THAT(EvalWithContext("$ptr[1]", vars_), IsEqual("'e'"));
-  EXPECT_THAT(Scope("s").EvalWithContext("$ptr == ptr", vars_), IsError(""));
+  EXPECT_THAT(Scope("s").EvalWithContext("$ptr == ptr", vars_),
+              IsEqual("true"));
   EXPECT_THAT(Scope("s").EvalWithContext("*$ptr", vars_), IsEqual("'h'"));
   EXPECT_THAT(Scope("s").EvalWithContext("$ptr[1]", vars_), IsEqual("'e'"));
 
@@ -1280,9 +1312,10 @@ TEST_F(EvalTest, TestScopedEnumArithmetic) {
               IsError("invalid operands to binary expression"));
   EXPECT_THAT(Eval("+enum_foo"), IsError("invalid argument type"));
   EXPECT_THAT(Eval("-enum_foo"), IsError("invalid argument type"));
-  EXPECT_THAT(
-      Eval("!enum_foo"),
-      IsError("invalid argument type 'ScopedEnum' to unary expression"));
+  EXPECT_THAT(Eval("!enum_foo"),
+              IsError("invalid argument type 'ScopedEnum' to unary expression\n"
+                      "!enum_foo\n"
+                      "^"));
 }
 
 TEST_F(EvalTest, TestScopedEnumWithUnderlyingType) {
@@ -1349,4 +1382,26 @@ TEST_F(EvalTest, TestUnscopedEnumWithUnderlyingType) {
 
 TEST_F(EvalTest, TestUnscopedEnumEmpty) {
   EXPECT_THAT(Eval("(UnscopedEnumEmpty)1"), IsOk());
+}
+
+TEST_F(EvalTest, TestTernaryOperator) {
+  EXPECT_THAT(Eval("true ? c : c"), IsEqual("'\\x02'"));
+  EXPECT_THAT(Eval("true ? c : (char)1"), IsEqual("'\\x02'"));
+  EXPECT_THAT(Eval("true ? c : 1"), IsEqual("2"));
+  EXPECT_THAT(Eval("false ? 1 : c"), IsEqual("2"));
+
+  // TODO(werat): Add test for:
+  // "true ? (int*)15 : 1" -> "incompatible operand types ('int *' and 'int')"
+  EXPECT_THAT(Eval("true ? (int*)15 : 0"), IsEqual("0x000000000000000f"));
+  EXPECT_THAT(Eval("true ? 0 : (int*)15"), IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("*(true ? pi : 0)"), IsEqual("1"));
+
+  EXPECT_THAT(Eval("true ? t : 1"),
+              IsError("incompatible operand types ('T' and 'int')\n"
+                      "true ? t : 1\n"
+                      "     ^"));
+  EXPECT_THAT(Eval("true ? 1 : t"),
+              IsError("incompatible operand types ('int' and 'T')\n"
+                      "true ? 1 : t\n"
+                      "     ^"));
 }

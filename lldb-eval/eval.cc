@@ -25,15 +25,8 @@
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
 #include "lldb/lldb-enumerations.h"
-#include "llvm/Support/FormatVariadic.h"
 
 namespace {
-
-const char* kInvalidOperandsToUnaryExpression =
-    "invalid argument type '{0}' to unary expression";
-
-const char* kInvalidOperandsToBinaryExpression =
-    "invalid operands to binary expression ('{0}' and '{1}')";
 
 template <typename T>
 bool Compare(clang::tok::TokenKind op, const T& l, const T& r) {
@@ -94,6 +87,94 @@ bool Compare(clang::tok::TokenKind op, const llvm::APFloat& l,
 
 namespace lldb_eval {
 
+static Value EvaluateArithmeticOpInteger(lldb::SBTarget target,
+                                         clang::tok::TokenKind kind, Value lhs,
+                                         Value rhs, lldb::SBType rtype) {
+  assert((lhs.IsInteger() && CompareTypes(lhs.type(), rhs.type())) &&
+         "invalid ast: operands must be integers and have the same type");
+
+  auto wrap = [target, rtype](auto value) {
+    return CreateValueFromAPInt(target, value, rtype);
+  };
+
+  auto l = lhs.GetInteger();
+  auto r = rhs.GetInteger();
+
+  switch (kind) {
+    case clang::tok::plus:
+      return wrap(l + r);
+    case clang::tok::minus:
+      return wrap(l - r);
+    case clang::tok::slash:
+      return wrap(l / r);
+    case clang::tok::star:
+      return wrap(l * r);
+    case clang::tok::percent:
+      return wrap(l % r);
+    case clang::tok::amp:
+      return wrap(l & r);
+    case clang::tok::pipe:
+      return wrap(l | r);
+    case clang::tok::caret:
+      return wrap(l ^ r);
+    case clang::tok::lessless:
+      return wrap(l.shl(r));
+    case clang::tok::greatergreater:
+      return wrap(l.lshr(r));
+
+    default:
+      break;
+  }
+
+  lldb_eval_unreachable("invalid arithmetic op");
+}
+
+static Value EvaluateArithmeticOpFloat(lldb::SBTarget target,
+                                       clang::tok::TokenKind kind, Value lhs,
+                                       Value rhs, lldb::SBType rtype) {
+  assert((lhs.IsFloat() && CompareTypes(lhs.type(), rhs.type())) &&
+         "invalid ast: operands must be floats and have the same type");
+
+  auto wrap = [target, rtype](auto value) {
+    return CreateValueFromAPFloat(target, value, rtype);
+  };
+
+  auto l = lhs.GetFloat();
+  auto r = rhs.GetFloat();
+
+  switch (kind) {
+    case clang::tok::plus:
+      return wrap(l + r);
+    case clang::tok::minus:
+      return wrap(l - r);
+    case clang::tok::slash:
+      return wrap(l / r);
+    case clang::tok::star:
+      return wrap(l * r);
+
+    default:
+      break;
+  }
+
+  lldb_eval_unreachable("invalid arithmetic op");
+}
+
+static Value EvaluateArithmeticOp(lldb::SBTarget target,
+                                  clang::tok::TokenKind kind, Value lhs,
+                                  Value rhs, lldb::SBType rtype) {
+  // Evaluate arithmetic operation for two integral values.
+  if (rtype.GetTypeFlags() & lldb::eTypeIsInteger) {
+    return EvaluateArithmeticOpInteger(target, kind, lhs, rhs, rtype);
+  }
+
+  // Evaluate arithmetic operation for two floating point values.
+  if (rtype.GetTypeFlags() & lldb::eTypeIsFloat) {
+    return EvaluateArithmeticOpFloat(target, kind, lhs, rhs, rtype);
+  }
+
+  lldb_eval_unreachable("Result of arithmetic conversion is not a scalar");
+}
+
 Value Interpreter::Eval(const AstNode* tree, Error& error) {
   // Evaluate an AST.
   EvalNode(tree);
@@ -138,195 +219,121 @@ void Interpreter::Visit(const CStyleCastNode* node) {
     return;
   }
 
-  // Cast to basic type (integer/float).
-  if (type.GetCanonicalType().GetTypeFlags() & lldb::eTypeIsScalar) {
-    // Cast result
-    Value value;
-
-    // Pointers can be cast to integers of the same or larger size.
-    if (rhs.IsPointer() || rhs.IsNullPtrType()) {
-      // C-style cast from pointer to float/double is not allowed.
-      if (type.GetCanonicalType().GetTypeFlags() & lldb::eTypeIsFloat) {
-        std::string msg = llvm::formatv(
-            "C-style cast from '{{0}' to '{0}' is not allowed", type.GetName());
-        ReportTypeError(msg.c_str(), rhs);
-        return;
+  switch (node->kind()) {
+    case CStyleCastKind::kArithmetic: {
+      // Pick an appropriate cast.
+      if (rhs.IsPointer() || rhs.IsNullPtrType()) {
+        result_ = CastPointerToBasicType(target_, rhs, type);
+      } else if (rhs.IsScalar()) {
+        result_ = CastScalarToBasicType(target_, rhs, type);
+      } else if (rhs.IsEnum()) {
+        result_ = CastEnumToBasicType(target_, rhs, type);
+      } else {
+        assert(false &&
+               "invalid ast: operand is not convertible to arithmetic type");
       }
-
-      // Check if the result type is at least as big as the pointer size.
-      if (type.GetByteSize() < sizeof(void*)) {
-        std::string msg = llvm::formatv(
-            "cast from pointer to smaller type '{0}' loses information",
-            type.GetName());
-        ReportTypeError(msg.c_str());
-        return;
-      }
-
-      value = CastPointerToBasicType(target_, rhs, type);
-
-    } else if (rhs.IsScalar()) {
-      value = CastScalarToBasicType(target_, rhs, type);
-
-    } else if (rhs.IsEnum()) {
-      value = CastEnumToBasicType(target_, rhs, type);
-
-    } else {
-      std::string msg = llvm::formatv(
-          "cannot convert '{{0}' to '{0}' without a conversion operator",
-          type.GetName());
-      ReportTypeError(msg.c_str(), rhs);
       return;
     }
-
-    if (!value.IsValid()) {
-      std::string msg = llvm::formatv("casting '{0}' to '{1}' invalid",
-                                      rhs.type().GetName(), type.GetName());
-      // This can be a false-negative error (the cast is actually valid), so
-      // make it unknown for now.
-      // TODO(werat): Make sure there are not false-negative errors.
-      error_.Set(ErrorCode::kUnknown, msg);
-      return;
-    }
-
-    result_ = value;
-    return;
-  }
-
-  // Cast to enum type.
-  if (type.GetCanonicalType().GetTypeFlags() & lldb::eTypeIsEnumeration) {
-    if (rhs.IsScalar() || rhs.IsUnscopedEnum()) {
+    case CStyleCastKind::kEnumeration: {
       uint64_t value = rhs.GetUInt64();
       result_ = CreateValueFromBytes(target_, &value, type);
       return;
     }
-
-    std::string msg = llvm::formatv(
-        "C-style cast from '{{0}' to '{0}' is not allowed", type.GetName());
-    ReportTypeError(msg.c_str(), rhs);
-    return;
-  }
-
-  // Cast to pointer type.
-  if (type.IsPointerType()) {
-    // TODO(b/161677840): Implement type compatibility checks.
-    // TODO(b/161677840): Do some error handling here.
-    uintptr_t addr;
-
-    if (rhs.IsInteger() || rhs.IsUnscopedEnum() || rhs.IsPointer() ||
-        rhs.IsNullPtrType()) {
-      addr = rhs.GetUInt64();
-    } else {
-      std::string msg = llvm::formatv(
-          "cannot cast from type '{{0}' to pointer type '{0}'", type.GetName());
-      ReportTypeError(msg.c_str(), rhs);
+    case CStyleCastKind::kPointer: {
+      result_ = CreateValueFromPointer(target_, rhs.GetUInt64(), type);
       return;
     }
-
-    result_ = CreateValueFromPointer(target_, addr, type);
-    return;
+    case CStyleCastKind::kReference: {
+      result_ = Value(rhs.inner_value().Cast(type.GetDereferencedType()));
+      return;
+    }
   }
-
-  // If target type is a reference, just do reinterpret_cast.
-  if (type.IsReferenceType()) {
-    result_ = Value(rhs.inner_value().Cast(type.GetDereferencedType()),
-                    /*is_rvalue*/ true);
-    return;
-  }
-
-  std::string msg =
-      llvm::formatv("casting of '{0}' to '{1}' is not implemented yet",
-                    rhs.type().GetName(), type.GetName());
-  error_.Set(ErrorCode::kNotImplemented, msg);
+  lldb_eval_unreachable("invalid c-style cast kind");
 }
 
 void Interpreter::Visit(const MemberOfNode* node) {
+  assert(!node->member_index().empty() && "invalid ast: member index is empty");
+
   Value lhs = EvalNode(node->lhs());
   if (!lhs) {
     return;
   }
 
-  switch (node->type()) {
-    case MemberOfNode::Type::OF_OBJECT:
-      // "member of object" operator, check that LHS is an object.
-      if (lhs.IsPointer()) {
-        ReportTypeError(
-            "member reference type '{0}' is a pointer; "
-            "did you mean to use '->'?",
-            lhs);
-        return;
-      }
-      break;
-
-    case MemberOfNode::Type::OF_POINTER:
-      // "member of pointer" operator, check that LHS is a pointer and
-      // dereference it.
-      if (!lhs.IsPointer()) {
-        ReportTypeError(
-            "member reference type '{0}' is not a pointer; "
-            "did you mean to use '.'?",
-            lhs);
-        return;
-      }
-      lhs = lhs.Dereference();
-      break;
+  // LHS can be a pointer to value, but GetChildAtIndex works for pointers too,
+  // so we don't need to dereference it explicitely. This also avoid having an
+  // "ephemeral" parent Value, representing the dereferenced LHS.
+  lldb::SBValue member_val = lhs.inner_value();
+  for (uint32_t idx : node->member_index()) {
+    member_val = member_val.GetChildAtIndex(idx);
   }
-
-  // Check if LHS is a record type, i.e. class/struct or union.
-  lldb::TypeClass class_specifier =
-      (lldb::eTypeClassClass | lldb::eTypeClassStruct | lldb::eTypeClassUnion);
-
-  if (!(lhs.type().GetTypeClass() & class_specifier)) {
-    ReportTypeError(
-        "member reference base type '{0}' is not a structure or union", lhs);
-    return;
-  }
-
-  Value member_val = Value(
-      lhs.inner_value().GetChildMemberWithName(node->member_id().c_str()));
-
-  if (!member_val) {
-    auto msg =
-        llvm::formatv("no member named '{0}' in '{1}'", node->member_id(),
-                      lhs.type().GetUnqualifiedType().GetName());
-    error_.Set(ErrorCode::kInvalidOperandType, msg);
-    return;
-  }
+  assert(member_val && "invalid ast: invalid member access");
 
   // If value is a reference, dereference it to get to the underlying type. All
   // operations on a reference should be actually operations on the referent.
-  if (member_val.type().IsReferenceType()) {
+  if (member_val.GetType().IsReferenceType()) {
     member_val = member_val.Dereference();
   }
 
-  result_ = member_val;
+  result_ = Value(member_val);
+}
+
+void Interpreter::Visit(const ArraySubscriptOpNode* node) {
+  auto base = EvalNode(node->base());
+  if (!base) {
+    return;
+  }
+  auto index = EvalNode(node->index());
+  if (!index) {
+    return;
+  }
+
+  lldb::SBType item_type;
+  lldb::addr_t base_addr;
+
+  if (node->is_pointer_base()) {
+    item_type = base.type().GetPointeeType();
+    base_addr = base.GetUInt64();
+  } else {
+    item_type = base.type().GetArrayElementType();
+    base_addr = base.AddressOf().GetUInt64();
+  }
+
+  // Create a pointer and add the index, i.e. "base + index".
+  Value value = PointerAdd(
+      CreateValueFromPointer(target_, base_addr, item_type.GetPointerType()),
+      index.GetUInt64());
+
+  // Dereference the result, i.e. *(base + index).
+  result_ = value.Dereference();
 }
 
 void Interpreter::Visit(const BinaryOpNode* node) {
   // Short-circuit logical operators.
   if (node->op() == clang::tok::ampamp || node->op() == clang::tok::pipepipe) {
     auto lhs = EvalNode(node->lhs());
-    if (!lhs || !BoolConvertible(lhs)) {
+    if (!lhs) {
+      return;
+    }
+    assert(lhs.type().IsContextuallyConvertibleToBool() &&
+           "invalid ast: must be convertible to bool");
+
+    // For "&&" break if LHS is "false", for "||" if LHS is "true".
+    bool lhs_val = lhs.GetBool();
+    bool break_early = (node->op() == clang::tok::ampamp) ? !lhs_val : lhs_val;
+
+    if (break_early) {
+      result_ = CreateValueFromBool(target_, lhs_val);
       return;
     }
 
-    if (node->op() == clang::tok::ampamp) {
-      // Check if the left condition is false, then break out early.
-      if (!lhs.GetBool()) {
-        result_ = CreateValueFromBool(target_, false);
-        return;
-      }
-    } else {
-      // Check if the left condition is true, then break out early.
-      if (lhs.GetBool()) {
-        result_ = CreateValueFromBool(target_, true);
-        return;
-      }
-    }
-
+    // Breaking early didn't happen, evaluate the RHS and use it as a result.
     auto rhs = EvalNode(node->rhs());
-    if (!rhs || !BoolConvertible(rhs)) {
+    if (!rhs) {
       return;
     }
+    assert(rhs.type().IsContextuallyConvertibleToBool() &&
+           "invalid ast: must be convertible to bool");
+
     result_ = CreateValueFromBool(target_, rhs.GetBool());
     return;
   }
@@ -342,10 +349,6 @@ void Interpreter::Visit(const BinaryOpNode* node) {
   }
 
   switch (node->op()) {
-    // "l_square" is a subscript operator -- array[index].
-    case clang::tok::l_square:
-      result_ = EvaluateSubscript(lhs, rhs);
-      return;
     case clang::tok::plus:
       result_ = EvaluateBinaryAddition(lhs, rhs);
       return;
@@ -362,19 +365,11 @@ void Interpreter::Visit(const BinaryOpNode* node) {
       result_ = EvaluateBinaryRemainder(lhs, rhs);
       return;
     case clang::tok::amp:
-      result_ = EvaluateBinaryBitAnd(lhs, rhs);
-      return;
     case clang::tok::pipe:
-      result_ = EvaluateBinaryBitOr(lhs, rhs);
-      return;
     case clang::tok::caret:
-      result_ = EvaluateBinaryBitXor(lhs, rhs);
-      return;
     case clang::tok::lessless:
-      result_ = EvaluateBinaryBitShl(lhs, rhs);
-      return;
     case clang::tok::greatergreater:
-      result_ = EvaluateBinaryBitShr(lhs, rhs);
+      result_ = EvaluateBinaryBitwise(node->op(), lhs, rhs);
       return;
 
     // Comparison operations.
@@ -391,6 +386,7 @@ void Interpreter::Visit(const BinaryOpNode* node) {
       break;
   }
 
+  // Unsupported/invalid operation.
   std::string msg = "Unexpected op: " + node->op_name();
   error_.Set(ErrorCode::kUnknown, msg);
 }
@@ -401,52 +397,30 @@ void Interpreter::Visit(const UnaryOpNode* node) {
     return;
   }
 
-  // TODO(werat): Should dereference be a separate AST node?
-  if (node->op() == clang::tok::star) {
-    if (!rhs.IsPointer()) {
-      // TODO(werat): Add literal value to the error message.
-      ReportTypeError("indirection requires pointer operand. ('{0}' invalid)",
-                      rhs);
+  switch (node->op()) {
+    case clang::tok::star:
+      // TODO(werat): Should dereference be a separate AST node?
+      assert(rhs.type().IsPointerType() && "invalid ast: should be a pointer");
+      result_ = rhs.Dereference();
       return;
-    }
-
-    result_ = rhs.Dereference();
-    return;
-  }
-
-  // Address-of operator.
-  if (node->op() == clang::tok::amp) {
-    if (rhs.IsRvalue()) {
-      ReportTypeError("cannot take the address of an rvalue of type '{0}'",
-                      rhs);
+    case clang::tok::amp:
+      result_ = rhs.AddressOf();
       return;
-    }
-    result_ = rhs.AddressOf();
-    return;
-  }
+    case clang::tok::plus:
+      result_ = rhs;
+      return;
+    case clang::tok::minus:
+      result_ = EvaluateUnaryMinus(rhs);
+      return;
+    case clang::tok::exclaim:
+      result_ = EvaluateUnaryNegation(rhs);
+      return;
+    case clang::tok::tilde:
+      result_ = EvaluateUnaryBitwiseNot(rhs);
+      return;
 
-  // Unary plus.
-  if (node->op() == clang::tok::plus) {
-    result_ = EvaluateUnaryPlus(rhs);
-    return;
-  }
-
-  // Unary minus.
-  if (node->op() == clang::tok::minus) {
-    result_ = EvaluateUnaryMinus(rhs);
-    return;
-  }
-
-  // Unary negation (!).
-  if (node->op() == clang::tok::exclaim) {
-    result_ = EvaluateUnaryNegation(rhs);
-    return;
-  }
-
-  // Bitwise NOT (~).
-  if (node->op() == clang::tok::tilde) {
-    result_ = EvaluateUnaryBitwiseNot(rhs);
-    return;
+    default:
+      break;
   }
 
   // Unsupported/invalid operation.
@@ -456,9 +430,11 @@ void Interpreter::Visit(const UnaryOpNode* node) {
 
 void Interpreter::Visit(const TernaryOpNode* node) {
   auto cond = EvalNode(node->cond());
-  if (!cond || !BoolConvertible(cond)) {
+  if (!cond) {
     return;
   }
+  assert(cond.type().IsContextuallyConvertibleToBool() &&
+         "invalid ast: must be convertible to bool");
 
   if (cond.GetBool()) {
     result_ = EvalNode(node->lhs());
@@ -467,456 +443,162 @@ void Interpreter::Visit(const TernaryOpNode* node) {
   }
 }
 
-Value Interpreter::EvaluateSubscript(Value lhs, Value rhs) {
-  // C99 6.5.2.1p2: the expression e1[e2] is by definition precisely
-  // equivalent to the expression *((e1)+(e2)).
-  // We need to figure out which expression is "base" and which is "index".
-
-  Value base, index;
-
-  lldb::SBType lhs_type = lhs.type();
-  lldb::SBType rhs_type = rhs.type();
-
-  if (lhs_type.IsArrayType() || lhs_type.IsPointerType()) {
-    base = lhs;
-    index = rhs;
-  } else if (rhs_type.IsArrayType() || rhs_type.IsPointerType()) {
-    base = rhs;
-    index = lhs;
-  } else {
-    ReportTypeError("subscripted value is not an array or pointer");
-    return Value();
-  }
-
-  // Index can be a typedef of a typedef of a typedef of a typedef...
-  // Get canonical underlying type.
-  lldb::SBType index_type = index.type().GetCanonicalType();
-
-  // Check if the index is of an integral type.
-  if (index_type.GetBasicType() < lldb::eBasicTypeChar ||
-      index_type.GetBasicType() > lldb::eBasicTypeBool) {
-    ReportTypeError("array subscript is not an integer");
-    return Value();
-  }
-
-  lldb::SBType item_type;
-  lldb::addr_t base_addr;
-
-  if (base.type().IsArrayType()) {
-    item_type = base.type().GetArrayElementType();
-    base_addr = base.AddressOf().GetUInt64();
-  } else if (base.type().IsPointerType()) {
-    item_type = base.type().GetPointeeType();
-    base_addr = base.GetUInt64();
-  } else {
-    lldb_eval_unreachable("Subscripted value must be either array or pointer.");
-  }
-
-  // Create a pointer and add the index, i.e. "base + index".
-  auto val = PointerAdd(
-      CreateValueFromPointer(target_, base_addr, item_type.GetPointerType()),
-      index.GetInt64());
-
-  // Dereference the result, i.e. *(base + index).
-  return val.Dereference();
-}
-
 Value Interpreter::EvaluateComparison(clang::tok::TokenKind op, Value lhs,
                                       Value rhs) {
-  // Comparison works for:
-  //
-  //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
-  //  scoped_enum <-> scoped_enum (if the same type)
-  //  pointer <-> pointer (if pointee types are compatible)
-  //  pointer <-> {integer,unscoped_enum,nullptr_t}
-  //  {integer,unscoped_enum,nullptr_t} <-> pointer
-  //  nullptr_t <-> {nullptr_t,integer} (if integer is literal zero)
-  //  {nullptr_t,integer} <-> nullptr_t (if integer is literal zero)
-
-  if ((lhs.IsScalar() || lhs.IsUnscopedEnum()) &&
-      (rhs.IsScalar() || rhs.IsUnscopedEnum())) {
-    // If the operands has arithmetic or enumeration type (scoped or unscoped),
-    // usual arithmetic conversions are performed on both operands following the
-    // rules for arithmetic operators.
-    // https://eel.is/c++draft/expr.rel#3
-    lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
-
-    // Evaluate arithmetic operation for two integral values.
-    if (rtype.GetTypeFlags() & lldb::eTypeIsInteger) {
-      bool ret = Compare(op, lhs.GetInteger(), rhs.GetInteger());
-      return CreateValueFromBool(target_, ret);
-    }
-
-    // Evaluate arithmetic operation for two floating point values.
-    if (rtype.GetTypeFlags() & lldb::eTypeIsFloat) {
-      bool ret = Compare(op, lhs.GetFloat(), rhs.GetFloat());
-      return CreateValueFromBool(target_, ret);
-    }
-
-    lldb_eval_unreachable("Result of arithmetic conversion is not a scalar");
+  // Evaluate arithmetic operation for two integral values.
+  if (lhs.IsInteger() && rhs.IsInteger()) {
+    bool ret = Compare(op, lhs.GetInteger(), rhs.GetInteger());
+    return CreateValueFromBool(target_, ret);
   }
 
-  // Scoped enums can be compared only to the instances of the same type.
-  if (lhs.IsScopedEnum() || rhs.IsScopedEnum()) {
-    if (lhs.type() == rhs.type()) {
-      bool ret = Compare(op, lhs.GetUInt64(), rhs.GetUInt64());
-      return CreateValueFromBool(target_, ret);
-    }
-
-    ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
-    return Value();
+  // Evaluate arithmetic operation for two floating point values.
+  if (lhs.IsFloat() && rhs.IsFloat()) {
+    bool ret = Compare(op, lhs.GetFloat(), rhs.GetFloat());
+    return CreateValueFromBool(target_, ret);
   }
 
-  bool is_ordered = op == clang::tok::less || op == clang::tok::lessequal ||
-                    op == clang::tok::greater || op == clang::tok::greaterequal;
-
-  // Check if the value can be compared to a pointer. We allow all pointers,
-  // integers, unscoped enumerations and a nullptr literal if it's an
-  // equality/inequality comparison. For "pointer <-> integer" C++ allows only
-  // equality/inequality comparison against literal zero and nullptr. However in
-  // the debugger context it's often useful to compare a pointer with an integer
-  // representing an address. That said, this also allows comparing nullptr and
-  // any integer, not just literal zero, e.g. "nullptr == 1 -> false". C++
-  // doesn't allow it, but we implement this for convenience.
-  auto comparable_to_pointer = [&](Value v) {
-    return v.IsPointer() || v.IsInteger() || v.IsUnscopedEnum() ||
-           (!is_ordered && v.IsNullPtrType());
-  };
-
-  if ((lhs.IsPointer() && comparable_to_pointer(rhs)) ||
-      (comparable_to_pointer(lhs) && rhs.IsPointer())) {
-    // If both are pointers, check if they have comparable types. Comparing
-    // pointers to void is always allowed.
-    if ((lhs.IsPointer() && !lhs.IsPointerToVoid()) &&
-        (rhs.IsPointer() && !rhs.IsPointerToVoid())) {
-      auto lhs_type = lhs.type().GetCanonicalType().GetUnqualifiedType();
-      auto rhs_type = rhs.type().GetCanonicalType().GetUnqualifiedType();
-
-      if (lhs_type != rhs_type) {
-        ReportTypeError(
-            "comparison of distinct pointer types ('{0}' and '{1}')", lhs, rhs);
-        return Value();
-      }
-    }
-
+  // Evaluate arithmetic operation for two scoped enum values.
+  if (lhs.IsScopedEnum() && rhs.IsScopedEnum()) {
     bool ret = Compare(op, lhs.GetUInt64(), rhs.GetUInt64());
     return CreateValueFromBool(target_, ret);
   }
 
-  auto is_nullptr_or_zero = [&](Value v) {
-    // Technically only literal zero is allowed here, but we don't have the
-    // information about the value being literal to implement the restriction.
-    return v.IsNullPtrType() || (v.IsInteger() && v.GetUInt64() == 0);
-  };
-
-  if (!is_ordered && ((lhs.IsNullPtrType() && is_nullptr_or_zero(rhs)) ||
-                      (is_nullptr_or_zero(lhs) && rhs.IsNullPtrType()))) {
-    return CreateValueFromBool(target_, op == clang::tok::equalequal);
-  }
-
-  ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
-  return Value();
-}
-
-Value Interpreter::EvaluateUnaryPlus(Value rhs) {
-  // Integer values may require integral promotion.
-  if (rhs.IsInteger() || rhs.IsUnscopedEnum()) {
-    return IntegralPromotion(target_, rhs);
-  }
-
-  // Floats and pointers are just converted to rvalues.
-  if (rhs.IsFloat() || rhs.IsPointer()) {
-    return rhs.GetRvalueRef();
-  }
-
-  ReportTypeError(kInvalidOperandsToUnaryExpression, rhs);
-  return Value();
+  // Must be pointer/integer and/or nullptr comparison.
+  bool ret = Compare(op, lhs.GetUInt64(), rhs.GetUInt64());
+  return CreateValueFromBool(target_, ret);
 }
 
 Value Interpreter::EvaluateUnaryMinus(Value rhs) {
-  // Integer values may require integral promotion.
-  if (rhs.IsInteger() || rhs.IsUnscopedEnum()) {
-    rhs = IntegralPromotion(target_, rhs);
+  assert((rhs.IsInteger() || rhs.IsFloat()) &&
+         "invalid ast: must be an arithmetic type");
+
+  if (rhs.IsInteger()) {
     llvm::APSInt v = rhs.GetInteger();
     v.negate();
     return CreateValueFromAPInt(target_, v, rhs.type());
   }
-
   if (rhs.IsFloat()) {
     llvm::APFloat v = rhs.GetFloat();
     v.changeSign();
     return CreateValueFromAPFloat(target_, v, rhs.type());
   }
 
-  ReportTypeError(kInvalidOperandsToUnaryExpression, rhs);
+  error_.Set(ErrorCode::kUnknown, "operand is not arithmetic");
   return Value();
 }
 
 Value Interpreter::EvaluateUnaryNegation(Value rhs) {
-  if (!BoolConvertible(rhs)) {
-    ReportTypeError(kInvalidOperandsToUnaryExpression, rhs);
-    return Value();
-  }
-
+  assert(rhs.type().IsContextuallyConvertibleToBool() &&
+         "invalid ast: must be convertible to bool");
   return CreateValueFromBool(target_, !rhs.GetBool());
 }
 
 Value Interpreter::EvaluateUnaryBitwiseNot(Value rhs) {
-  // Integer values may require integral promotion.
-  if (rhs.IsInteger() || rhs.IsUnscopedEnum()) {
-    rhs = IntegralPromotion(target_, rhs);
-    llvm::APSInt v = rhs.GetInteger();
-    v.flipAllBits();
-    return CreateValueFromAPInt(target_, v, rhs.type());
-  }
-
-  ReportTypeError(kInvalidOperandsToUnaryExpression, rhs);
-  return Value();
+  assert(rhs.IsInteger() && "invalid ast: must be an integer");
+  llvm::APSInt v = rhs.GetInteger();
+  v.flipAllBits();
+  return CreateValueFromAPInt(target_, v, rhs.type());
 }
 
 Value Interpreter::EvaluateBinaryAddition(Value lhs, Value rhs) {
-  // Operation '+' works for:
-  //
-  //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
-  //  integer <-> {pointer,unscoped_enum}
-  //  {pointer,unscoped_enum} <-> integer
-
-  if ((lhs.IsScalar() || lhs.IsUnscopedEnum()) &&
-      (rhs.IsScalar() || rhs.IsUnscopedEnum())) {
-    lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
-    return EvaluateArithmeticOp(target_, ArithmeticOp::ADD, lhs, rhs, rtype);
+  // Addition of two arithmetic types.
+  if (lhs.IsScalar() && rhs.IsScalar()) {
+    assert(CompareTypes(lhs.type(), rhs.type()) &&
+           "invalid ast: operand must have the same type");
+    return EvaluateArithmeticOp(target_, clang::tok::plus, lhs, rhs,
+                                lhs.type());
   }
 
-  bool pointer_arithmetic_operation =
-      (lhs.IsPointer() && (rhs.IsInteger() || rhs.IsUnscopedEnum())) ||
-      ((lhs.IsInteger() || lhs.IsUnscopedEnum()) && rhs.IsPointer());
-
-  if (pointer_arithmetic_operation) {
-    // Figure out which operand is the pointer and which one is the offset.
-    Value ptr, offset;
-
-    if (lhs.IsPointer()) {
-      ptr = lhs;
-      offset = rhs;
-    } else {
-      ptr = rhs;
-      offset = lhs;
-    }
-
-    if (ptr.IsPointerToVoid()) {
-      ReportTypeError("arithmetic on a pointer to void");
-      return Value();
-    }
-
-    return PointerAdd(ptr, offset.GetInt64());
+  // Here one of the operands must be a pointer and the other one an integer.
+  Value ptr, offset;
+  if (lhs.IsPointer()) {
+    ptr = lhs;
+    offset = rhs;
+  } else {
+    ptr = rhs;
+    offset = lhs;
   }
-
-  ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
-  return Value();
+  assert(ptr.IsPointer() && "invalid ast: ptr must be a pointer");
+  assert(offset.IsInteger() && "invalid ast: offset must be an integer");
+  return PointerAdd(ptr, offset.GetUInt64());
 }
 
 Value Interpreter::EvaluateBinarySubtraction(Value lhs, Value rhs) {
-  // Operation '-' works for:
-  //
-  //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
-  //  pointer <-> {integer,unscoped_enum}
-  //  pointer <-> pointer (if pointee types are compatible)
+  if (lhs.IsScalar() && rhs.IsScalar()) {
+    assert(CompareTypes(lhs.type(), rhs.type()) &&
+           "invalid ast: operand must have the same type");
+    return EvaluateArithmeticOp(target_, clang::tok::minus, lhs, rhs,
+                                lhs.type());
+  }
+  assert(lhs.IsPointer() && "invalid ast: lhs must be a pointer");
 
-  if ((lhs.IsScalar() || lhs.IsUnscopedEnum()) &&
-      (rhs.IsScalar() || rhs.IsUnscopedEnum())) {
-    lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
-    return EvaluateArithmeticOp(target_, ArithmeticOp::SUB, lhs, rhs, rtype);
+  // "pointer - integer" operation.
+  if (rhs.IsInteger()) {
+    return PointerAdd(lhs, -rhs.GetUInt64());
   }
 
-  if (lhs.IsPointer() && (rhs.IsInteger() || rhs.IsUnscopedEnum())) {
-    if (lhs.IsPointerToVoid()) {
-      ReportTypeError("arithmetic on a pointer to void");
-      return Value();
-    }
-    return PointerAdd(lhs, -rhs.GetInt64());
-  }
+  // "pointer - pointer" operation.
+  assert(rhs.IsPointer() && "invalid ast: rhs must an integer or a pointer");
+  assert((lhs.type().GetPointeeType().GetByteSize() ==
+          rhs.type().GetPointeeType().GetByteSize()) &&
+         "invalid ast: pointees should be the same size");
 
-  if (lhs.IsPointer() && rhs.IsPointer()) {
-    if (lhs.IsPointerToVoid() && rhs.IsPointerToVoid()) {
-      ReportTypeError("arithmetic on pointers to void");
-      return Value();
-    }
+  // Since pointers have compatible types, both have the same pointee size.
+  uint64_t item_size = lhs.type().GetPointeeType().GetByteSize();
 
-    auto lhs_type = lhs.type().GetCanonicalType().GetUnqualifiedType();
-    auto rhs_type = rhs.type().GetCanonicalType().GetUnqualifiedType();
+  // Pointer difference is technically ptrdiff_t, but the important part is
+  // that it is signed.
+  int64_t diff = static_cast<ptrdiff_t>(lhs.GetUInt64() - rhs.GetUInt64()) /
+                 static_cast<int64_t>(item_size);
 
-    if (lhs_type != rhs_type) {
-      ReportTypeError("'{0}' and '{1}' are not pointers to compatible types",
-                      lhs, rhs);
-      return Value();
-    }
-
-    // Since pointers have compatible types, both have the same pointee size.
-    uint64_t item_size = lhs.type().GetPointeeType().GetByteSize();
-
-    // Pointer difference is technically ptrdiff_t, but the important part is
-    // that it is signed.
-    int64_t diff = static_cast<ptrdiff_t>(lhs.GetUInt64() - rhs.GetUInt64()) /
-                   static_cast<int64_t>(item_size);
-
-    return CreateValueFromBytes(target_, &diff, lldb::eBasicTypeLongLong);
-  }
-
-  ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
-  return Value();
+  return CreateValueFromBytes(target_, &diff, lldb::eBasicTypeLongLong);
 }
 
 Value Interpreter::EvaluateBinaryMultiplication(Value lhs, Value rhs) {
-  // Operation '*' works for:
-  //
-  //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
+  assert((lhs.IsScalar() && CompareTypes(lhs.type(), rhs.type())) &&
+         "invalid ast: operands must be arithmetic and have the same type");
 
-  if ((lhs.IsScalar() || lhs.IsUnscopedEnum()) &&
-      (rhs.IsScalar() || rhs.IsUnscopedEnum())) {
-    lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
-    return EvaluateArithmeticOp(target_, ArithmeticOp::MUL, lhs, rhs, rtype);
-  }
-
-  ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
-  return Value();
+  return EvaluateArithmeticOp(target_, clang::tok::star, lhs, rhs, lhs.type());
 }
 
 Value Interpreter::EvaluateBinaryDivision(Value lhs, Value rhs) {
-  // Operation '/' works for:
-  //
-  //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
+  assert((lhs.IsScalar() && CompareTypes(lhs.type(), rhs.type())) &&
+         "invalid ast: operands must be arithmetic and have the same type");
 
-  if ((lhs.IsScalar() || lhs.IsUnscopedEnum()) &&
-      (rhs.IsScalar() || rhs.IsUnscopedEnum())) {
-    // Check if one of the arguments is float. Is this case we can safely
-    // proceed, there will be no zero division.
-    bool float_div = lhs.IsFloat() || rhs.IsFloat();
-
-    if (!float_div && rhs.GetInt64() == 0) {
-      // This is UB and the compiler would generate a warning:
-      //
-      //  warning: division by zero is undefined [-Wdivision-by-zero]
-      //
-      return CreateValueZero(target_);
-    }
-
-    lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
-    return EvaluateArithmeticOp(target_, ArithmeticOp::DIV, lhs, rhs, rtype);
+  // Check for zero only for integer division.
+  if (rhs.IsInteger() && rhs.GetUInt64() == 0) {
+    // This is UB and the compiler would generate a warning:
+    //
+    //  warning: division by zero is undefined [-Wdivision-by-zero]
+    //
+    return CreateValueZero(target_);
   }
 
-  ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
-  return Value();
+  return EvaluateArithmeticOp(target_, clang::tok::slash, lhs, rhs, lhs.type());
 }
 
 Value Interpreter::EvaluateBinaryRemainder(Value lhs, Value rhs) {
-  // Operation '%' works for:
-  //
-  //  {integer,unscoped_enum} <-> {integer,unscoped_enum}
+  assert((lhs.IsInteger() && CompareTypes(lhs.type(), rhs.type())) &&
+         "invalid ast: operands must be integers and have the same type");
 
-  if ((lhs.IsInteger() || lhs.IsUnscopedEnum()) &&
-      (rhs.IsInteger() || rhs.IsUnscopedEnum())) {
-    if (rhs.GetInt64() == 0) {
-      // This is UB and the compiler would generate a warning:
-      //
-      //  warning: remainder by zero is undefined [-Wdivision-by-zero]
-      //
-      return CreateValueZero(target_);
-    }
-
-    lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
-    return EvaluateArithmeticOp(target_, ArithmeticOp::REM, lhs, rhs, rtype);
+  if (rhs.GetUInt64() == 0) {
+    // This is UB and the compiler would generate a warning:
+    //
+    //  warning: remainder by zero is undefined [-Wdivision-by-zero]
+    //
+    return CreateValueZero(target_);
   }
 
-  ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
-  return Value();
+  return EvaluateArithmeticOpInteger(target_, clang::tok::percent, lhs, rhs,
+                                     lhs.type());
 }
 
-Value Interpreter::EvaluateBinaryBitAnd(Value lhs, Value rhs) {
-  if ((lhs.IsInteger() || lhs.IsUnscopedEnum()) &&
-      (rhs.IsInteger() || rhs.IsUnscopedEnum())) {
-    lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
-    return EvaluateArithmeticOp(target_, ArithmeticOp::BIT_AND, lhs, rhs,
-                                rtype);
-  }
+Value Interpreter::EvaluateBinaryBitwise(clang::tok::TokenKind kind, Value lhs,
+                                         Value rhs) {
+  assert((lhs.IsInteger() && CompareTypes(lhs.type(), rhs.type())) &&
+         "invalid ast: operands must be integers and have the same type");
 
-  ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
-  return Value();
-}
-
-Value Interpreter::EvaluateBinaryBitOr(Value lhs, Value rhs) {
-  if ((lhs.IsInteger() || lhs.IsUnscopedEnum()) &&
-      (rhs.IsInteger() || rhs.IsUnscopedEnum())) {
-    lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
-    return EvaluateArithmeticOp(target_, ArithmeticOp::BIT_OR, lhs, rhs, rtype);
-  }
-
-  ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
-  return Value();
-}
-
-Value Interpreter::EvaluateBinaryBitXor(Value lhs, Value rhs) {
-  if ((lhs.IsInteger() || lhs.IsUnscopedEnum()) &&
-      (rhs.IsInteger() || rhs.IsUnscopedEnum())) {
-    lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
-    return EvaluateArithmeticOp(target_, ArithmeticOp::BIT_XOR, lhs, rhs,
-                                rtype);
-  }
-
-  ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
-  return Value();
-}
-
-Value Interpreter::EvaluateBinaryBitShl(Value lhs, Value rhs) {
-  if ((lhs.IsInteger() || lhs.IsUnscopedEnum()) &&
-      (rhs.IsInteger() || rhs.IsUnscopedEnum())) {
-    lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
-    return EvaluateArithmeticOp(target_, ArithmeticOp::BIT_SHL, lhs, rhs,
-                                rtype);
-  }
-
-  ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
-  return Value();
-}
-
-Value Interpreter::EvaluateBinaryBitShr(Value lhs, Value rhs) {
-  if ((lhs.IsInteger() || lhs.IsUnscopedEnum()) &&
-      (rhs.IsInteger() || rhs.IsUnscopedEnum())) {
-    lldb::SBType rtype = UsualArithmeticConversions(target_, &lhs, &rhs);
-    return EvaluateArithmeticOp(target_, ArithmeticOp::BIT_SHR, lhs, rhs,
-                                rtype);
-  }
-
-  ReportTypeError(kInvalidOperandsToBinaryExpression, lhs, rhs);
-  return Value();
-}
-
-bool Interpreter::BoolConvertible(Value val) {
-  if (val.IsScalar() || val.IsUnscopedEnum() || val.IsPointer()) {
-    return true;
-  }
-
-  ReportTypeError(
-      "value of type '{0}' is not contextually convertible to 'bool'", val);
-  return false;
-}
-
-void Interpreter::ReportTypeError(const char* fmt) {
-  error_.Set(ErrorCode::kInvalidOperandType, fmt);
-}
-
-void Interpreter::ReportTypeError(const char* fmt, Value val) {
-  std::string rhs_type = val.type().GetName();
-
-  auto msg = llvm::formatv(fmt, rhs_type);
-  error_.Set(ErrorCode::kInvalidOperandType, msg);
-}
-
-void Interpreter::ReportTypeError(const char* fmt, Value lhs, Value rhs) {
-  std::string lhs_type = lhs.type().GetName();
-  std::string rhs_type = rhs.type().GetName();
-
-  auto msg = llvm::formatv(fmt, lhs_type, rhs_type);
-  error_.Set(ErrorCode::kInvalidOperandType, msg);
+  return EvaluateArithmeticOpInteger(target_, kind, lhs, rhs, lhs.type());
 }
 
 Value Interpreter::PointerAdd(Value lhs, int64_t offset) {
@@ -924,68 +606,6 @@ Value Interpreter::PointerAdd(Value lhs, int64_t offset) {
       lhs.GetUInt64() + offset * lhs.type().GetPointeeType().GetByteSize();
 
   return CreateValueFromPointer(target_, addr, lhs.type());
-}
-
-Value EvaluateArithmeticOp(lldb::SBTarget target, ArithmeticOp op, Value lhs,
-                           Value rhs, lldb::SBType rtype) {
-  // Evaluate arithmetic operation for two integral values.
-  if (rtype.GetTypeFlags() & lldb::eTypeIsInteger) {
-    auto l = lhs.GetInteger();
-    auto r = rhs.GetInteger();
-
-    auto wrap = [target, rtype](auto value) {
-      return CreateValueFromAPInt(target, value, rtype);
-    };
-
-    switch (op) {
-      case ArithmeticOp::ADD:
-        return wrap(l + r);
-      case ArithmeticOp::SUB:
-        return wrap(l - r);
-      case ArithmeticOp::DIV:
-        return wrap(l / r);
-      case ArithmeticOp::MUL:
-        return wrap(l * r);
-      case ArithmeticOp::REM:
-        return wrap(l % r);
-      case ArithmeticOp::BIT_AND:
-        return wrap(l & r);
-      case ArithmeticOp::BIT_OR:
-        return wrap(l | r);
-      case ArithmeticOp::BIT_XOR:
-        return wrap(l ^ r);
-      case ArithmeticOp::BIT_SHL:
-        return wrap(l.shl(r));
-      case ArithmeticOp::BIT_SHR:
-        return wrap(l.lshr(r));
-    }
-  }
-
-  // Evaluate arithmetic operation for two floating point values.
-  if (rtype.GetTypeFlags() & lldb::eTypeIsFloat) {
-    auto l = lhs.GetFloat();
-    auto r = rhs.GetFloat();
-
-    auto wrap = [target, rtype](auto value) {
-      return CreateValueFromAPFloat(target, value, rtype);
-    };
-
-    switch (op) {
-      case ArithmeticOp::ADD:
-        return wrap(l + r);
-      case ArithmeticOp::SUB:
-        return wrap(l - r);
-      case ArithmeticOp::DIV:
-        return wrap(l / r);
-      case ArithmeticOp::MUL:
-        return wrap(l * r);
-
-      default:
-        break;
-    }
-  }
-
-  lldb_eval_unreachable("Result of arithmetic conversion is not a scalar");
 }
 
 }  // namespace lldb_eval
