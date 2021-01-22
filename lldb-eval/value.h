@@ -120,8 +120,6 @@ Value CreateValueFromPointer(lldb::SBTarget target, uintptr_t addr,
 
 Value CreateValueFromBool(lldb::SBTarget target, bool value);
 
-Value CreateValueZero(lldb::SBTarget target);
-
 Value CreateValueNullptr(lldb::SBTarget target);
 
 }  // namespace lldb_eval

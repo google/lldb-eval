@@ -465,8 +465,11 @@ TEST_F(EvalTest, TestZeroDivision) {
 
   EXPECT_THAT(Eval("1 / 0"), IsEqual("0"));
   EXPECT_THAT(Eval("1 / uint_zero"), IsEqual("0"));
+  EXPECT_THAT(Eval("1ll / 0 + 1"), IsEqual("1"));
+
   EXPECT_THAT(Eval("1 % 0"), IsEqual("0"));
   EXPECT_THAT(Eval("1 % uint_zero"), IsEqual("0"));
+  EXPECT_THAT(Eval("1 % uint_zero + 1"), IsEqual("1"));
 }
 
 TEST_F(EvalTest, TestBitwiseOperators) {

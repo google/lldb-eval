@@ -333,11 +333,6 @@ Value CreateValueFromBool(lldb::SBTarget target, bool value) {
   return CreateValueFromBytes(target, &value, lldb::eBasicTypeBool);
 }
 
-Value CreateValueZero(lldb::SBTarget target) {
-  int zero = 0;
-  return CreateValueFromBytes(target, &zero, lldb::eBasicTypeInt);
-}
-
 Value CreateValueNullptr(lldb::SBTarget target) {
   uintptr_t zero = 0;
   return CreateValueFromBytes(target, &zero, lldb::eBasicTypeNullPtr);

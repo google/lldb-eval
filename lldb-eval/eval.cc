@@ -571,7 +571,7 @@ Value Interpreter::EvaluateBinaryDivision(Value lhs, Value rhs) {
     //
     //  warning: division by zero is undefined [-Wdivision-by-zero]
     //
-    return CreateValueZero(target_);
+    return rhs;
   }
 
   return EvaluateArithmeticOp(target_, clang::tok::slash, lhs, rhs, lhs.type());
@@ -586,7 +586,7 @@ Value Interpreter::EvaluateBinaryRemainder(Value lhs, Value rhs) {
     //
     //  warning: remainder by zero is undefined [-Wdivision-by-zero]
     //
-    return CreateValueZero(target_);
+    return rhs;
   }
 
   return EvaluateArithmeticOpInteger(target_, clang::tok::percent, lhs, rhs,
