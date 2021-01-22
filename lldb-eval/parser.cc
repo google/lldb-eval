@@ -1722,6 +1722,11 @@ ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind kind, ExprResult rhs,
             location);
         return std::make_unique<ErrorNode>();
       }
+      if (rhs->is_bitfield()) {
+        BailOut(ErrorCode::kInvalidOperandType,
+                "address of bit-field requested", location);
+        return std::make_unique<ErrorNode>();
+      }
       result_type = rhs_type.GetPointerType();
       break;
     }
@@ -2302,7 +2307,8 @@ ExprResult Parser::BuildMemberOf(ExprResult lhs, std::string member_id,
   }
 
   return std::make_unique<MemberOfNode>(member.GetType(), std::move(lhs),
-                                        std::move(idx), is_arrow);
+                                        member.IsBitfield(), std::move(idx),
+                                        is_arrow);
 }
 
 }  // namespace lldb_eval

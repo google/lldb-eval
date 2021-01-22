@@ -37,6 +37,7 @@ class AstNode {
   virtual void Accept(Visitor* v) const = 0;
 
   virtual bool is_rvalue() const = 0;
+  virtual bool is_bitfield() const { return false; };
   virtual lldb::SBType result_type() const = 0;
 
   // The expression result type, but dereferenced in case it's a reference. This
@@ -115,15 +116,17 @@ class CStyleCastNode : public AstNode {
 
 class MemberOfNode : public AstNode {
  public:
-  MemberOfNode(lldb::SBType result_type, ExprResult lhs,
+  MemberOfNode(lldb::SBType result_type, ExprResult lhs, bool is_bitfield,
                std::vector<uint32_t> member_index, bool is_arrow)
       : result_type_(result_type),
         lhs_(std::move(lhs)),
+        is_bitfield_(is_bitfield),
         member_index_(std::move(member_index)),
         is_arrow_(is_arrow) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return false; }
+  bool is_bitfield() const override { return is_bitfield_; }
   lldb::SBType result_type() const override { return result_type_; }
 
   AstNode* lhs() const { return lhs_.get(); }
@@ -133,6 +136,7 @@ class MemberOfNode : public AstNode {
  private:
   lldb::SBType result_type_;
   ExprResult lhs_;
+  bool is_bitfield_;
   std::vector<uint32_t> member_index_;
   bool is_arrow_;
 };
@@ -220,6 +224,9 @@ class TernaryOpNode : public AstNode {
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override {
     return lhs_->is_rvalue() || rhs_->is_rvalue();
+  }
+  bool is_bitfield() const override {
+    return lhs_->is_bitfield() || rhs_->is_bitfield();
   }
   lldb::SBType result_type() const override { return result_type_; }
 

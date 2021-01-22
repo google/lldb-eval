@@ -1183,6 +1183,11 @@ TEST_F(EvalTest, TestBitField) {
   EXPECT_THAT(Scope("abf").Eval("0 + a"), IsEqual("1023"));
   EXPECT_THAT(Scope("abf").Eval("0 + b"), IsEqual("15"));
   EXPECT_THAT(Scope("abf").Eval("0 + c"), IsEqual("3"));
+
+  // Address-of is not allowed for bit-fields.
+  EXPECT_THAT(Eval("&bf.a"), IsError("address of bit-field requested"));
+  EXPECT_THAT(Eval("&(true ? bf.a : bf.a)"),
+              IsError("address of bit-field requested"));
 }
 
 // TODO(werat): Enable when bitfield promotion is implemented.
