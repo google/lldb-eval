@@ -132,7 +132,7 @@ struct GenConfig {
       {1.0f, 0.0f},  // ExprKind::VariableExpr
       {3.0f, 0.4f},  // ExprKind::UnaryExpr
       {3.0f, 0.4f},  // ExprKind::BinaryExpr
-      {5.0f, 0.1f},  // ExprKind::AddressOf
+      {2.0f, 0.1f},  // ExprKind::AddressOf
       {1.0f, 0.1f},  // ExprKind::MemberOf
       {1.0f, 0.1f},  // ExprKind::MemberOfPtr
       {1.0f, 0.1f},  // ExprKind::ArrayIndex
