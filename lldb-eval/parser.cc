@@ -2213,40 +2213,36 @@ ExprResult Parser::BuildTernaryOp(ExprResult cond, ExprResult lhs,
 
   // If operands have the same type, don't do any promotions.
   if (CompareTypes(lhs_type, rhs_type)) {
-    bool is_rvalue = lhs->is_rvalue() || rhs->is_rvalue();
-    return std::make_unique<TernaryOpNode>(
-        lhs_type, std::move(cond), std::move(lhs), std::move(rhs), is_rvalue);
+    return std::make_unique<TernaryOpNode>(lhs_type, std::move(cond),
+                                           std::move(lhs), std::move(rhs));
   }
 
   // If both operands have arithmetic type, apply the usual arithmetic
   // conversions to bring them to a common type.
   if (lhs_type.IsScalarOrUnscopedEnum() && rhs_type.IsScalarOrUnscopedEnum()) {
     lldb::SBType result_type = UsualArithmeticConversions(target_, lhs, rhs);
-    bool is_rvalue = lhs->is_rvalue() || rhs->is_rvalue();
     return std::make_unique<TernaryOpNode>(result_type, std::move(cond),
-                                           std::move(lhs), std::move(rhs),
-                                           is_rvalue);
+                                           std::move(lhs), std::move(rhs));
   }
 
   // If one operand is a pointer and the other one is arithmeric, convert
   // arithmetic operand to a pointer.
   if ((lhs_type.IsPointerType() || lhs_type.IsNullPtrType()) &&
       rhs_type.IsScalarOrUnscopedEnum()) {
+      (rhs_type.IsScalarOrUnscopedEnum() || rhs_type.IsNullPtrType())) {
     rhs = std::make_unique<CStyleCastNode>(lhs_type, std::move(rhs),
                                            CStyleCastKind::kPointer);
 
-    bool is_rvalue = lhs->is_rvalue() || rhs->is_rvalue();
-    return std::make_unique<TernaryOpNode>(
-        lhs_type, std::move(cond), std::move(lhs), std::move(rhs), is_rvalue);
+    return std::make_unique<TernaryOpNode>(lhs_type, std::move(cond),
+                                           std::move(lhs), std::move(rhs));
   }
   if ((rhs_type.IsPointerType() || rhs_type.IsNullPtrType()) &&
-      lhs_type.IsScalarOrUnscopedEnum()) {
+      (lhs_type.IsScalarOrUnscopedEnum() || lhs_type.IsNullPtrType())) {
     lhs = std::make_unique<CStyleCastNode>(rhs_type, std::move(lhs),
                                            CStyleCastKind::kPointer);
 
-    bool is_rvalue = lhs->is_rvalue() || rhs->is_rvalue();
-    return std::make_unique<TernaryOpNode>(
-        rhs_type, std::move(cond), std::move(lhs), std::move(rhs), is_rvalue);
+    return std::make_unique<TernaryOpNode>(rhs_type, std::move(cond),
+                                           std::move(lhs), std::move(rhs));
   }
 
   BailOut(ErrorCode::kInvalidOperandType,

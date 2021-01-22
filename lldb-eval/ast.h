@@ -211,15 +211,16 @@ class UnaryOpNode : public AstNode {
 class TernaryOpNode : public AstNode {
  public:
   TernaryOpNode(lldb::SBType result_type, ExprResult cond, ExprResult lhs,
-                ExprResult rhs, bool is_rvalue)
-      : is_rvalue_(is_rvalue),
-        result_type_(result_type),
+                ExprResult rhs)
+      : result_type_(result_type),
         cond_(std::move(cond)),
         lhs_(std::move(lhs)),
         rhs_(std::move(rhs)) {}
 
   void Accept(Visitor* v) const override;
-  bool is_rvalue() const override { return is_rvalue_; }
+  bool is_rvalue() const override {
+    return lhs_->is_rvalue() || rhs_->is_rvalue();
+  }
   lldb::SBType result_type() const override { return result_type_; }
 
   AstNode* cond() const { return cond_.get(); }
@@ -227,7 +228,6 @@ class TernaryOpNode : public AstNode {
   AstNode* rhs() const { return rhs_.get(); }
 
  private:
-  bool is_rvalue_;
   lldb::SBType result_type_;
   ExprResult cond_;
   ExprResult lhs_;

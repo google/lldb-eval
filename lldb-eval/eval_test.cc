@@ -1397,7 +1397,6 @@ TEST_F(EvalTest, TestTernaryOperator) {
   // "true ? (int*)15 : 1" -> "incompatible operand types ('int *' and 'int')"
   EXPECT_THAT(Eval("true ? (int*)15 : 0"), IsEqual("0x000000000000000f"));
   EXPECT_THAT(Eval("true ? 0 : (int*)15"), IsEqual("0x0000000000000000"));
-  EXPECT_THAT(Eval("*(true ? pi : 0)"), IsEqual("1"));
 
   EXPECT_THAT(Eval("true ? t : 1"),
               IsError("incompatible operand types ('T' and 'int')\n"
@@ -1407,4 +1406,14 @@ TEST_F(EvalTest, TestTernaryOperator) {
               IsError("incompatible operand types ('int' and 'T')\n"
                       "true ? 1 : t\n"
                       "     ^"));
+
+  EXPECT_THAT(Eval("&(true ? *pi : 0)"),
+              IsError("cannot take the address of an rvalue of type 'int'\n"
+                      "&(true ? *pi : 0)\n"
+                      "^"));
+
+  EXPECT_THAT(Eval("true ? nullptr : pi"), IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("true ? pi : nullptr"), IsOk());
+  EXPECT_THAT(Eval("false ? nullptr : pi"), IsOk());
+  EXPECT_THAT(Eval("false ? pi : nullptr"), IsEqual("0x0000000000000000"));
 }
