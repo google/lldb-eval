@@ -430,9 +430,9 @@ TEST_F(EvalTest, TestArithmetic) {
 
   // References and typedefs.
   EXPECT_THAT(Eval("r + 1"), IsEqual("3"));
-  EXPECT_THAT(Eval("r - 1"), IsEqual("1"));
-  EXPECT_THAT(Eval("r * 2"), IsEqual("4"));
-  EXPECT_THAT(Eval("r / 2"), IsEqual("1"));
+  EXPECT_THAT(Eval("r - 1l"), IsEqual("1"));
+  EXPECT_THAT(Eval("r * 2u"), IsEqual("4"));
+  EXPECT_THAT(Eval("r / 2ull"), IsEqual("1"));
   EXPECT_THAT(Eval("my_r + 1"), IsEqual("3"));
   EXPECT_THAT(Eval("my_r - 1"), IsEqual("1"));
   EXPECT_THAT(Eval("my_r * 2"), IsEqual("4"));
@@ -645,6 +645,13 @@ TEST_F(EvalTest, PointerIntegerComparison) {
   EXPECT_THAT(Eval("(void*)1 > -1"), IsEqual("false"));
 }
 
+TEST_F(EvalTest, TestPointerDereference) {
+  EXPECT_THAT(Eval("*p_int0"), IsEqual("0"));
+  EXPECT_THAT(Eval("*p_int0 + 1"), IsEqual("1"));
+  EXPECT_THAT(Eval("*cp_int5"), IsEqual("5"));
+  EXPECT_THAT(Eval("*cp_int5 - 1"), IsEqual("4"));
+}
+
 TEST_F(EvalTest, TestLogicalOperators) {
   EXPECT_THAT(Eval("1 > 2"), IsEqual("false"));
   EXPECT_THAT(Eval("1 == 1"), IsEqual("true"));
@@ -727,7 +734,7 @@ TEST_F(EvalTest, TestMemberOf) {
           "<expr>:1:5: expected 'identifier', got: <'4' (numeric_constant)>\n"
           "sp->4\n"
           "    ^"));
-  EXPECT_THAT(Eval("sp->foo"), IsError("no member named 'foo' in 'S'"));
+  EXPECT_THAT(Eval("sp->foo"), IsError("no member named 'foo' in 'Sx'"));
   EXPECT_THAT(
       Eval("sp->r / (void*)0"),
       IsError("invalid operands to binary expression ('int' and 'void *')"));

@@ -63,6 +63,7 @@ static void TestBitwiseOperators() {
 }
 
 static void TestPointerArithmetic() {
+  int* p_null = nullptr;
   const char* p_char1 = "hello";
 
   typedef const char* my_char_ptr;
@@ -74,6 +75,7 @@ static void TestPointerArithmetic() {
   array[offset] = offset;
 
   int* p_int0 = &array[0];
+  int** pp_int0 = &p_int0;
   const int* cp_int0 = &array[0];
   const int* cp_int5 = &array[offset];
 
@@ -88,6 +90,7 @@ static void TestPointerArithmetic() {
   // BREAK(PointerPointerArithmeticFloat)
   // BREAK(PointerPointerComparison)
   // BREAK(PointerIntegerComparison)
+  // BREAK(TestPointerDereference)
 }
 
 static void TestLogicalOperators() {
@@ -115,13 +118,14 @@ static void TestLocalVariables() {
 
 static void TestMemberOf() {
   int x = 2;
-  struct S {
+  struct Sx {
     int x;
     int& r;
-  } s{1, x};
+    char y;
+  } s{1, x, 2};
 
-  S& sr = s;
-  S* sp = &s;
+  Sx& sr = s;
+  Sx* sp = &s;
 
   // BREAK(TestMemberOf)
 }

@@ -315,8 +315,8 @@ static lldb::BasicType BasicTypeToUnsigned(lldb::BasicType basic_type) {
 static void PerformIntegerConversions(lldb::SBTarget target, ExprResult& l,
                                       ExprResult& r) {
   // Assert that rank(l) < rank(r).
-  Type l_type = l->result_type();
-  Type r_type = r->result_type();
+  Type l_type = l->result_type_deref();
+  Type r_type = r->result_type_deref();
 
   // if `r` is signed and `l` is unsigned, check whether it can represent all
   // of the values of the type of the `l`. If not, then promote `r` to the
