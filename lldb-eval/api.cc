@@ -39,6 +39,8 @@ static lldb::SBError ConvertError(const Error& error) {
 
 static lldb::SBValue EvaluateExpressionImpl(std::shared_ptr<Context> ctx,
                                             lldb::SBError& error) {
+  error.Clear();
+
   Error err;
   Parser p(ctx);
   ExprResult tree = p.Run(err);
@@ -54,8 +56,19 @@ static lldb::SBValue EvaluateExpressionImpl(std::shared_ptr<Context> ctx,
     return lldb::SBValue();
   }
 
-  error.Clear();
-  return ret.inner_value();
+  // Check if the inner value holds an error (this could be a runtime evaluation
+  // failure, e.g. dereferencing a null pointer).
+  lldb::SBValue value = ret.inner_value();
+
+  if (value.GetError().GetError()) {
+    // This is not an "error" per se, because the expression was valid and the
+    // result is what it should be. Runtime error indicates operations on the
+    // invalid data (e.g. null defererence).
+    error = value.GetError();
+    return lldb::SBValue();
+  }
+
+  return value;
 }
 
 static std::unordered_map<std::string, lldb::SBValue> ConvertToMap(
