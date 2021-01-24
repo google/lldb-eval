@@ -193,7 +193,7 @@ static lldb::SBType DoIntegralPromotion(lldb::SBTarget target, Type from) {
   assert(from.IsInteger() && "invalid type: must be an integer");
 
   // Get the underlying builtin representation.
-  lldb::BasicType builtin_type = from.GetBuiltinType();
+  lldb::BasicType builtin_type = from.GetCanonicalType().GetBasicType();
 
   if (builtin_type == lldb::eBasicTypeWChar ||
       builtin_type == lldb::eBasicTypeSignedWChar ||
@@ -328,8 +328,8 @@ static void PerformIntegerConversions(lldb::SBTarget target, ExprResult& l,
     assert(l_size <= r_size && "left value must not be larger then the right!");
 
     if (r_size == l_size) {
-      lldb::SBType r_type_unsigned =
-          target.GetBasicType(BasicTypeToUnsigned(r_type.GetBuiltinType()));
+      lldb::SBType r_type_unsigned = target.GetBasicType(
+          BasicTypeToUnsigned(r_type.GetCanonicalType().GetBasicType()));
       r = std::make_unique<CStyleCastNode>(r_type_unsigned, std::move(r),
                                            CStyleCastKind::kArithmetic);
     }

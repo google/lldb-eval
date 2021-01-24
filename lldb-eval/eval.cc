@@ -161,14 +161,14 @@ static Value EvaluateArithmeticOpFloat(lldb::SBTarget target,
 
 static Value EvaluateArithmeticOp(lldb::SBTarget target,
                                   clang::tok::TokenKind kind, Value lhs,
-                                  Value rhs, lldb::SBType rtype) {
+                                  Value rhs, Type rtype) {
   // Evaluate arithmetic operation for two integral values.
-  if (rtype.GetTypeFlags() & lldb::eTypeIsInteger) {
+  if (rtype.IsInteger()) {
     return EvaluateArithmeticOpInteger(target, kind, lhs, rhs, rtype);
   }
 
   // Evaluate arithmetic operation for two floating point values.
-  if (rtype.GetTypeFlags() & lldb::eTypeIsFloat) {
+  if (rtype.IsFloat()) {
     return EvaluateArithmeticOpFloat(target, kind, lhs, rhs, rtype);
   }
 

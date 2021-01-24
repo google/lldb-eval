@@ -86,6 +86,8 @@ static void TestPointerArithmetic() {
   void** pp_void0 = &p_void;
   void** pp_void1 = pp_void0 + 1;
 
+  std::nullptr_t std_nullptr_t = nullptr;
+
   // BREAK(TestPointerArithmetic)
   // BREAK(PointerPointerArithmeticFloat)
   // BREAK(PointerPointerComparison)

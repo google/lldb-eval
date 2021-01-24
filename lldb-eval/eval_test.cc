@@ -611,6 +611,9 @@ TEST_F(EvalTest, PointerIntegerComparison) {
   EXPECT_THAT(Eval("nullptr == 0"), IsEqual("true"));
   EXPECT_THAT(Eval("0 != nullptr"), IsEqual("false"));
 
+  EXPECT_THAT(Eval("0 == std_nullptr_t"), IsEqual("true"));
+  EXPECT_THAT(Eval("std_nullptr_t != 0"), IsEqual("false"));
+
   EXPECT_THAT(
       Eval("(void*)0 > nullptr"),
       IsError(

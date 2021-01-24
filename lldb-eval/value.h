@@ -46,10 +46,8 @@ class Type : public lldb::SBType {
   bool IsIntegerOrUnscopedEnum();
   bool IsRecordType();
   bool IsPromotableIntegerType();
-
   bool IsContextuallyConvertibleToBool();
 
-  lldb::BasicType GetBuiltinType();
   lldb::SBType GetEnumerationIntegerType(lldb::SBTarget target);
 };
 

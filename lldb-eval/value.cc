@@ -99,7 +99,9 @@ bool Type::IsPointerToVoid() {
          GetPointeeType().GetBasicType() == lldb::eBasicTypeVoid;
 }
 
-bool Type::IsNullPtrType() { return GetBasicType() == lldb::eBasicTypeNullPtr; }
+bool Type::IsNullPtrType() {
+  return GetCanonicalType().GetBasicType() == lldb::eBasicTypeNullPtr;
+}
 
 bool Type::IsSigned() { return GetTypeFlags() & lldb::eTypeIsSigned; }
 
@@ -148,10 +150,6 @@ bool Type::IsContextuallyConvertibleToBool() {
   return IsScalar() || IsUnscopedEnum() || IsPointerType() || IsNullPtrType();
 }
 
-lldb::BasicType Type::GetBuiltinType() {
-  return GetCanonicalType().GetBasicType();
-}
-
 lldb::SBType Type::GetEnumerationIntegerType(lldb::SBTarget target) {
   return GetEnumerationIntegerType_V<lldb::SBType>(*this, target);
 }
@@ -189,9 +187,7 @@ bool Value::IsFloat() { return type_.IsFloat(); }
 
 bool Value::IsPointer() { return type_.IsPointerType(); }
 
-bool Value::IsNullPtrType() {
-  return type_.GetBasicType() == lldb::eBasicTypeNullPtr;
-}
+bool Value::IsNullPtrType() { return type_.IsNullPtrType(); }
 
 bool Value::IsSigned() { return type_.GetTypeFlags() & lldb::eTypeIsSigned; }
 
