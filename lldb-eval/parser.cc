@@ -2233,7 +2233,6 @@ ExprResult Parser::BuildTernaryOp(ExprResult cond, ExprResult lhs,
   // If one operand is a pointer and the other one is arithmeric, convert
   // arithmetic operand to a pointer.
   if ((lhs_type.IsPointerType() || lhs_type.IsNullPtrType()) &&
-      rhs_type.IsScalarOrUnscopedEnum()) {
       (rhs_type.IsScalarOrUnscopedEnum() || rhs_type.IsNullPtrType())) {
     rhs = std::make_unique<CStyleCastNode>(lhs_type, std::move(rhs),
                                            CStyleCastKind::kPointer);
