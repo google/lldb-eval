@@ -116,8 +116,9 @@ bool Type::IsScalarOrUnscopedEnum() { return IsScalar() || IsUnscopedEnum(); }
 bool Type::IsIntegerOrUnscopedEnum() { return IsInteger() || IsUnscopedEnum(); }
 
 bool Type::IsRecordType() {
-  return GetTypeClass() & (lldb::eTypeClassClass | lldb::eTypeClassStruct |
-                           lldb::eTypeClassUnion);
+  return GetCanonicalType().GetTypeClass() &
+         (lldb::eTypeClassClass | lldb::eTypeClassStruct |
+          lldb::eTypeClassUnion);
 }
 
 bool Type::IsPromotableIntegerType() {

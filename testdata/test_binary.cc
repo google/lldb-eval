@@ -129,6 +129,9 @@ static void TestMemberOf() {
   Sx& sr = s;
   Sx* sp = &s;
 
+  using SxAlias = Sx;
+  SxAlias sa{3, x, 4};
+
   // BREAK(TestMemberOf)
 }
 

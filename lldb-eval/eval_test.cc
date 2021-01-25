@@ -748,6 +748,9 @@ TEST_F(EvalTest, TestInstanceVariables) {
   EXPECT_THAT(Eval("this.field_"),
               IsError("member reference type 'TestMethods *' is a pointer; did "
                       "you mean to use '->'?"));
+  // Test for record typedefs.
+  EXPECT_THAT(Eval("sa.x"), IsEqual("3"));
+  EXPECT_THAT(Eval("sa.y"), IsEqual("'\\x04'"));
 
   EXPECT_THAT(Eval("c.field_"), IsEqual("-1"));
   EXPECT_THAT(Eval("c_ref.field_"), IsEqual("-1"));
