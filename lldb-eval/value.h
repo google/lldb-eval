@@ -90,7 +90,7 @@ class Value {
 
  private:
   lldb::SBValue value_;
-  mutable Type type_;
+  Type type_;
 };
 
 Value CastScalarToBasicType(lldb::SBTarget target, Value val,
