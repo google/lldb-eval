@@ -38,6 +38,7 @@ class TypeConstraints;
 
 enum class VoidPointerConstraint : bool { Deny, Allow };
 enum class ExprCategory : bool { LvalueOrRvalue, Lvalue };
+enum class PointerValidity : bool { ValidOrInvalid, Valid };
 
 // The type constraints an expression can have. This class represents the fact
 // that an expression can be:
@@ -329,23 +330,32 @@ class ExprConstraints {
   // Allow implicit conversion from `TypeConstraints` for convenience (plus,
   // in most cases expressions don't have to be lvalues.
   ExprConstraints(TypeConstraints type_constraints,
+                  PointerValidity validity = PointerValidity::ValidOrInvalid,
                   ExprCategory category = ExprCategory::LvalueOrRvalue)
       : type_constraints_(std::move(type_constraints)),
+        must_be_valid_pointer_((bool)validity),
         must_be_lvalue_((bool)category) {}
 
   ExprConstraints(ScalarMask mask,
+                  PointerValidity validity = PointerValidity::ValidOrInvalid,
                   ExprCategory category = ExprCategory::LvalueOrRvalue)
       : type_constraints_(TypeConstraints(mask)),
+        must_be_valid_pointer_((bool)validity),
         must_be_lvalue_((bool)category) {}
 
   // Must the expression we generate be an lvalue?
   bool must_be_lvalue() const { return must_be_lvalue_; }
+
+  // Must the expression (or one of its subexpressions) be a valid pointer?
+  // Most common use case of this constraint is dereferencing pointers.
+  bool must_be_valid_pointer() const { return must_be_valid_pointer_; }
 
   // Type constraints of the expression to generate
   const TypeConstraints& type_constraints() const { return type_constraints_; }
 
  private:
   TypeConstraints type_constraints_;
+  bool must_be_valid_pointer_ = false;
   bool must_be_lvalue_ = false;
 };
 

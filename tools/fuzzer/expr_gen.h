@@ -89,7 +89,7 @@ struct GenConfig {
   int num_exprs_to_generate = 100;
 
   // Maximum recursion depth
-  int max_depth = 6;
+  int max_depth = 8;
 
   // Min/max integer constant value
   uint64_t int_const_min = 0;
