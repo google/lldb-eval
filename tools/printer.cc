@@ -1,0 +1,157 @@
+// Copyright 2020 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include <iostream>
+#include <memory>
+#include <string>
+
+#include "lldb-eval/ast.h"
+#include "lldb-eval/context.h"
+#include "lldb-eval/parser.h"
+#include "lldb-eval/runner.h"
+#include "lldb/API/SBFrame.h"
+#include "lldb/API/SBProcess.h"
+#include "lldb/API/SBThread.h"
+#include "tools/cpp/runfiles/runfiles.h"
+
+using bazel::tools::cpp::runfiles::Runfiles;
+
+namespace lldb_eval {
+
+class AstPrinter : Visitor {
+ public:
+  void Print(const AstNode* tree) { tree->Accept(this); }
+
+  void Visit(const ErrorNode* node) override {
+    std::cout << "ErrorNode" << std::endl;
+  }
+
+  void Visit(const LiteralNode* node) override {
+    const char* value = node->value().inner_value().GetValue();
+    std::cout << "LiteralNode value=" << value << std::endl;
+  }
+
+  void Visit(const IdentifierNode* node) override {
+    std::cout << "IdentifierNode value=" << node->name() << std::endl;
+  }
+
+  void Visit(const CStyleCastNode* node) override {
+    const char* type = node->type().GetName();
+    std::cout << "CStyleCastNode type=" << type << std::endl;
+
+    PrintLastChild(node->rhs());
+  }
+
+  void Visit(const MemberOfNode* node) override {
+    std::cout << "MemberOfNode member=TODO" << std::endl;
+    PrintLastChild(node->lhs());
+  }
+
+  void Visit(const ArraySubscriptNode* node) override {
+    std::cout << "ArraySubscriptNode" << std::endl;
+
+    PrintChild(node->base());
+    PrintLastChild(node->index());
+  }
+
+  void Visit(const BinaryOpNode* node) override {
+    std::cout << "BinaryOpNode op=" << node->op_name() << std::endl;
+
+    PrintChild(node->lhs());
+    PrintLastChild(node->rhs());
+  }
+
+  void Visit(const UnaryOpNode* node) override {
+    std::cout << "UnaryOpNode op=" << node->op_name() << std::endl;
+    PrintLastChild(node->rhs());
+  }
+
+  void Visit(const TernaryOpNode* node) override {
+    std::cout << "TernaryOpNode" << std::endl;
+
+    PrintChild(node->cond());
+    PrintChild(node->lhs());
+    PrintLastChild(node->rhs());
+  }
+
+ private:
+  void PrintChild(const AstNode* node) { Print("|-", "| ", node); }
+  void PrintLastChild(const AstNode* node) { Print("`-", "  ", node); }
+
+  void Print(const std::string& header, std::string prefix,
+             const AstNode* node) {
+    for (const auto& p : prefixes_) {
+      std::cout << p;
+    }
+    std::cout << header;
+
+    prefixes_.push_back(std::move(prefix));
+    Print(node);
+    prefixes_.pop_back();
+  }
+
+ private:
+  std::vector<std::string> prefixes_;
+};
+
+}  // namespace lldb_eval
+
+void PrintExpr(lldb::SBFrame frame, const std::string& expr) {
+  auto ctx = lldb_eval::Context::Create(expr, frame);
+
+  lldb_eval::Error err;
+  auto tree = lldb_eval::Parser(ctx).Run(err);
+
+  if (err) {
+    std::cout << err.message() << std::endl;
+    return;
+  }
+
+  lldb_eval::AstPrinter printer;
+  printer.Print(tree.get());
+}
+
+int main(int argc, char** argv) {
+  std::unique_ptr<Runfiles> runfiles(Runfiles::Create(argv[0]));
+
+  std::string break_line;
+  std::string expr;
+
+  if (argc == 2) {
+    break_line = "// BREAK HERE";
+    expr = argv[1];
+  } else {
+    break_line = "// BREAK(" + std::string(argv[1]) + ")";
+    expr = argv[2];
+  }
+
+  lldb_eval::SetupLLDBServerEnv(*runfiles);
+  lldb::SBDebugger::Initialize();
+  lldb::SBDebugger debugger = lldb::SBDebugger::Create(false);
+
+  auto binary_path = runfiles->Rlocation("lldb_eval/testdata/test_binary");
+  auto source_path = runfiles->Rlocation("lldb_eval/testdata/test_binary.cc");
+
+  lldb::SBProcess process = lldb_eval::LaunchTestProgram(
+      debugger, source_path, binary_path, break_line);
+
+  lldb::SBFrame frame = process.GetSelectedThread().GetSelectedFrame();
+
+  PrintExpr(frame, expr);
+
+  process.Destroy();
+  lldb::SBDebugger::Terminate();
+
+  return 0;
+}

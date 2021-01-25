@@ -25,3 +25,18 @@ cc_binary(
         "@llvm_project//:llvm-support",
     ],
 )
+
+cc_binary(
+    name = "printer",
+    srcs = ["printer.cc"],
+    data = [
+        "//testdata:test_binary_gen",
+        "//testdata:test_binary_srcs",
+    ],
+    deps = [
+        "//lldb-eval",
+        "//lldb-eval:runner",
+        "@bazel_tools//tools/cpp/runfiles",
+        "@llvm_project//:lldb-api",
+    ],
+)
