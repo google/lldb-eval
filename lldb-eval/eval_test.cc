@@ -741,22 +741,16 @@ TEST_F(EvalTest, TestMemberOf) {
   EXPECT_THAT(
       Eval("sp->r / (void*)0"),
       IsError("invalid operands to binary expression ('int' and 'void *')"));
-}
 
-TEST_F(EvalTest, TestInstanceVariables) {
-  EXPECT_THAT(Eval("this->field_"), IsEqual("1"));
-  EXPECT_THAT(Eval("this.field_"),
-              IsError("member reference type 'TestMethods *' is a pointer; did "
-                      "you mean to use '->'?"));
   // Test for record typedefs.
   EXPECT_THAT(Eval("sa.x"), IsEqual("3"));
   EXPECT_THAT(Eval("sa.y"), IsEqual("'\\x04'"));
 
-  EXPECT_THAT(Eval("c.field_"), IsEqual("-1"));
-  EXPECT_THAT(Eval("c_ref.field_"), IsEqual("-1"));
-  EXPECT_THAT(Eval("c_ptr->field_"), IsEqual("-1"));
-  EXPECT_THAT(Eval("c->field_"), IsError("member reference type 'C' is not a "
-                                         "pointer; did you mean to use '.'?"));
+  // TODO(werat): Implement address-of-member-or combination.
+  // EXPECT_THAT(Eval("&((Sx*)0)->x"), IsEqual("0x0000000000000000"));
+  // EXPECT_THAT(Eval("&((Sx*)0)->y"), IsEqual("0x0000000000000010"));
+  // EXPECT_THAT(Eval("&(*(Sx*)0).x"), IsEqual("0x0000000000000000"));
+  // EXPECT_THAT(Eval("&(*(Sx*)0).y"), IsEqual("0x0000000000000010"));
 }
 
 TEST_F(EvalTest, TestMemberOfInheritance) {
@@ -770,7 +764,24 @@ TEST_F(EvalTest, TestMemberOfInheritance) {
   EXPECT_THAT(Eval("d.c_"), IsEqual("3"));
   EXPECT_THAT(Eval("d.d_"), IsEqual("4"));
   EXPECT_THAT(Eval("d.fa_.a_"), IsEqual("5"));
+
   EXPECT_THAT(Eval("bat.weight_"), IsEqual("10"));
+
+  EXPECT_THAT(Eval("plugin.x"), IsEqual("1"));
+  EXPECT_THAT(Eval("plugin.y"), IsEqual("2"));
+}
+
+TEST_F(EvalTest, TestInstanceVariables) {
+  EXPECT_THAT(Eval("this->field_"), IsEqual("1"));
+  EXPECT_THAT(Eval("this.field_"),
+              IsError("member reference type 'TestMethods *' is a pointer; did "
+                      "you mean to use '->'?"));
+
+  EXPECT_THAT(Eval("c.field_"), IsEqual("-1"));
+  EXPECT_THAT(Eval("c_ref.field_"), IsEqual("-1"));
+  EXPECT_THAT(Eval("c_ptr->field_"), IsEqual("-1"));
+  EXPECT_THAT(Eval("c->field_"), IsError("member reference type 'C' is not a "
+                                         "pointer; did you mean to use '.'?"));
 }
 
 TEST_F(EvalTest, TestIndirection) {

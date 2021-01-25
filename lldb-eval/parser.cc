@@ -406,21 +406,33 @@ static lldb::SBType UsualArithmeticConversions(lldb::SBTarget target,
   return lhs->result_type_deref().GetCanonicalType();
 }
 
-static lldb::SBTypeMember GetFieldWithNameIndexPath(
-    lldb::SBType type, const std::string& name, std::vector<uint32_t>* idx) {
-  // Direct base classes are located before fields, so field members needs to be
-  // offset by the number of base classes.
-  uint32_t num_fields = type.GetNumberOfFields();
+static uint32_t GetNumberOfNonEmptyBaseClasses(lldb::SBType type) {
+  // Go through the base classes and count non-empty ones.
+  uint32_t ret = 0;
   uint32_t num_direct_bases = type.GetNumberOfDirectBaseClasses();
 
+  for (uint32_t i = 0; i < num_direct_bases; ++i) {
+    lldb::SBTypeMember base = type.GetDirectBaseClassAtIndex(i);
+    if (base.GetType().GetNumberOfFields() > 0) {
+      ret += 1;
+    }
+  }
+  return ret;
+}
+
+static lldb::SBTypeMember GetFieldWithNameIndexPath(
+    lldb::SBType type, const std::string& name, std::vector<uint32_t>* idx) {
   // Go through the fields first.
+  uint32_t num_fields = type.GetNumberOfFields();
   for (uint32_t i = 0; i < num_fields; ++i) {
     lldb::SBTypeMember field = type.GetFieldAtIndex(i);
     // Name can be null if this is a padding field.
     if (const char* field_name = field.GetName()) {
       if (field_name == name) {
         if (idx) {
-          idx->push_back(i + num_direct_bases);
+          // Direct base classes are located before fields, so field members
+          // needs to be offset by the number of base classes.
+          idx->push_back(i + GetNumberOfNonEmptyBaseClasses(type));
         }
         return field;
       }
@@ -428,6 +440,7 @@ static lldb::SBTypeMember GetFieldWithNameIndexPath(
   }
 
   // Go through the base classes and look for the field there.
+  uint32_t num_direct_bases = type.GetNumberOfDirectBaseClasses();
   for (uint32_t i = 0; i < num_direct_bases; ++i) {
     lldb::SBType base = type.GetDirectBaseClassAtIndex(i).GetType();
     lldb::SBTypeMember field = GetFieldWithNameIndexPath(base, name, idx);

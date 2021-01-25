@@ -164,6 +164,18 @@ static void TestMemberOfInheritance() {
   } bat;
   bat.weight_ = 10;
 
+  // Empty bases example.
+  struct IPlugin {
+    virtual ~IPlugin() {}
+  };
+  struct Plugin : public IPlugin {
+    int x;
+    int y;
+  };
+  Plugin plugin;
+  plugin.x = 1;
+  plugin.y = 2;
+
   // BREAK(TestMemberOfInheritance)
 }
 
