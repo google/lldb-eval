@@ -32,6 +32,7 @@
 #include "tools/fuzzer/constraints.h"
 #include "tools/fuzzer/enum_bitset.h"
 #include "tools/fuzzer/symbol_table.h"
+#include <iostream>
 
 namespace fuzzer {
 
@@ -119,12 +120,16 @@ std::optional<Expr> ExprGenerator::gen_integer_constant(
 
 std::optional<Expr> ExprGenerator::gen_double_constant(
     const ExprConstraints& constraints) {
-  if (constraints.must_be_lvalue() || constraints.must_be_valid_pointer()) {
+  if (constraints.must_be_lvalue()) {
     return {};
   }
 
   const auto& type_constraints = constraints.type_constraints();
   if (type_constraints.allows_any_of(FLOAT_TYPES)) {
+    // Make sure a double constant isn't reached with valid pointer constraint.
+    assert(!constraints.must_be_valid_pointer() &&
+           "Floating points shouldn't be implicitly converted to pointers!");
+
     return rng_->gen_double_constant(cfg_.double_constant_min,
                                      cfg_.double_constant_max);
   }
@@ -559,8 +564,6 @@ std::optional<Expr> ExprGenerator::gen_address_of_expr(
 
 std::optional<Expr> ExprGenerator::gen_member_of_expr(
     const Weights& weights, const ExprConstraints& constraints) {
-  if (!constraints.must_be_lvalue()) return {};
-
   const auto& type_constraints = constraints.type_constraints();
 
   std::vector<std::reference_wrapper<const Field>> fields;
@@ -574,10 +577,15 @@ std::optional<Expr> ExprGenerator::gen_member_of_expr(
     return {};
   }
 
+  // Accessing a member should be done on a valid object. The exception is the
+  // case when the parent is an address-of (lvalue constraint set).
+  bool must_be_valid_pointer =
+      constraints.must_be_lvalue() ? constraints.must_be_valid_pointer() : true;
+
   Field field = rng_->pick_field(fields);
   ExprConstraints new_constraints = ExprConstraints(
       SpecificTypes(field.containing_type()),
-      static_cast<PointerValidity>(constraints.must_be_valid_pointer()));
+      static_cast<PointerValidity>(must_be_valid_pointer));
   auto maybe_expr = gen_with_weights(weights, std::move(new_constraints));
   if (!maybe_expr.has_value()) {
     return {};
@@ -593,8 +601,6 @@ std::optional<Expr> ExprGenerator::gen_member_of_expr(
 
 std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
     const Weights& weights, const ExprConstraints& constraints) {
-  if (!constraints.must_be_lvalue()) return {};
-
   const auto& type_constraints = constraints.type_constraints();
 
   std::vector<std::reference_wrapper<const Field>> fields;
@@ -608,12 +614,16 @@ std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
   if (fields.empty()) {
     return {};
   }
+  // Accessing a member should be done on a valid pointer. The exception is the
+  // case when the parent is an address-of (lvalue constraint set).
+  bool must_be_valid_pointer =
+      constraints.must_be_lvalue() ? constraints.must_be_valid_pointer() : true;
 
   Field field = rng_->pick_field(fields);
   TypeConstraints new_type_constraints = SpecificTypes(field.containing_type());
   ExprConstraints new_constraints = ExprConstraints(
       new_type_constraints.make_pointer_constraints(),
-      static_cast<PointerValidity>(constraints.must_be_valid_pointer()));
+      static_cast<PointerValidity>(must_be_valid_pointer));
   auto maybe_expr = gen_with_weights(weights, std::move(new_constraints));
   if (!maybe_expr.has_value()) {
     return {};
