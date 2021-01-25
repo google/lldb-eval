@@ -32,7 +32,6 @@
 #include "tools/fuzzer/constraints.h"
 #include "tools/fuzzer/enum_bitset.h"
 #include "tools/fuzzer/symbol_table.h"
-#include <iostream>
 
 namespace fuzzer {
 
@@ -583,9 +582,9 @@ std::optional<Expr> ExprGenerator::gen_member_of_expr(
       constraints.must_be_lvalue() ? constraints.must_be_valid_pointer() : true;
 
   Field field = rng_->pick_field(fields);
-  ExprConstraints new_constraints = ExprConstraints(
-      SpecificTypes(field.containing_type()),
-      static_cast<PointerValidity>(must_be_valid_pointer));
+  ExprConstraints new_constraints =
+      ExprConstraints(SpecificTypes(field.containing_type()),
+                      static_cast<PointerValidity>(must_be_valid_pointer));
   auto maybe_expr = gen_with_weights(weights, std::move(new_constraints));
   if (!maybe_expr.has_value()) {
     return {};
@@ -621,9 +620,9 @@ std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
 
   Field field = rng_->pick_field(fields);
   TypeConstraints new_type_constraints = SpecificTypes(field.containing_type());
-  ExprConstraints new_constraints = ExprConstraints(
-      new_type_constraints.make_pointer_constraints(),
-      static_cast<PointerValidity>(must_be_valid_pointer));
+  ExprConstraints new_constraints =
+      ExprConstraints(new_type_constraints.make_pointer_constraints(),
+                      static_cast<PointerValidity>(must_be_valid_pointer));
   auto maybe_expr = gen_with_weights(weights, std::move(new_constraints));
   if (!maybe_expr.has_value()) {
     return {};
