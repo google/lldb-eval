@@ -473,6 +473,27 @@ static void TestTemplateTypes() {
   // BREAK(TestTemplateTypes)
 }
 
+template <typename T, typename TAllocator>
+struct TArray {
+  using ElementType = T;
+  T t_;
+  TAllocator a_;
+};
+
+template <int Size>
+struct Allocator {
+  int size = Size;
+};
+
+void TestTemplateWithNumericArguments() {
+  Allocator<4> a4;
+  Allocator<8> a8;
+  TArray<int, Allocator<4>> arr;
+  decltype(arr)::ElementType* el = 0;
+
+  // BREAK(TestTemplateWithNumericArguments)
+}
+
 void TestValueScope() {
   class Value {
    public:
@@ -600,6 +621,7 @@ void main() {
   TestQualifiedId();
   TestStaticConst();
   TestTemplateTypes();
+  TestTemplateWithNumericArguments();
   TestValueScope();
   TestBitField();
   TestContextVariables();

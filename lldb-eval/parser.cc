@@ -1277,6 +1277,7 @@ std::string Parser::ParseTemplateArgumentList() {
 //
 //  template_argument:
 //    type_id
+//    numeric_literal
 //    id_expression
 //
 std::string Parser::ParseTemplateArgument() {
@@ -1309,8 +1310,28 @@ std::string Parser::ParseTemplateArgument() {
   }
 
   {
-    // The next candidate is an id_expression. This can fail too, so prepare to
-    // rollback again.
+    // The next candidate is a numeric_literal.
+    TentativeParsingAction tentative_parsing(this);
+
+    // Parse a numeric_literal.
+    if (token_.is(clang::tok::numeric_constant)) {
+      // TODO(werat): Actually parse the literal, check if it's valid and
+      // canonize it (e.g. 8LL -> 8).
+      std::string numeric_literal = pp_->getSpelling(token_);
+      ConsumeToken();
+
+      if (token_.isOneOf(clang::tok::comma, clang::tok::greater)) {
+        tentative_parsing.Commit();
+        return numeric_literal;
+      }
+    }
+
+    // Failed to parse a numeric_literal.
+    tentative_parsing.Rollback();
+  }
+
+  {
+    // The next candidate is an id_expression.
     TentativeParsingAction tentative_parsing(this);
 
     // Parse an id_expression.
@@ -1327,9 +1348,8 @@ std::string Parser::ParseTemplateArgument() {
     tentative_parsing.Rollback();
   }
 
-  // TODO(b/164399865): Another valid option here is a constant_expression. We
-  // definitely don't want to support constant arithmetic like "Foo<1+2>", but
-  // simple constants should be covered.
+  // TODO(b/164399865): Another valid option here is a constant_expression, but
+  // we definitely don't want to support constant arithmetic like "Foo<1+2>".
   // We can probably use ParsePrimaryExpression here, but need to figure out the
   // "stringification", since ParsePrimaryExpression returns ExprResult (and
   // potentially a whole expression, not just a single constant.)

@@ -1148,6 +1148,15 @@ TEST_F(EvalTest, TestTemplateTypes) {
               IsEqual("1.10000002"));
 }
 
+TEST_F(EvalTest, TestTemplateWithNumericArguments) {
+  // Template types lookup doesn't work well in the upstream LLDB.
+  this->compare_with_lldb_ = false;
+
+  EXPECT_THAT(Eval("(Allocator<4>*)0"), IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("(TArray<int, Allocator<4> >::ElementType*)0"),
+              IsEqual("0x0000000000000000"));
+}
+
 TEST_F(EvalTest, TestValueScope) {
   EXPECT_THAT(Scope("var").Eval("x_"), IsEqual("1"));
   EXPECT_THAT(Scope("var").Eval("y_"), IsEqual("2.5"));

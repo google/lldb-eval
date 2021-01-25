@@ -105,6 +105,7 @@ template_argument_list = template_argument
                        | template_argument_list "," template_argument ;
 
 template_argument = type_id
+                  | numeric_literal
                   | id_expression ;
 
 namespace_name = identifier ;
