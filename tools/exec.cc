@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
   std::unique_ptr<Runfiles> runfiles(Runfiles::Create(argv[0]));
 
   bool repl_mode = false;
-  std::string break_line = "// break here";
+  std::string break_line = "// BREAK HERE";
   std::string expr;
 
   if (argc == 1) {

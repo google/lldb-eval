@@ -4,8 +4,6 @@ cc_binary(
     name = "exec",
     srcs = ["exec.cc"],
     data = [
-        "//testdata:fuzzer_binary_gen",
-        "//testdata:fuzzer_binary_srcs",
         "//testdata:test_binary_gen",
         "//testdata:test_binary_srcs",
     ],

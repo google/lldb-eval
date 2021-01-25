@@ -644,7 +644,7 @@ void main() {
   TestUnscopedEnum();
   TestTernaryOperator();
 
-  // break here
+  // BREAK HERE
 }
 
 }  // namespace test_binary

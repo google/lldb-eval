@@ -25,7 +25,6 @@ cc_binary(
     data = [
         "//testdata:fuzzer_binary_gen",
         "//testdata:fuzzer_binary_srcs",
-        "@llvm_project//:lldb-server",
     ],
     deps = [
         ":fuzzer_lib",
