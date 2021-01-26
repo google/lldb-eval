@@ -33,7 +33,7 @@ class AstPrinter : Visitor {
  public:
   void Print(const AstNode* tree) { tree->Accept(this); }
 
-  void Visit(const ErrorNode* node) override {
+  void Visit(const ErrorNode*) override {
     std::cout << "ErrorNode" << std::endl;
   }
 
