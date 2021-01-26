@@ -35,7 +35,6 @@ TEST(SymbolTableTest, CreateFromLldbContext) {
   lldb::SBDebugger::Initialize();
   auto binary_path = runfiles->Rlocation("lldb_eval/testdata/fuzzer_binary");
   auto source_path = runfiles->Rlocation("lldb_eval/testdata/fuzzer_binary.cc");
-  std::cout << source_path << std::endl;
   auto debugger = lldb::SBDebugger::Create(false);
   auto process = lldb_eval::LaunchTestProgram(debugger, source_path,
                                               binary_path, "// BREAK HERE");

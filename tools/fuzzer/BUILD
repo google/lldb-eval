@@ -65,6 +65,12 @@ cc_test(
         "//testdata:fuzzer_binary_gen",
         "//testdata:fuzzer_binary_srcs",
     ],
+    tags = [
+        # On Linux lldb-server behaves funny in a sandbox ¯\_(ツ)_/¯. This is
+        # not necessary on Windows, but "tags" attribute is not configurable
+        # with select -- https://github.com/bazelbuild/bazel/issues/2971.
+        "no-sandbox",
+    ],
     deps = [
         ":fuzzer_lib",
         "//lldb-eval",
@@ -72,5 +78,5 @@ cc_test(
         "@bazel_tools//tools/cpp/runfiles",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-    ]
+    ],
 )
