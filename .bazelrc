@@ -7,8 +7,6 @@ build:linux --copt=-Wall
 build:linux --copt=-Wextra
 build:linux --copt=-Wpedantic
 build:linux --copt=-Werror
-
-# We're not using exceptions or RTTI.
 build:linux --cxxopt=-fno-exceptions
 build:linux --cxxopt=-fno-rtti
 
@@ -16,6 +14,7 @@ build:linux --cxxopt=-fno-rtti
 build:windows --cxxopt=/std:c++17
 build:windows --copt=/W4
 build:windows --copt=/WX
+build:windows --cxxopt=/GR-  # Disable RTTI
 
 # Disable some warnings completely, since in MSVC 19.28.29333 "/external" option doesn't work:
 https://developercommunity.visualstudio.com/content/problem/1252451/clexe-flag-externalw0-doesnt-work-in-msvc-19282933.html
