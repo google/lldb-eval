@@ -6,6 +6,7 @@ cc_library(
         "ast.cc",
         "constraints.cc",
         "expr_gen.cc",
+        "symbol_table.cc",
     ],
     hdrs = [
         "ast.h",
@@ -16,6 +17,7 @@ cc_library(
     ],
     deps = [
         "//lldb-eval:defines",
+        "@llvm_project//:lldb-api",
     ],
 )
 
@@ -54,4 +56,21 @@ cc_test(
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+cc_test(
+    name = "symbol_table_test",
+    srcs = ["symbol_table_test.cc"],
+    data = [
+        "//testdata:fuzzer_binary_gen",
+        "//testdata:fuzzer_binary_srcs",
+    ],
+    deps = [
+        ":fuzzer_lib",
+        "//lldb-eval",
+        "//lldb-eval:runner",
+        "@bazel_tools//tools/cpp/runfiles",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ]
 )

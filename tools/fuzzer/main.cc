@@ -150,134 +150,19 @@ void run_repl(lldb::SBFrame& frame) {
   }
 }
 
-fuzzer::SymbolTable gen_symtab() {
-  fuzzer::SymbolTable symtab;
-
-  {
-    fuzzer::Type type(fuzzer::ScalarType::Char);
-
-    symtab.add_var(type, fuzzer::VariableExpr("char_min"));
-    symtab.add_var(type, fuzzer::VariableExpr("char_max"));
-  }
-  {
-    fuzzer::Type type(fuzzer::ScalarType::UnsignedChar);
-
-    symtab.add_var(type, fuzzer::VariableExpr("uchar_min"));
-    symtab.add_var(type, fuzzer::VariableExpr("uchar_max"));
-  }
-  {
-    fuzzer::Type type(fuzzer::ScalarType::SignedChar);
-
-    symtab.add_var(type, fuzzer::VariableExpr("schar_min"));
-    symtab.add_var(type, fuzzer::VariableExpr("schar_max"));
-  }
-  {
-    fuzzer::Type type(fuzzer::ScalarType::UnsignedShort);
-
-    symtab.add_var(type, fuzzer::VariableExpr("ushort_min"));
-    symtab.add_var(type, fuzzer::VariableExpr("ushort_max"));
-  }
-  {
-    fuzzer::Type type(fuzzer::ScalarType::SignedShort);
-
-    symtab.add_var(type, fuzzer::VariableExpr("short_min"));
-    symtab.add_var(type, fuzzer::VariableExpr("short_max"));
-  }
-  {
-    fuzzer::Type type(fuzzer::ScalarType::UnsignedInt);
-
-    symtab.add_var(type, fuzzer::VariableExpr("uint_min"));
-    symtab.add_var(type, fuzzer::VariableExpr("uint_max"));
-  }
-  {
-    fuzzer::Type type(fuzzer::ScalarType::SignedInt);
-
-    symtab.add_var(type, fuzzer::VariableExpr("int_min"));
-    symtab.add_var(type, fuzzer::VariableExpr("int_max"));
-    symtab.add_var(type, fuzzer::VariableExpr("x"));
-
-    // TODO: Change the type of ref when we add support for references
-    symtab.add_var(type, fuzzer::VariableExpr("ref"));
-  }
-  {
-    fuzzer::Type type(fuzzer::ScalarType::UnsignedLong);
-
-    symtab.add_var(type, fuzzer::VariableExpr("ulong_min"));
-    symtab.add_var(type, fuzzer::VariableExpr("ulong_max"));
-  }
-  {
-    fuzzer::Type type(fuzzer::ScalarType::SignedLong);
-
-    symtab.add_var(type, fuzzer::VariableExpr("long_min"));
-    symtab.add_var(type, fuzzer::VariableExpr("long_max"));
-  }
-  {
-    fuzzer::Type type(fuzzer::ScalarType::UnsignedLongLong);
-
-    symtab.add_var(type, fuzzer::VariableExpr("ullong_min"));
-    symtab.add_var(type, fuzzer::VariableExpr("ullong_max"));
-  }
-  {
-    fuzzer::Type type(fuzzer::ScalarType::SignedLongLong);
-
-    symtab.add_var(type, fuzzer::VariableExpr("llong_min"));
-    symtab.add_var(type, fuzzer::VariableExpr("llong_max"));
-  }
-  {
-    fuzzer::Type type(fuzzer::ScalarType::Float);
-
-    symtab.add_var(type, fuzzer::VariableExpr("fnan"));
-    symtab.add_var(type, fuzzer::VariableExpr("finf"));
-    symtab.add_var(type, fuzzer::VariableExpr("fsnan"));
-    symtab.add_var(type, fuzzer::VariableExpr("fmax"));
-    symtab.add_var(type, fuzzer::VariableExpr("fdenorm"));
-  }
-  {
-    fuzzer::Type type(fuzzer::ScalarType::Double);
-
-    symtab.add_var(type, fuzzer::VariableExpr("dnan"));
-    symtab.add_var(type, fuzzer::VariableExpr("dinf"));
-    symtab.add_var(type, fuzzer::VariableExpr("dsnan"));
-    symtab.add_var(type, fuzzer::VariableExpr("dmax"));
-    symtab.add_var(type, fuzzer::VariableExpr("ddenorm"));
-  }
-  {
-    fuzzer::Type type(fuzzer::ScalarType::LongDouble);
-
-    symtab.add_var(type, fuzzer::VariableExpr("ldnan"));
-    symtab.add_var(type, fuzzer::VariableExpr("ldinf"));
-    symtab.add_var(type, fuzzer::VariableExpr("ldsnan"));
-    symtab.add_var(type, fuzzer::VariableExpr("ldmax"));
-    symtab.add_var(type, fuzzer::VariableExpr("lddenorm"));
-  }
-  {
-    fuzzer::Type type(fuzzer::TaggedType("TestStruct"));
-
-    symtab.add_var(type, fuzzer::VariableExpr("ts"));
-  }
-  {
-    fuzzer::PointerType type{
-        fuzzer::QualifiedType(fuzzer::ScalarType::SignedInt)};
-    symtab.add_var(type, fuzzer::VariableExpr("p"));
-  }
-  {
-    fuzzer::PointerType type(fuzzer::QualifiedType(fuzzer::ScalarType::Char,
-                                                   fuzzer::CvQualifier::Const));
-    symtab.add_var(type, fuzzer::VariableExpr("test_str"));
-  }
+fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame) {
+  fuzzer::SymbolTable symtab =
+      fuzzer::SymbolTable::create_from_lldb_context(frame);
 
   {
     fuzzer::TaggedType struct_type("TestStruct");
+
+    symtab.add_var(struct_type, fuzzer::VariableExpr("ts"));
     symtab.add_field(struct_type, "int_field", fuzzer::ScalarType::SignedInt);
     symtab.add_field(struct_type, "flt_field", fuzzer::ScalarType::Float);
     symtab.add_field(struct_type, "ull_field",
                      fuzzer::ScalarType::UnsignedLongLong);
     symtab.add_field(struct_type, "ch_field", fuzzer::ScalarType::Char);
-  }
-
-  {
-    fuzzer::Type type{fuzzer::NullptrType{}};
-    symtab.add_var(type, fuzzer::VariableExpr("null_ptr"));
   }
 
   return symtab;
@@ -297,7 +182,7 @@ void run_fuzzer(lldb::SBFrame& frame, const unsigned* seed_ptr) {
   cfg.bin_op_mask[fuzzer::BinOp::Shr] = false;
 
   // Symbol table
-  fuzzer::SymbolTable symtab = gen_symtab();
+  fuzzer::SymbolTable symtab = gen_symtab(frame);
 
   fuzzer::ExprGenerator gen(std::move(rng), std::move(cfg), std::move(symtab));
   std::vector<std::string> exprs;
