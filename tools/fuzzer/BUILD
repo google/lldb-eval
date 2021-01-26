@@ -6,6 +6,7 @@ cc_library(
         "ast.cc",
         "constraints.cc",
         "expr_gen.cc",
+        "symbol_table.cc",
     ],
     hdrs = [
         "ast.h",
@@ -16,6 +17,7 @@ cc_library(
     ],
     deps = [
         "//lldb-eval:defines",
+        "@llvm_project//:lldb-api",
     ],
 )
 
@@ -51,6 +53,29 @@ cc_test(
     srcs = ["fuzzer_test.cc"],
     deps = [
         ":fuzzer_lib",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "symbol_table_test",
+    srcs = ["symbol_table_test.cc"],
+    data = [
+        "//testdata:fuzzer_binary_gen",
+        "//testdata:fuzzer_binary_srcs",
+    ],
+    tags = [
+        # On Linux lldb-server behaves funny in a sandbox ¯\_(ツ)_/¯. This is
+        # not necessary on Windows, but "tags" attribute is not configurable
+        # with select -- https://github.com/bazelbuild/bazel/issues/2971.
+        "no-sandbox",
+    ],
+    deps = [
+        ":fuzzer_lib",
+        "//lldb-eval",
+        "//lldb-eval:runner",
+        "@bazel_tools//tools/cpp/runfiles",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],

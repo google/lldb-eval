@@ -143,10 +143,10 @@ QualifiedType::QualifiedType(Type type, CvQualifiers cv_qualifiers)
 const Type& QualifiedType::type() const { return *type_; }
 CvQualifiers QualifiedType::cv_qualifiers() const { return cv_qualifiers_; }
 bool QualifiedType::operator==(const QualifiedType& rhs) const {
-  return cv_qualifiers_ == rhs.cv_qualifiers_ && type_ == rhs.type_;
+  return cv_qualifiers_ == rhs.cv_qualifiers_ && *type_ == *rhs.type_;
 }
 bool QualifiedType::operator!=(const QualifiedType& rhs) const {
-  return cv_qualifiers_ != rhs.cv_qualifiers_ || type_ != rhs.type_;
+  return cv_qualifiers_ != rhs.cv_qualifiers_ || *type_ != *rhs.type_;
 }
 
 std::ostream& operator<<(std::ostream& os, const QualifiedType& type) {
