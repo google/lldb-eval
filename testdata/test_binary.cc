@@ -176,6 +176,25 @@ static void TestMemberOfInheritance() {
   plugin.x = 1;
   plugin.y = 2;
 
+  // Empty multiple inheritance with empty base.
+  struct Base {
+    int x;
+    int y;
+    virtual void Do() = 0;
+    virtual ~Base() {}
+  };
+  struct Mixin {};
+  struct Parent : private Mixin, public Base {
+    int z;
+    virtual void Do(){};
+  };
+  Parent obj;
+  obj.x = 1;
+  obj.y = 2;
+  obj.z = 3;
+  Base* parent_base = &obj;
+  Parent* parent = &obj;
+
   // BREAK(TestMemberOfInheritance)
 }
 

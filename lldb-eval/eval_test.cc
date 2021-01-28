@@ -769,6 +769,12 @@ TEST_F(EvalTest, TestMemberOfInheritance) {
 
   EXPECT_THAT(Eval("plugin.x"), IsEqual("1"));
   EXPECT_THAT(Eval("plugin.y"), IsEqual("2"));
+
+  EXPECT_THAT(Eval("parent_base->x"), IsEqual("1"));
+  EXPECT_THAT(Eval("parent_base->y"), IsEqual("2"));
+  EXPECT_THAT(Eval("parent->x"), IsEqual("1"));
+  EXPECT_THAT(Eval("parent->y"), IsEqual("2"));
+  EXPECT_THAT(Eval("parent->z"), IsEqual("3"));
 }
 
 TEST_F(EvalTest, TestInstanceVariables) {

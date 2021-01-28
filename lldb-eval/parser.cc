@@ -440,15 +440,19 @@ static lldb::SBTypeMember GetFieldWithNameIndexPath(
   }
 
   // Go through the base classes and look for the field there.
+  uint32_t num_non_empty_bases = 0;
   uint32_t num_direct_bases = type.GetNumberOfDirectBaseClasses();
   for (uint32_t i = 0; i < num_direct_bases; ++i) {
     lldb::SBType base = type.GetDirectBaseClassAtIndex(i).GetType();
     lldb::SBTypeMember field = GetFieldWithNameIndexPath(base, name, idx);
     if (field) {
       if (idx) {
-        idx->push_back(i);
+        idx->push_back(num_non_empty_bases);
       }
       return field;
+    }
+    if (base.GetNumberOfFields() > 0) {
+      num_non_empty_bases += 1;
     }
   }
 
