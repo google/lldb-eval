@@ -303,7 +303,9 @@ Value CreateValueFromBytes(lldb::SBTarget target, const void* bytes,
 
   // CreateValueFromData copies the data referenced by `bytes` to its own
   // storage. `value` should be valid up until this point.
-  return Value(target.CreateValueFromData("result", data, type));
+  return Value(
+      // Force static value, otherwise we can end up with the "real" type.
+      target.CreateValueFromData("result", data, type).GetStaticValue());
 }
 
 Value CreateValueFromBytes(lldb::SBTarget target, const void* bytes,
