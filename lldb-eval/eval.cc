@@ -186,11 +186,11 @@ Value Interpreter::Eval(const AstNode* tree) {
 
 Value Interpreter::EvalNode(const AstNode* node, FlowAnalysis* flow) {
   // Set up the evaluation context for the current node.
-  flow_analysis_stack_.push_back(flow);
+  flow_analysis_chain_.push_back(flow);
   // Traverse an AST pointed by the `node`.
   node->Accept(this);
   // Cleanup the context.
-  flow_analysis_stack_.pop_back();
+  flow_analysis_chain_.pop_back();
   // Return the computed value for convenience. The caller is responsible for
   // checking if an error occured during the evaluation.
   return result_;

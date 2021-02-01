@@ -36,13 +36,13 @@ namespace lldb_eval {
 class FlowAnalysis {
  public:
   FlowAnalysis(bool address_of_is_pending)
-      : address_of_is_pending(address_of_is_pending) {}
+      : address_of_is_pending_(address_of_is_pending) {}
 
-  bool AddressOfIsPending() const { return address_of_is_pending; }
-  void DiscardAddressOf() { address_of_is_pending = false; }
+  bool AddressOfIsPending() const { return address_of_is_pending_; }
+  void DiscardAddressOf() { address_of_is_pending_ = false; }
 
  private:
-  bool address_of_is_pending;
+  bool address_of_is_pending_;
 };
 
 class Interpreter : Visitor {
@@ -82,7 +82,7 @@ class Interpreter : Visitor {
 
   Value PointerAdd(Value lhs, int64_t offset);
 
-  FlowAnalysis* flow_analysis() { return flow_analysis_stack_.back(); }
+  FlowAnalysis* flow_analysis() { return flow_analysis_chain_.back(); }
 
  private:
   // Interpreter doesn't own the evaluation context. The expression is evaluated
@@ -93,9 +93,16 @@ class Interpreter : Visitor {
   // types, create objects, perform casts, etc.
   lldb::SBTarget target_;
 
-  // Flow analysis contains the evaluation information about the current code
-  // branch. It allows to eliminate some "pair" operations (e.g. `&*`).
-  std::vector<FlowAnalysis*> flow_analysis_stack_;
+  // Flow analysis chain represents the expression evaluation flow for the
+  // current code branch. Each node in the chain corresponds to an AST node,
+  // describing the semantics of the evaluation for it. For example, flow
+  // analysis propagates the information about the pending address-of operator,
+  // so that combination of address-of and a subsequent dereference can be
+  // eliminated.
+  // End of the chain (i.e. `back()`) contains the flow analysis instance for
+  // the current node. It may be `nullptr` if no relevant information is
+  // available, the caller/user is supposed to check.
+  std::vector<FlowAnalysis*> flow_analysis_chain_;
 
   Value result_;
 };
