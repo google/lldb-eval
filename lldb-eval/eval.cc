@@ -161,7 +161,8 @@ static Value EvaluateArithmeticOpFloat(lldb::SBTarget target,
 static Value EvaluateArithmeticOp(lldb::SBTarget target,
                                   clang::tok::TokenKind kind, Value lhs,
                                   Value rhs, Type rtype) {
-  assert(rtype.IsScalar() && "invalid ast: result type must be arithmetic");
+  assert((rtype.IsInteger() || rtype.IsFloat()) &&
+         "invalid ast: result type must either integer or floating point");
 
   // Evaluate arithmetic operation for two integral values.
   if (rtype.IsInteger()) {
