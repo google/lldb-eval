@@ -653,6 +653,23 @@ TEST_F(EvalTest, TestPointerDereference) {
   EXPECT_THAT(Eval("*p_int0 + 1"), IsEqual("1"));
   EXPECT_THAT(Eval("*cp_int5"), IsEqual("5"));
   EXPECT_THAT(Eval("*cp_int5 - 1"), IsEqual("4"));
+
+  EXPECT_THAT(Eval("&*p_null"), IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("&p_null[4]"), IsEqual("0x0000000000000010"));
+  EXPECT_THAT(Eval("&*(int*)0"), IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("&((int*)0)[1]"), IsEqual("0x0000000000000004"));
+
+  EXPECT_THAT(Eval("**pp_int0"), IsEqual("0"));
+  EXPECT_THAT(Eval("**pp_int0 + 1"), IsEqual("1"));
+  EXPECT_THAT(Eval("&**pp_int0"), IsOk());
+  EXPECT_THAT(Eval("&**pp_int0 + 1"), IsOk());
+
+  EXPECT_THAT(Eval("&(true ? *p_null : *p_null)"),
+              IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("&(false ? *p_null : *p_null)"),
+              IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("&*(true ? p_null : nullptr)"),
+              IsEqual("0x0000000000000000"));
 }
 
 TEST_F(EvalTest, TestLogicalOperators) {

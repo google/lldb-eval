@@ -18,6 +18,7 @@
 #define LLDB_EVAL_EVAL_H_
 
 #include <memory>
+#include <vector>
 
 #include "clang/Basic/TokenKinds.h"
 #include "lldb-eval/ast.h"
@@ -32,6 +33,18 @@
 
 namespace lldb_eval {
 
+class FlowAnalysis {
+ public:
+  FlowAnalysis(bool address_of_is_pending)
+      : address_of_is_pending_(address_of_is_pending) {}
+
+  bool AddressOfIsPending() const { return address_of_is_pending_; }
+  void DiscardAddressOf() { address_of_is_pending_ = false; }
+
+ private:
+  bool address_of_is_pending_;
+};
+
 class Interpreter : Visitor {
  public:
   explicit Interpreter(std::shared_ptr<Context> ctx) : ctx_(std::move(ctx)) {
@@ -39,7 +52,7 @@ class Interpreter : Visitor {
   }
 
  public:
-  Value Eval(const AstNode* tree, Error& error);
+  Value Eval(const AstNode* tree);
 
  private:
   void Visit(const ErrorNode* node) override;
@@ -52,8 +65,7 @@ class Interpreter : Visitor {
   void Visit(const UnaryOpNode* node) override;
   void Visit(const TernaryOpNode* node) override;
 
- private:
-  Value EvalNode(const AstNode* node);
+  Value EvalNode(const AstNode* node, FlowAnalysis* flow = nullptr);
 
   Value EvaluateComparison(clang::tok::TokenKind op, Value lhs, Value rhs);
 
@@ -70,6 +82,8 @@ class Interpreter : Visitor {
 
   Value PointerAdd(Value lhs, int64_t offset);
 
+  FlowAnalysis* flow_analysis() { return flow_analysis_chain_.back(); }
+
  private:
   // Interpreter doesn't own the evaluation context. The expression is evaluated
   // in the given context and the produced result may depend on it.
@@ -79,8 +93,17 @@ class Interpreter : Visitor {
   // types, create objects, perform casts, etc.
   lldb::SBTarget target_;
 
+  // Flow analysis chain represents the expression evaluation flow for the
+  // current code branch. Each node in the chain corresponds to an AST node,
+  // describing the semantics of the evaluation for it. Currently, flow analysis
+  // propagates the information about the pending address-of operator, so that
+  // combination of address-of and a subsequent dereference can be eliminated.
+  // End of the chain (i.e. `back()`) contains the flow analysis instance for
+  // the current node. It may be `nullptr` if no relevant information is
+  // available, the caller/user is supposed to check.
+  std::vector<FlowAnalysis*> flow_analysis_chain_;
+
   Value result_;
-  Error error_;
 };
 
 }  // namespace lldb_eval

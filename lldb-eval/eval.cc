@@ -19,7 +19,6 @@
 #include "clang/Basic/TokenKinds.h"
 #include "lldb-eval/ast.h"
 #include "lldb-eval/context.h"
-#include "lldb-eval/defines.h"
 #include "lldb-eval/value.h"
 #include "lldb/API/SBTarget.h"
 #include "lldb/API/SBType.h"
@@ -45,7 +44,8 @@ bool Compare(clang::tok::TokenKind op, const T& l, const T& r) {
       return l >= r;
 
     default:
-      lldb_eval_unreachable("Invalid comparison operation.");
+      assert(false && "invalid ast: invalid comparison operation");
+      return false;
   }
 }
 
@@ -77,7 +77,8 @@ bool Compare(clang::tok::TokenKind op, const llvm::APFloat& l,
     }
 
     default:
-      lldb_eval_unreachable("Invalid comparison operation.");
+      assert(false && "invalid ast: invalid comparison operation");
+      return false;
   }
 }
 
@@ -123,10 +124,9 @@ static Value EvaluateArithmeticOpInteger(lldb::SBTarget target,
       return wrap(l.lshr(r));
 
     default:
-      break;
+      assert(false && "invalid ast: invalid arithmetic operation");
+      return Value();
   }
-
-  lldb_eval_unreachable("invalid arithmetic op");
 }
 
 static Value EvaluateArithmeticOpFloat(lldb::SBTarget target,
@@ -153,15 +153,17 @@ static Value EvaluateArithmeticOpFloat(lldb::SBTarget target,
       return wrap(l * r);
 
     default:
-      break;
+      assert(false && "invalid ast: invalid arithmetic operation");
+      return Value();
   }
-
-  lldb_eval_unreachable("invalid arithmetic op");
 }
 
 static Value EvaluateArithmeticOp(lldb::SBTarget target,
                                   clang::tok::TokenKind kind, Value lhs,
                                   Value rhs, Type rtype) {
+  assert((rtype.IsInteger() || rtype.IsFloat()) &&
+         "invalid ast: result type must either integer or floating point");
+
   // Evaluate arithmetic operation for two integral values.
   if (rtype.IsInteger()) {
     return EvaluateArithmeticOpInteger(target, kind, lhs, rhs, rtype);
@@ -172,43 +174,45 @@ static Value EvaluateArithmeticOp(lldb::SBTarget target,
     return EvaluateArithmeticOpFloat(target, kind, lhs, rhs, rtype);
   }
 
-  lldb_eval_unreachable("Result of arithmetic conversion is not a scalar");
+  return Value();
 }
 
-Value Interpreter::Eval(const AstNode* tree, Error& error) {
+Value Interpreter::Eval(const AstNode* tree) {
   // Evaluate an AST.
   EvalNode(tree);
-  // Grab the error and reset the interpreter state.
-  error = error_;
-  error_.Clear();
   // Return the computed result. If there was an error, it will be invalid.
   return result_;
 }
 
-Value Interpreter::EvalNode(const AstNode* node) {
+Value Interpreter::EvalNode(const AstNode* node, FlowAnalysis* flow) {
+  // Set up the evaluation context for the current node.
+  flow_analysis_chain_.push_back(flow);
   // Traverse an AST pointed by the `node`.
   node->Accept(this);
-  // If there was an error, reset the result.
-  if (error_) result_ = {};
+  // Cleanup the context.
+  flow_analysis_chain_.pop_back();
   // Return the computed value for convenience. The caller is responsible for
   // checking if an error occured during the evaluation.
   return result_;
 }
 
 void Interpreter::Visit(const ErrorNode*) {
-  error_.Set(ErrorCode::kUnknown, "The AST is not valid.");
+  // The AST is not valid.
+  result_ = Value();
 }
 
 void Interpreter::Visit(const LiteralNode* node) { result_ = node->value(); }
 
 void Interpreter::Visit(const IdentifierNode* node) {
-  result_ = node->value();
+  Value val = node->value();
 
   // If value is a reference, dereference it to get to the underlying type. All
   // operations on a reference should be actually operations on the referent.
-  if (result_.type().IsReferenceType()) {
-    result_ = result_.Dereference();
+  if (val.type().IsReferenceType()) {
+    val = val.Dereference();
   }
+
+  result_ = val;
 }
 
 void Interpreter::Visit(const CStyleCastNode* node) {
@@ -248,11 +252,21 @@ void Interpreter::Visit(const CStyleCastNode* node) {
       return;
     }
   }
-  lldb_eval_unreachable("invalid c-style cast kind");
+
+  assert(false && "invalid ast: unexpected c-style cast kind");
+  result_ = Value();
 }
 
 void Interpreter::Visit(const MemberOfNode* node) {
   assert(!node->member_index().empty() && "invalid ast: member index is empty");
+
+  // TODO(werat): Implement address-of elision for member-of:
+  //
+  //  &(*ptr).foo -> (ptr + foo_offset)
+  //  &ptr->foo -> (ptr + foo_offset)
+  //
+  // This requires calculating the offset of "foo" and generally possible only
+  // for members from non-virtual bases.
 
   Value lhs = EvalNode(node->lhs());
   if (!lhs) {
@@ -303,8 +317,14 @@ void Interpreter::Visit(const ArraySubscriptNode* node) {
       CreateValueFromPointer(target_, base_addr, item_type.GetPointerType()),
       index.GetUInt64());
 
-  // Dereference the result, i.e. *(base + index).
-  result_ = value.Dereference();
+  // If we're in the address-of context, skip the dereference and cancel the
+  // pending address-of operation as well.
+  if (flow_analysis() && flow_analysis()->AddressOfIsPending()) {
+    flow_analysis()->DiscardAddressOf();
+    result_ = value;
+  } else {
+    result_ = value.Dereference();
+  }
 }
 
 void Interpreter::Visit(const BinaryOpNode* node) {
@@ -387,24 +407,40 @@ void Interpreter::Visit(const BinaryOpNode* node) {
   }
 
   // Unsupported/invalid operation.
-  std::string msg = "Unexpected op: " + node->op_name();
-  error_.Set(ErrorCode::kUnknown, msg);
+  assert(false && "invalid ast: unexpected binary operator");
+  result_ = Value();
 }
 
 void Interpreter::Visit(const UnaryOpNode* node) {
-  auto rhs = EvalNode(node->rhs());
+  FlowAnalysis rhs_flow(
+      /* address_of_is_pending */ node->op() == clang::tok::amp);
+
+  auto rhs = EvalNode(node->rhs(), &rhs_flow);
   if (!rhs) {
     return;
   }
 
   switch (node->op()) {
     case clang::tok::star:
-      // TODO(werat): Should dereference be a separate AST node?
       assert(rhs.type().IsPointerType() && "invalid ast: should be a pointer");
-      result_ = rhs.Dereference();
+      // If we're in the address-of context, skip the dereference and cancel the
+      // pending address-of operation as well.
+      if (flow_analysis() && flow_analysis()->AddressOfIsPending()) {
+        flow_analysis()->DiscardAddressOf();
+        result_ = rhs;
+      } else {
+        result_ = rhs.Dereference();
+      }
       return;
     case clang::tok::amp:
-      result_ = rhs.AddressOf();
+      // If the address-of operation wasn't cancelled during the evaluation of
+      // RHS (e.g. because of the address-of-a-dereference elision), apply it
+      // here.
+      if (rhs_flow.AddressOfIsPending()) {
+        result_ = rhs.AddressOf();
+      } else {
+        result_ = rhs;
+      }
       return;
     case clang::tok::plus:
       result_ = rhs;
@@ -424,8 +460,8 @@ void Interpreter::Visit(const UnaryOpNode* node) {
   }
 
   // Unsupported/invalid operation.
-  std::string msg = "Unexpected op: " + node->op_name();
-  error_.Set(ErrorCode::kUnknown, msg);
+  assert(false && "invalid ast: unexpected binary operator");
+  result_ = Value();
 }
 
 void Interpreter::Visit(const TernaryOpNode* node) {
@@ -436,10 +472,13 @@ void Interpreter::Visit(const TernaryOpNode* node) {
   assert(cond.type().IsContextuallyConvertibleToBool() &&
          "invalid ast: must be convertible to bool");
 
+  // Pass down the flow analysis because the conditional operator is a "flow
+  // control" construct -- LHS/RHS might be lvalues and eligible for some
+  // optimizations (e.g. "&*" elision).
   if (cond.GetBool()) {
-    result_ = EvalNode(node->lhs());
+    result_ = EvalNode(node->lhs(), flow_analysis());
   } else {
-    result_ = EvalNode(node->rhs());
+    result_ = EvalNode(node->rhs(), flow_analysis());
   }
 }
 
@@ -483,7 +522,6 @@ Value Interpreter::EvaluateUnaryMinus(Value rhs) {
     return CreateValueFromAPFloat(target_, v, rhs.type());
   }
 
-  error_.Set(ErrorCode::kUnknown, "operand is not arithmetic");
   return Value();
 }
 
