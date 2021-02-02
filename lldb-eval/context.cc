@@ -207,7 +207,8 @@ lldb::SBValue Context::LookupIdentifier(const std::string& name) const {
     }
   }
 
-  return value;
+  // Force static value, otherwise we can end up with the "real" type.
+  return value.GetStaticValue();
 }
 
 std::shared_ptr<Context> Context::Create(

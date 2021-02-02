@@ -278,7 +278,9 @@ void Interpreter::Visit(const MemberOfNode* node) {
   // "ephemeral" parent Value, representing the dereferenced LHS.
   lldb::SBValue member_val = lhs.inner_value();
   for (uint32_t idx : node->member_index()) {
-    member_val = member_val.GetChildAtIndex(idx);
+    // Force static value, otherwise we can end up with the "real" type.
+    member_val = member_val.GetChildAtIndex(idx, lldb::eNoDynamicValues,
+                                            /* can_create_synthetic */ false);
   }
   assert(member_val && "invalid ast: invalid member access");
 
