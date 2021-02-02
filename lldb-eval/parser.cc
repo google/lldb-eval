@@ -1235,14 +1235,25 @@ std::string Parser::ParseTypeName() {
     // Try parsing template_argument_list.
     auto template_argument_list = ParseTemplateArgumentList();
 
-    // TODO(werat): Handle ">>" situations.
     if (token_.is(clang::tok::greater)) {
+      // Single closing angle bracket is a valid end of the template argument
+      // list, just consume it.
       ConsumeToken();
-      return llvm::formatv("{0}<{1}>", template_name, template_argument_list);
+
+    } else if (token_.is(clang::tok::greatergreater)) {
+      // C++11 allows using ">>" in nested template argument lists and C++-style
+      // casts. In this case we alter change the token type to ">", but don't
+      // consume it -- it will be done on the outer level when completing the
+      // outer template argument list or C++-style cast.
+      token_.setKind(clang::tok::greater);
+
+    } else {
+      // Not a valid end of the template argument list, failed to parse a
+      // simple_template_id
+      return "";
     }
 
-    // Failed to parse a simple_template_id.
-    return "";
+    return llvm::formatv("{0}<{1}>", template_name, template_argument_list);
   }
 
   // Otherwise look for a class_name, enum_name or a typedef_name.
@@ -1317,7 +1328,10 @@ std::string Parser::ParseTemplateArgument() {
       // Successfully parsed a type_id, check if the next token can finish the
       // template_argument. If so, commit the parsed tokens and return parsed
       // template_argument.
-      if (token_.isOneOf(clang::tok::comma, clang::tok::greater)) {
+      // Note: in C++11 ">>" can be treated as "> >" and thus be a valid token
+      // for the template argument list.
+      if (token_.isOneOf(clang::tok::comma, clang::tok::greater,
+                         clang::tok::greatergreater)) {
         tentative_parsing.Commit();
         return type_decl.GetName();
       }

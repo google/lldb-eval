@@ -474,6 +474,7 @@ static void TestTemplateTypes() {
   { T_1<int&>::myint _ = 0; }
   { T_1<int*&>::myint _ = 0; }
   { T_1<T_1<int>>::myint _ = 0; }
+  { T_1<T_1<T_1<int>>>::myint _ = 0; }
   { T_1<T_1<int*>>::myint _ = 0; }
   { T_1<T_1<int**>>::myint _ = 0; }
   { T_1<T_1<int&>>::myint _ = 0; }
@@ -504,7 +505,10 @@ static void TestTemplateTypes() {
   (void)ns::T_1<double>::cx;
   (void)ns::T_1<ns::T_1<int>>::cx;
 
+  int T_1 = 2;
+
   // BREAK(TestTemplateTypes)
+  // BREAK(TestTemplateCpp11)
 }
 
 template <typename T, typename TAllocator>
