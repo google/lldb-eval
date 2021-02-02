@@ -9,7 +9,8 @@ debug expressions in the context of the debuggee process. All modern debuggers
 support evaluating expressions to inspect the target process state: print out
 variables, access member fields, etc. `lldb-eval` is basically a REPL-like
 library, that allows to inspect the process state using the familiar C++ syntax.
-The primary use-case is IDE integration (for example, Stadia for Visual Studio).
+The primary use-case is IDE integration (for example, 
+[Stadia for Visual Studio](https://github.com/googlestadia/vsi-lldb)).
 
 ## Why
 
