@@ -95,10 +95,9 @@ class Interpreter : Visitor {
 
   // Flow analysis chain represents the expression evaluation flow for the
   // current code branch. Each node in the chain corresponds to an AST node,
-  // describing the semantics of the evaluation for it. For example, flow
-  // analysis propagates the information about the pending address-of operator,
-  // so that combination of address-of and a subsequent dereference can be
-  // eliminated.
+  // describing the semantics of the evaluation for it. Currently, flow analysis
+  // propagates the information about the pending address-of operator, so that
+  // combination of address-of and a subsequent dereference can be eliminated.
   // End of the chain (i.e. `back()`) contains the flow analysis instance for
   // the current node. It may be `nullptr` if no relevant information is
   // available, the caller/user is supposed to check.
