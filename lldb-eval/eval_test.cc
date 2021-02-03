@@ -1208,6 +1208,9 @@ TEST_F(EvalTest, TestTemplateWithNumericArguments) {
   EXPECT_THAT(Eval("(Allocator<4>*)0"), IsEqual("0x0000000000000000"));
   EXPECT_THAT(Eval("(TArray<int, Allocator<4> >::ElementType*)0"),
               IsEqual("0x0000000000000000"));
+  // Test C++11's ">>" syntax.
+  EXPECT_THAT(Eval("(TArray<int, Allocator<4>>::ElementType*)0"),
+              IsEqual("0x0000000000000000"));
 }
 
 TEST_F(EvalTest, TestValueScope) {

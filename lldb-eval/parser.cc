@@ -175,6 +175,13 @@ std::tuple<lldb::BasicType, bool> PickIntegerType(
 
 namespace lldb_eval {
 
+static bool TokenEndsTemplateArgumentList(const clang::Token& token) {
+  // Note: in C++11 ">>" can be treated as "> >" and thus be a valid token
+  // for the template argument list.
+  return token.isOneOf(clang::tok::comma, clang::tok::greater,
+                       clang::tok::greatergreater);
+}
+
 static lldb::SBType DoIntegralPromotion(lldb::SBTarget target, Type from) {
   assert((from.IsInteger() || from.IsUnscopedEnum()) &&
          "Integral promotion works only for integers and unscoped enums.");
@@ -1328,10 +1335,7 @@ std::string Parser::ParseTemplateArgument() {
       // Successfully parsed a type_id, check if the next token can finish the
       // template_argument. If so, commit the parsed tokens and return parsed
       // template_argument.
-      // Note: in C++11 ">>" can be treated as "> >" and thus be a valid token
-      // for the template argument list.
-      if (token_.isOneOf(clang::tok::comma, clang::tok::greater,
-                         clang::tok::greatergreater)) {
+      if (TokenEndsTemplateArgumentList(token_)) {
         tentative_parsing.Commit();
         return type_decl.GetName();
       }
@@ -1351,7 +1355,7 @@ std::string Parser::ParseTemplateArgument() {
       std::string numeric_literal = pp_->getSpelling(token_);
       ConsumeToken();
 
-      if (token_.isOneOf(clang::tok::comma, clang::tok::greater)) {
+      if (TokenEndsTemplateArgumentList(token_)) {
         tentative_parsing.Commit();
         return numeric_literal;
       }
@@ -1370,8 +1374,7 @@ std::string Parser::ParseTemplateArgument() {
 
     // If we've parsed the id_expression successfully and the next token can
     // finish the template_argument, then we're done here.
-    if (!id_expression.empty() &&
-        token_.isOneOf(clang::tok::comma, clang::tok::greater)) {
+    if (!id_expression.empty() && TokenEndsTemplateArgumentList(token_)) {
       tentative_parsing.Commit();
       return id_expression;
     }
