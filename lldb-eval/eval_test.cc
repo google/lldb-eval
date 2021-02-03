@@ -1185,12 +1185,31 @@ TEST_F(EvalTest, TestTemplateTypes) {
               IsEqual("1.10000002"));
 }
 
+TEST_F(EvalTest, TestTemplateCpp11) {
+  // Template types lookup doesn't work well in the upstream LLDB.
+  this->compare_with_lldb_ = false;
+
+  EXPECT_THAT(Eval("(T_1<T_1<int>>::myint)1"), IsEqual("1"));
+  EXPECT_THAT(Eval("(T_1<T_1<T_1<int>>>::myint)2"), IsEqual("2"));
+  EXPECT_THAT(Eval("(T_2<T_1<T_1<int>>, T_1<char>>::myint)1.5"),
+              IsEqual("1.5"));
+
+  // Here T_1 is a local variable.
+  EXPECT_THAT(Eval("T_1<2>1"), IsEqual("false"));   // (p < 2) > 1
+  EXPECT_THAT(Eval("T_1<2>>1"), IsEqual("false"));  // (p < 2) >> 1
+  // And here it's a template.
+  EXPECT_THAT(Eval("T_1<int>::cx + 1"), IsEqual("25"));
+}
+
 TEST_F(EvalTest, TestTemplateWithNumericArguments) {
   // Template types lookup doesn't work well in the upstream LLDB.
   this->compare_with_lldb_ = false;
 
   EXPECT_THAT(Eval("(Allocator<4>*)0"), IsEqual("0x0000000000000000"));
   EXPECT_THAT(Eval("(TArray<int, Allocator<4> >::ElementType*)0"),
+              IsEqual("0x0000000000000000"));
+  // Test C++11's ">>" syntax.
+  EXPECT_THAT(Eval("(TArray<int, Allocator<4>>::ElementType*)0"),
               IsEqual("0x0000000000000000"));
 }
 
