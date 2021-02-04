@@ -176,6 +176,20 @@ static void TestMemberOfInheritance() {
   plugin.x = 1;
   plugin.y = 2;
 
+  struct ObjectBase {
+    int x;
+  };
+  struct Object : ObjectBase {};
+  struct Engine : Object {
+    int y;
+    int z;
+  };
+
+  Engine engine;
+  engine.x = 1;
+  engine.y = 2;
+  engine.z = 3;
+
   // Empty multiple inheritance with empty base.
   struct Base {
     int x;

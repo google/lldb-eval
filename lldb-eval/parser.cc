@@ -420,7 +420,9 @@ static uint32_t GetNumberOfNonEmptyBaseClasses(lldb::SBType type) {
 
   for (uint32_t i = 0; i < num_direct_bases; ++i) {
     lldb::SBTypeMember base = type.GetDirectBaseClassAtIndex(i);
-    if (base.GetType().GetNumberOfFields() > 0) {
+    lldb::SBType base_type = base.GetType();
+    if (base_type.GetNumberOfFields() > 0 ||
+        GetNumberOfNonEmptyBaseClasses(base_type) > 0) {
       ret += 1;
     }
   }
