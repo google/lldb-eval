@@ -101,6 +101,59 @@ class NonEmptyDerived : public NonEmptyBase, public EmptyBase {
   int f1 = 10;
 };
 
+class StaticMember {
+ public:
+  static const int s1;
+  static char s2;
+  // TODO: Add static const members with inline assigned values and static
+  // constexpr. In LLDB version 11, these cannot be accessed.
+};
+const int StaticMember::s1 = 10;
+char StaticMember::s2 = 's';
+
+class ClassWithNestedClass {
+ public:
+  class NestedClass {
+   public:
+    static const int s1;
+    int f1 = 10;
+  };
+
+  NestedClass nested;
+};
+const int ClassWithNestedClass::NestedClass::s1 = 20;
+
+// Global variables
+int global_int = 55;
+TestStruct global_ts;
+
+namespace ns {
+
+class StaticMember {
+ public:
+  static const int s1;
+};
+const int StaticMember::s1 = 25;
+
+// Global variables:
+int global_int = 65;
+TestStruct global_ts;
+
+namespace nested_ns {
+
+struct TestStruct {
+  float flt_field = 3.14f;
+  int int_field = 13;
+  char ch_field = 'x';
+};
+
+// Global variables:
+int global_int = 75;
+TestStruct global_ts;
+
+}  // namespace nested_ns
+}  // namespace ns
+
 int main() {
   auto char_min = std::numeric_limits<char>::min();
   auto char_max = std::numeric_limits<char>::max();
@@ -208,6 +261,27 @@ int main() {
   tu.uint_field = 65;
 
   (void)ts, (void)tu;
+
+  ns::nested_ns::TestStruct ns_ts;
+  (void)ns_ts;
+
+  ClassWithNestedClass with_nested;
+  (void)with_nested;
+
+  struct LocalStruct {
+    int int_field;
+    int& ref_field;
+    int* ptr_field;
+    int*& ptr_ref_field;
+    double dbl_field;
+  } ls{42, x, &x, p, -0.8};
+  (void)ls;
+
+  // Modify values of global variables.
+  global_ts.flt_field = 2.71f;
+  global_ts.int_field = 1337;
+  global_ts.ch_field = '*';
+  global_ts.ull_field = 1LL << 40;
 
   // BREAK HERE
 

@@ -154,15 +154,126 @@ fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame) {
   fuzzer::SymbolTable symtab =
       fuzzer::SymbolTable::create_from_lldb_context(frame);
 
-  {
-    fuzzer::TaggedType struct_type("TestStruct");
+  // A helper lambda to add the same field to multiple class types.
+  auto add_field =
+      [&symtab](const std::string& field_name, const fuzzer::Type& field_type,
+                const std::vector<fuzzer::TaggedType>& tagged_types) {
+        for (const auto& tagged_type : tagged_types) {
+          symtab.add_field(tagged_type, field_name, field_type);
+        }
+      };
 
-    symtab.add_var(struct_type, fuzzer::VariableExpr("ts"));
-    symtab.add_field(struct_type, "int_field", fuzzer::ScalarType::SignedInt);
-    symtab.add_field(struct_type, "flt_field", fuzzer::ScalarType::Float);
-    symtab.add_field(struct_type, "ull_field",
-                     fuzzer::ScalarType::UnsignedLongLong);
-    symtab.add_field(struct_type, "ch_field", fuzzer::ScalarType::Char);
+  {
+    fuzzer::TaggedType type("TestStruct");
+    fuzzer::TaggedType ns_type("ns::nested_ns::TestStruct");
+
+    add_field("int_field", fuzzer::ScalarType::SignedInt, {type, ns_type});
+    add_field("flt_field", fuzzer::ScalarType::Float, {type, ns_type});
+    add_field("ch_field", fuzzer::ScalarType::Char, {type, ns_type});
+    symtab.add_field(type, "ull_field", fuzzer::ScalarType::UnsignedLongLong);
+
+    symtab.add_var(type, fuzzer::VariableExpr("ts"));
+    symtab.add_var(ns_type, fuzzer::VariableExpr("ns_ts"));
+
+    // Also add global variables.
+    symtab.add_var(type, fuzzer::VariableExpr("global_ts"));
+    symtab.add_var(type, fuzzer::VariableExpr("ns::global_ts"));
+    symtab.add_var(ns_type, fuzzer::VariableExpr("ns::nested_ns::global_ts"));
+  }
+
+  {
+    fuzzer::TaggedType base1("MultiInheritBase1");
+    fuzzer::TaggedType base2("MultiInheritBase2");
+    fuzzer::TaggedType derived("MultiInheritDerived");
+
+    add_field("f1", fuzzer::ScalarType::SignedInt, {base1, derived});
+    add_field("f2", fuzzer::ScalarType::SignedInt, {base2, derived});
+    add_field("f3", fuzzer::ScalarType::SignedInt, {derived});
+
+    symtab.add_var(derived, fuzzer::VariableExpr("multi"));
+  }
+
+  {
+    fuzzer::TaggedType base("DeadlyDiamondBase");
+    fuzzer::TaggedType derived1("DeadlyDiamondDerived1");
+    fuzzer::TaggedType derived2("DeadlyDiamondDerived2");
+    fuzzer::TaggedType subclass("DeadlyDiamondSubclass");
+
+    // Note: don't add `f1` to `DeadlyDiamondSubclass`.
+    add_field("f1", fuzzer::ScalarType::SignedInt, {base, derived1, derived2});
+    add_field("f2", fuzzer::ScalarType::SignedInt, {derived1, subclass});
+    add_field("f3", fuzzer::ScalarType::SignedInt, {derived2, subclass});
+    add_field("f4", fuzzer::ScalarType::SignedInt, {subclass});
+
+    symtab.add_var(subclass, fuzzer::VariableExpr("diamond"));
+  }
+
+  {
+    fuzzer::TaggedType base("VirtualDiamondBase");
+    fuzzer::TaggedType derived1("VirtualDiamondDerived1");
+    fuzzer::TaggedType derived2("VirtualDiamondDerived2");
+    fuzzer::TaggedType subclass("VirtualDiamondSubclass");
+
+    add_field("f1", fuzzer::ScalarType::SignedInt,
+              {base, derived1, derived2, subclass});
+    add_field("f2", fuzzer::ScalarType::SignedInt, {derived1, subclass});
+    add_field("f3", fuzzer::ScalarType::SignedInt, {derived2, subclass});
+    add_field("f4", fuzzer::ScalarType::SignedInt, {subclass});
+
+    symtab.add_var(subclass, fuzzer::VariableExpr("virtual_diamond"));
+  }
+
+  {
+    fuzzer::TaggedType base1("EmptyBase");
+    fuzzer::TaggedType base2("NonEmptyBase");
+    fuzzer::TaggedType derived("NonEmptyDerived");
+
+    symtab.add_field(derived, "f1", fuzzer::ScalarType::SignedInt);
+    symtab.add_field(derived, "base", base1);
+    add_field("f2", fuzzer::ScalarType::SignedInt, {base2, derived});
+  }
+
+  {
+    fuzzer::TaggedType with_nested("ClassWithNestedClass");
+    fuzzer::TaggedType nested("ClassWithNestedClass::NestedClass");
+
+    symtab.add_var(with_nested, fuzzer::VariableExpr("with_nested"));
+    symtab.add_field(with_nested, "nested", nested);
+    symtab.add_field(nested, "f1", fuzzer::ScalarType::SignedInt);
+  }
+
+  {
+    fuzzer::TaggedType type("LocalStruct");
+    fuzzer::PointerType ptr_int_type{
+        fuzzer::QualifiedType(fuzzer::ScalarType::SignedInt)};
+
+    symtab.add_var(type, fuzzer::VariableExpr("ls"));
+    symtab.add_field(type, "int_field", fuzzer::ScalarType::SignedInt);
+    symtab.add_field(type, "ref_field", fuzzer::ScalarType::SignedInt);
+    symtab.add_field(type, "ptr_field", ptr_int_type);
+    symtab.add_field(type, "ptr_ref_field", ptr_int_type);
+    symtab.add_field(type, "dbl_field", fuzzer::ScalarType::Double);
+  }
+
+  {
+    // Add static members.
+    symtab.add_var(fuzzer::ScalarType::SignedInt,
+                   fuzzer::VariableExpr("StaticMember::s1"));
+    symtab.add_var(fuzzer::ScalarType::Char,
+                   fuzzer::VariableExpr("StaticMember::s2"));
+    symtab.add_var(fuzzer::ScalarType::SignedInt,
+                   fuzzer::VariableExpr("ns::StaticMember::s1"));
+    symtab.add_var(
+        fuzzer::ScalarType::SignedInt,
+        fuzzer::VariableExpr("ClassWithNestedClass::NestedClass::s1"));
+
+    // Add global variables.
+    symtab.add_var(fuzzer::ScalarType::SignedInt,
+                   fuzzer::VariableExpr("global_int"));
+    symtab.add_var(fuzzer::ScalarType::SignedInt,
+                   fuzzer::VariableExpr("ns::global_int"));
+    symtab.add_var(fuzzer::ScalarType::SignedInt,
+                   fuzzer::VariableExpr("ns::nested_ns::global_int"));
   }
 
   return symtab;
