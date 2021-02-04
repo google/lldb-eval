@@ -1072,10 +1072,17 @@ TEST_F(EvalTest, TestCStyleCastNullptrType) {
 }
 
 TEST_F(EvalTest, TestCStyleCastArray) {
-  EXPECT_THAT(Eval("(int*)arr"), IsOk());
-  EXPECT_THAT(Eval("(char*)arr"), IsOk());
-  EXPECT_THAT(Eval("((char*)arr)[0]"), IsEqual("'\\x01'"));
-  EXPECT_THAT(Eval("((char*)arr)[1]"), IsEqual("'\\0'"));
+  EXPECT_THAT(Eval("(int*)arr_1d"), IsOk());
+  EXPECT_THAT(Eval("(char*)arr_1d"), IsOk());
+  EXPECT_THAT(Eval("((char*)arr_1d)[0]"), IsEqual("'\\x01'"));
+  EXPECT_THAT(Eval("((char*)arr_1d)[1]"), IsEqual("'\\0'"));
+
+  // 2D arrays.
+  EXPECT_THAT(Eval("(int*)arr_2d"), IsOk());
+  EXPECT_THAT(Eval("((int*)arr_2d)[1]"), IsEqual("2"));
+  EXPECT_THAT(Eval("((int*)arr_2d)[2]"), IsEqual("3"));
+  EXPECT_THAT(Eval("((int*)arr_2d[1])[2]"), IsEqual("5"));
+  EXPECT_THAT(Eval("((char*)arr_2d[2])[2]"), IsEqual("'\\0'"));
 }
 
 TEST_F(EvalTest, TestCStyleCastReference) {

@@ -340,7 +340,8 @@ static void TestCStyleCast() {
   InnerFoo ifoo;
   (void)ifoo;
 
-  int arr[] = {1, 2, 3, 4};
+  int arr_1d[] = {1, 2, 3, 4};
+  int arr_2d[2][3] = {{1, 2, 3}, {4, 5, 6}};
 
   // BREAK(TestCStyleCastArray)
   // BREAK(TestCStyleCastReference)
