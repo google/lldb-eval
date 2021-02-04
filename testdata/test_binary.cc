@@ -331,9 +331,7 @@ static void TestCStyleCast() {
   // BREAK(TestCStyleCastBasicType)
   // BREAK(TestCStyleCastPointer)
   // BREAK(TestCStyleCastNullptrType)
-}
 
-static void TestCStyleCastToReference() {
   struct InnerFoo {
     int a;
     int b;
@@ -344,6 +342,7 @@ static void TestCStyleCastToReference() {
 
   int arr[] = {1, 2, 3, 4};
 
+  // BREAK(TestCStyleCastArray)
   // BREAK(TestCStyleCastReference)
 }
 

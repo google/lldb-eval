@@ -1071,6 +1071,13 @@ TEST_F(EvalTest, TestCStyleCastNullptrType) {
   EXPECT_THAT(Eval("(char*)nullptr"), IsEqual("0x0000000000000000"));
 }
 
+TEST_F(EvalTest, TestCStyleCastArray) {
+  EXPECT_THAT(Eval("(int*)arr"), IsOk());
+  EXPECT_THAT(Eval("(char*)arr"), IsOk());
+  EXPECT_THAT(Eval("((char*)arr)[0]"), IsEqual("'\\x01'"));
+  EXPECT_THAT(Eval("((char*)arr)[1]"), IsEqual("'\\0'"));
+}
+
 TEST_F(EvalTest, TestCStyleCastReference) {
   EXPECT_THAT(Eval("((InnerFoo&)arr[1]).a"), IsEqual("2"));
   EXPECT_THAT(Eval("((InnerFoo&)arr[1]).b"), IsEqual("3"));
