@@ -331,9 +331,7 @@ static void TestCStyleCast() {
   // BREAK(TestCStyleCastBasicType)
   // BREAK(TestCStyleCastPointer)
   // BREAK(TestCStyleCastNullptrType)
-}
 
-static void TestCStyleCastToReference() {
   struct InnerFoo {
     int a;
     int b;
@@ -342,8 +340,10 @@ static void TestCStyleCastToReference() {
   InnerFoo ifoo;
   (void)ifoo;
 
-  int arr[] = {1, 2, 3, 4};
+  int arr_1d[] = {1, 2, 3, 4};
+  int arr_2d[2][3] = {{1, 2, 3}, {4, 5, 6}};
 
+  // BREAK(TestCStyleCastArray)
   // BREAK(TestCStyleCastReference)
 }
 
@@ -655,7 +655,6 @@ void main() {
   tm.TestAddressOf(42);
   TestSubscript();
   TestCStyleCast();
-  TestCStyleCastToReference();
   TestQualifiedId();
   TestStaticConst();
   TestTemplateTypes();

@@ -244,6 +244,9 @@ void Interpreter::Visit(const CStyleCastNode* node) {
       return;
     }
     case CStyleCastKind::kPointer: {
+      if (rhs.type().IsArrayType()) {
+        rhs = rhs.AddressOf();
+      }
       result_ = CreateValueFromPointer(target_, rhs.GetUInt64(), type);
       return;
     }

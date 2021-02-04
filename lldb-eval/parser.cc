@@ -1721,8 +1721,8 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
 
   } else if (type.IsPointerType()) {
     // Cast to pointer type.
-    if (!rhs_type.IsIntegerOrUnscopedEnum() && !rhs_type.IsPointerType() &&
-        !rhs_type.IsNullPtrType()) {
+    if (!rhs_type.IsIntegerOrUnscopedEnum() && !rhs_type.IsArrayType() &&
+        !rhs_type.IsPointerType() && !rhs_type.IsNullPtrType()) {
       BailOut(ErrorCode::kInvalidOperandType,
               llvm::formatv("cannot cast from type '{0}' to pointer type '{1}'",
                             rhs_type.GetName(), type.GetName()),
