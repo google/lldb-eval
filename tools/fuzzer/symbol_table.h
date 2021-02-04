@@ -68,7 +68,6 @@ class SymbolTable {
 
   const std::unordered_set<TaggedType>& tagged_types() const {
     return tagged_types_;
-    ;
   }
 
  private:
