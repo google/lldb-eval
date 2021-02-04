@@ -654,7 +654,6 @@ void main() {
   tm.TestAddressOf(42);
   TestSubscript();
   TestCStyleCast();
-  TestCStyleCastToReference();
   TestQualifiedId();
   TestStaticConst();
   TestTemplateTypes();
