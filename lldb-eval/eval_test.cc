@@ -1081,16 +1081,15 @@ TEST_F(EvalTest, TestCStyleCastArray) {
   EXPECT_THAT(Eval("(int*)arr_2d"), IsOk());
   EXPECT_THAT(Eval("((int*)arr_2d)[1]"), IsEqual("2"));
   EXPECT_THAT(Eval("((int*)arr_2d)[2]"), IsEqual("3"));
-  EXPECT_THAT(Eval("((int*)arr_2d[1])[2]"), IsEqual("5"));
-  EXPECT_THAT(Eval("((char*)arr_2d[2])[2]"), IsEqual("'\\0'"));
+  EXPECT_THAT(Eval("((int*)arr_2d[1])[1]"), IsEqual("5"));
 }
 
 TEST_F(EvalTest, TestCStyleCastReference) {
-  EXPECT_THAT(Eval("((InnerFoo&)arr[1]).a"), IsEqual("2"));
-  EXPECT_THAT(Eval("((InnerFoo&)arr[1]).b"), IsEqual("3"));
+  EXPECT_THAT(Eval("((InnerFoo&)arr_1d[1]).a"), IsEqual("2"));
+  EXPECT_THAT(Eval("((InnerFoo&)arr_1d[1]).b"), IsEqual("3"));
 
-  EXPECT_THAT(Eval("(int&)arr[0]"), IsEqual("1"));
-  EXPECT_THAT(Eval("(int&)arr[1]"), IsEqual("2"));
+  EXPECT_THAT(Eval("(int&)arr_1d[0]"), IsEqual("1"));
+  EXPECT_THAT(Eval("(int&)arr_1d[1]"), IsEqual("2"));
 }
 
 TEST_F(EvalTest, TestQualifiedId) {
