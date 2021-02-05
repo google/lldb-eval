@@ -548,9 +548,9 @@ std::optional<Expr> ExprGenerator::gen_address_of_expr(
 
   TypeConstraints new_type_constraints =
       constraints.type_constraints().allowed_to_point_to();
-  ExprConstraints new_constraints(
-      std::move(new_type_constraints),
-      constraints.memory_constraints().from_address_of(), ExprCategory::Lvalue);
+  ExprConstraints new_constraints(std::move(new_type_constraints),
+                                  memory_constraints.from_address_of(),
+                                  ExprCategory::Lvalue);
 
   auto maybe_expr = gen_with_weights(weights, new_constraints);
   if (!maybe_expr.has_value()) {
