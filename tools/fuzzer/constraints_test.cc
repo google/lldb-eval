@@ -176,3 +176,33 @@ TEST(Constraints, Unsatisfiability) {
   EXPECT_THAT(default_ctor.satisfiable(), IsFalse());
   EXPECT_THAT(default_specific_types.satisfiable(), IsFalse());
 }
+
+TEST(Constraints, MemoryConstraints) {
+  auto expect_fields = [](const MemoryConstraints& constraints,
+                          bool must_be_valid, int required_freedom_index) {
+    EXPECT_EQ(constraints.must_be_valid(), must_be_valid);
+    EXPECT_EQ(constraints.required_freedom_index(), required_freedom_index);
+  };
+
+  MemoryConstraints default_ctor;
+  MemoryConstraints freedom_ctor(0);
+  MemoryConstraints invalid(false, 5);
+  MemoryConstraints valid(true, 5);
+
+  expect_fields(default_ctor, false, 0);
+  expect_fields(freedom_ctor, true, 0);
+  expect_fields(invalid, false, 0);
+  expect_fields(valid, true, 5);
+
+  expect_fields(invalid.from_address_of(), false, 0);
+  expect_fields(invalid.from_dereference_of(false), true, 1);
+  expect_fields(invalid.from_dereference_of(true), false, 0);
+  expect_fields(invalid.from_member_of(false, 1), true, 1);
+  expect_fields(invalid.from_member_of(true, 1), false, 0);
+
+  expect_fields(valid.from_address_of(), true, 4);
+  expect_fields(valid.from_dereference_of(false), true, 6);
+  expect_fields(valid.from_dereference_of(true), true, 6);
+  expect_fields(valid.from_member_of(false, 1), true, 1);
+  expect_fields(valid.from_member_of(true, 1), true, 1);
+}
