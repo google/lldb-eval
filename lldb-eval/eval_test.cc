@@ -1096,6 +1096,52 @@ TEST_F(EvalTest, TestCStyleCastReference) {
   EXPECT_THAT(Eval("(int&)arr_1d[1]"), IsEqual("2"));
 }
 
+TEST_F(EvalTest, TestCxxStaticCast) {
+  EXPECT_THAT(Eval("static_cast<int>(1.1)"), IsEqual("1"));
+  EXPECT_THAT(Eval("static_cast<double>(1)"), IsEqual("1"));
+  EXPECT_THAT(Eval("static_cast<char>(128)"), IsEqual("'\\x80'"));
+  EXPECT_THAT(Eval("static_cast<char*>(0)"), IsEqual("0x0000000000000000"));
+
+  EXPECT_THAT(Eval("static_cast<void*>(&parent)"), IsOk());
+  EXPECT_THAT(Eval("static_cast<CxxBase*>(&parent)"), IsOk());
+  EXPECT_THAT(Eval("static_cast<CxxBase*>(&parent)->a"), IsEqual("1"));
+  EXPECT_THAT(Eval("static_cast<CxxBase*>(&parent)->b"), IsEqual("2"));
+  EXPECT_THAT(Eval("static_cast<CxxBase*>(&parent)->c"),
+              IsError("no member named 'c' in 'CxxBase'"));
+
+  EXPECT_THAT(Eval("static_cast<CxxBase&>(parent).a"), IsEqual("1"));
+  EXPECT_THAT(Eval("static_cast<CxxBase&>(parent).b"), IsEqual("2"));
+}
+
+TEST_F(EvalTest, TestCxxDynamicCast) {
+  EXPECT_THAT(Eval("dynamic_cast<int>(0)"),
+              IsError("invalid target type 'int' for dynamic_cast"));
+  EXPECT_THAT(Eval("dynamic_cast<int*>(0)"),
+              IsError("'int' is not a class type"));
+  EXPECT_THAT(
+      Eval("dynamic_cast<CxxBase*>(1.1)"),
+      IsError(
+          "cannot use dynamic_cast to convert from 'double' to 'CxxBase *'"));
+  EXPECT_THAT(Eval("dynamic_cast<CxxBase*>((int*)0)"),
+              IsError("'int' is not a class type"));
+  EXPECT_THAT(Eval("dynamic_cast<CxxVirtualParent*>(base)"),
+              IsError("'CxxBase' is not polymorphic"));
+  EXPECT_THAT(Eval("dynamic_cast<CxxVirtualParent*>(v_base)"),
+              IsError("dynamic_cast is not supported in this context"));
+}
+
+TEST_F(EvalTest, TestCxxReinterpretCast) {
+  EXPECT_THAT(Eval("reinterpret_cast<CxxBase&>(arr[0]).a"), IsEqual("1"));
+  EXPECT_THAT(Eval("reinterpret_cast<CxxBase&>(arr).b"), IsEqual("2"));
+  EXPECT_THAT(Eval("reinterpret_cast<CxxParent&>(arr[0]).c"),
+              IsEqual("17179869187"));  // 17179869187 == 0x0000000400000003
+  EXPECT_THAT(Eval("reinterpret_cast<CxxParent&>(arr).d"), IsEqual("5"));
+
+  EXPECT_THAT(Eval("*reinterpret_cast<int*>(arr)"), IsEqual("1"));
+  EXPECT_THAT(Eval("*reinterpret_cast<long long*>(arr)"),
+              IsEqual("8589934593"));  // 8589934593 == 0x0000000200000001
+}
+
 TEST_F(EvalTest, TestQualifiedId) {
   EXPECT_THAT(Eval("::ns::i"), IsEqual("1"));
   EXPECT_THAT(Eval("ns::i"), IsEqual("1"));

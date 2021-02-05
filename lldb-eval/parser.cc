@@ -934,14 +934,63 @@ ExprResult Parser::ParseUnaryExpression() {
 // Parse a postfix_expression.
 //
 //  postfix_expression:
-//    primary_expression {"[" expression "]"}
-//    primary_expression {"." id_expression}
-//    primary_expression {"->" id_expression}
-//    primary_expression {"++"}
-//    primary_expression {"--"}
+//    primary_expression
+//    postfix_expression {"[" expression "]"}
+//    postfix_expression {"." id_expression}
+//    postfix_expression {"->" id_expression}
+//    postfix_expression {"++"}
+//    postfix_expression {"--"}
+//    static_cast "<" type_id ">" "(" expression ")" ;
+//    dynamic_cast "<" type_id ">" "(" expression ")" ;
+//    reinterpret_cast "<" type_id ">" "(" expression ")" ;
 //
 ExprResult Parser::ParsePostfixExpression() {
-  auto lhs = ParsePrimaryExpression();
+  // Parse the first part of the postfix_expression. This could be either a
+  // primary_expression, or a postfix_expression itself.
+  ExprResult lhs;
+
+  // C++-style cast.
+  if (token_.isOneOf(clang::tok::kw_static_cast, clang::tok::kw_dynamic_cast,
+                     clang::tok::kw_reinterpret_cast)) {
+    clang::tok::TokenKind cast_kind = token_.getKind();
+    clang::SourceLocation cast_loc = token_.getLocation();
+    ConsumeToken();
+
+    Expect(clang::tok::less);
+    ConsumeToken();
+
+    // Parse the type definition and resolve the type.
+    clang::SourceLocation type_loc = token_.getLocation();
+    TypeDeclaration type_decl = ParseTypeId();
+
+    lldb::SBType type = ResolveTypeFromTypeDecl(type_decl);
+    if (!type) {
+      BailOut(ErrorCode::kUndeclaredIdentifier,
+              llvm::formatv("unknown type name '{0}'", type_decl.GetBaseName()),
+              type_loc);
+      return std::make_unique<ErrorNode>();
+    }
+    type = ResolveTypeDeclarators(type, type_decl);
+    if (!type) {
+      return std::make_unique<ErrorNode>();
+    }
+
+    Expect(clang::tok::greater);
+    ConsumeToken();
+
+    Expect(clang::tok::l_paren);
+    ConsumeToken();
+    auto rhs = ParseExpression();
+    Expect(clang::tok::r_paren);
+    ConsumeToken();
+
+    lhs = BuildCxxCast(cast_kind, type, std::move(rhs), cast_loc);
+
+  } else {
+    // Otherwise it's a primary_expression.
+    lhs = ParsePrimaryExpression();
+  }
+  assert(lhs && "LHS of the postfix_expression can't be NULL.");
 
   while (token_.isOneOf(clang::tok::l_square, clang::tok::period,
                         clang::tok::arrow, clang::tok::plusplus,
@@ -1748,6 +1797,83 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
   }
 
   return std::make_unique<CStyleCastNode>(type, std::move(rhs), kind);
+}
+
+ExprResult Parser::BuildCxxCast(clang::tok::TokenKind kind, Type type,
+                                ExprResult rhs,
+                                clang::SourceLocation location) {
+  assert((kind == clang::tok::kw_static_cast ||
+          kind == clang::tok::kw_dynamic_cast ||
+          kind == clang::tok::kw_reinterpret_cast) &&
+         "invalid C++-style cast type");
+
+  // TODO(werat): Implement custom builders for all C++-style casts.
+  if (kind == clang::tok::kw_dynamic_cast) {
+    return BuildCxxDynamicCast(type, std::move(rhs), location);
+  }
+  return BuildCStyleCast(type, std::move(rhs), location);
+}
+
+ExprResult Parser::BuildCxxDynamicCast(Type type, ExprResult rhs,
+                                       clang::SourceLocation location) {
+  Type pointee_type;
+  if (type.IsPointerType()) {
+    pointee_type = type.GetPointeeType();
+  } else if (type.IsReferenceType()) {
+    pointee_type = type.GetDereferencedType();
+  } else {
+    // Dynamic casts are allowed only for pointers and references.
+    BailOut(
+        ErrorCode::kInvalidOperandType,
+        llvm::formatv("invalid target type '{0}' for dynamic_cast; target type "
+                      "must be a reference or pointer type to a defined class",
+                      type.GetName()),
+        location);
+    return std::make_unique<ErrorNode>();
+  }
+  // Dynamic casts are allowed only for record types.
+  if (!pointee_type.IsRecordType()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv("'{0}' is not a class type", pointee_type.GetName()),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  Type expr_type = rhs->result_type();
+  if (expr_type.IsPointerType()) {
+    expr_type = expr_type.GetPointeeType();
+  } else if (expr_type.IsReferenceType()) {
+    expr_type = expr_type.GetDereferencedType();
+  } else {
+    // Expression type must be a pointer or a reference.
+    BailOut(
+        ErrorCode::kInvalidOperandType,
+        llvm::formatv("cannot use dynamic_cast to convert from '{0}' to '{1}'",
+                      expr_type.GetName(), type.GetName()),
+        location);
+    return std::make_unique<ErrorNode>();
+  }
+  // Dynamic casts are allowed only for record types.
+  if (!expr_type.IsRecordType()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv("'{0}' is not a class type", expr_type.GetName()),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  // Expr type must be polymorphic.
+  if (!expr_type.IsPolymorphicClass()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv("'{0}' is not polymorphic", expr_type.GetName()),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  // LLDB doesn't support dynamic_cast in the expression evaluator. We disable
+  // it too to match the behaviour, but theoretically it can be implemented.
+  BailOut(ErrorCode::kInvalidOperandType,
+          "dynamic_cast is not supported in this context", location);
+  return std::make_unique<ErrorNode>();
 }
 
 ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind kind, ExprResult rhs,
