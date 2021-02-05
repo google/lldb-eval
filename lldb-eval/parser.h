@@ -130,6 +130,12 @@ class Parser {
   ExprResult BuildCStyleCast(Type type, ExprResult rhs,
                              clang::SourceLocation location);
 
+  ExprResult BuildCxxCast(clang::tok::TokenKind kind, Type type, ExprResult rhs,
+                          clang::SourceLocation location);
+
+  ExprResult BuildCxxDynamicCast(Type type, ExprResult rhs,
+                                 clang::SourceLocation location);
+
   ExprResult BuildUnaryOp(clang::tok::TokenKind kind, ExprResult rhs,
                           clang::SourceLocation location);
   ExprResult BuildBinaryOp(clang::tok::TokenKind kind, ExprResult lhs,

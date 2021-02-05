@@ -361,6 +361,46 @@ static void TestCStyleCast() {
   // BREAK(TestCStyleCastReference)
 }
 
+// Referenced by TestCxxCast
+struct CxxVirtualBase {
+  int a;
+  virtual ~CxxVirtualBase(){};
+};
+struct CxxVirtualParent : CxxVirtualBase {
+  int b;
+};
+
+static void TestCxxCast() {
+  struct CxxBase {
+    int a;
+    int b;
+  };
+  struct CxxParent : CxxBase {
+    long long c;
+    short d;
+  };
+
+  CxxParent parent;
+  parent.a = 1;
+  parent.b = 2;
+  parent.c = 3;
+  parent.d = 4;
+
+  CxxBase* base = &parent;
+
+  int arr[] = {1, 2, 3, 4, 5};
+
+  // BREAK(TestCxxStaticCast)
+  // BREAK(TestCxxReinterpretCast)
+
+  CxxVirtualParent v_parent;
+  v_parent.a = 1;
+  v_parent.b = 2;
+  CxxVirtualBase* v_base = &v_parent;
+
+  // BREAK(TestCxxDynamicCast)
+}
+
 // Referenced by TestQualifiedId.
 namespace ns {
 
@@ -669,6 +709,7 @@ void main() {
   tm.TestAddressOf(42);
   TestSubscript();
   TestCStyleCast();
+  TestCxxCast();
   TestQualifiedId();
   TestStaticConst();
   TestTemplateTypes();
