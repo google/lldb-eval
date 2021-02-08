@@ -16,7 +16,6 @@
 
 #include "tools/fuzzer/symbol_table.h"
 
-#include <iostream>
 #include <optional>
 #include <string>
 

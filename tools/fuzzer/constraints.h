@@ -334,8 +334,7 @@ class MemoryConstraints {
   }
 
   // Constructs memory constraints from the required freedom index.
-  // If this constructos is explicitly called, it is assumed that the memory
-  // should be valid.
+  // It's assumed that memory in this case should be valid.
   explicit MemoryConstraints(int freedom)
       : must_be_valid_(true), required_freedom_index_(freedom) {
     assert(required_freedom_index_ >= 0 &&
@@ -364,7 +363,7 @@ class MemoryConstraints {
   // dereference-of. In most cases it means that from this point, memory
   // should be valid. The exception is if the parent was an address-of. In
   // that case, inherit validity from the current constraints, to allow
-  // elimination of `&*`. It increases the freedom index by 1.
+  // elimination of `&*`. It increases the required freedom index by 1.
   MemoryConstraints from_dereference_of(bool is_parent_address_of) const {
     return is_parent_address_of
                ? MemoryConstraints(must_be_valid_, required_freedom_index_ + 1)
@@ -374,8 +373,8 @@ class MemoryConstraints {
   // Creates new memory constraints assuming that current expression is a
   // member-of. In the case that the parent expression is an address-of, it
   // inherits validity from the current constraints, to allow expression such
-  // as `&(invalid_ptr)->field`. Freedom index should be 1 for access on
-  // pointers `->` and 0 for the dot `.` access.
+  // as `&(invalid_ptr)->field`. Required freedom index should be 1 for access
+  // on pointers `->` and 0 for the dot `.` access.
   MemoryConstraints from_member_of(bool is_parent_address_of,
                                    int freedom) const {
     return is_parent_address_of ? MemoryConstraints(must_be_valid_, freedom)

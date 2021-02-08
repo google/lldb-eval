@@ -83,7 +83,7 @@ void eval_and_print_expr(lldb::SBFrame& frame, const std::string& expr,
 
   // Since we don't care about type qualifiers, ignore them when comparing
   // types. Otherwise there will be many noise caused by type mismatch, e.g.
-  // `int vs `const int`.
+  // `int` vs `const int`.
   bool type_mismatch =
       !compare_types(lldb_value.GetType(), lldb_eval_value.GetType());
   bool has_error =
