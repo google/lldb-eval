@@ -30,13 +30,6 @@
 
 namespace lldb_eval {
 
-static lldb::SBError ConvertError(const Error& error) {
-  lldb::SBError ret;
-  ret.SetError(static_cast<uint32_t>(error.code()), lldb::eErrorTypeGeneric);
-  ret.SetErrorString(error.message().c_str());
-  return ret;
-}
-
 static lldb::SBValue EvaluateExpressionImpl(std::shared_ptr<Context> ctx,
                                             lldb::SBError& error) {
   error.Clear();
@@ -45,7 +38,8 @@ static lldb::SBValue EvaluateExpressionImpl(std::shared_ptr<Context> ctx,
   Parser p(ctx);
   ExprResult tree = p.Run(err);
   if (err) {
-    error = ConvertError(err);
+    error.SetError(static_cast<uint32_t>(err.code()), lldb::eErrorTypeGeneric);
+    error.SetErrorString(err.message().c_str());
     return lldb::SBValue();
   }
 
