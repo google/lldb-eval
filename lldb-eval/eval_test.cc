@@ -820,9 +820,9 @@ TEST_F(EvalTest, TestIndirection) {
   EXPECT_THAT(Eval("my_pr"), IsOk());
 
   EXPECT_THAT(Eval("*1"),
-              IsError("indirection requires pointer operand. ('int' invalid)"));
+              IsError("indirection requires pointer operand ('int' invalid)"));
   EXPECT_THAT(Eval("*val"),
-              IsError("indirection requires pointer operand. ('int' invalid)"));
+              IsError("indirection requires pointer operand ('int' invalid)"));
 }
 
 TEST_F(EvalTest, TestAddressOf) {

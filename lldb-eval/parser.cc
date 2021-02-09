@@ -1888,7 +1888,7 @@ ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind kind, ExprResult rhs,
       } else {
         BailOut(ErrorCode::kInvalidOperandType,
                 llvm::formatv(
-                    "indirection requires pointer operand. ('{0}' invalid)",
+                    "indirection requires pointer operand ('{0}' invalid)",
                     rhs_type.GetName()),
                 location);
         return std::make_unique<ErrorNode>();
