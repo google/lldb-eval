@@ -50,6 +50,18 @@ enum Verbosity {
   ShowEverything,
 };
 
+// Compares LLDB types ignoring type qualifiers (const, volatile).
+bool compare_types(lldb::SBType lhs, lldb::SBType rhs) {
+  if (!lhs.IsValid() || !rhs.IsValid()) {
+    return false;
+  }
+
+  lhs = lhs.GetCanonicalType().GetUnqualifiedType();
+  rhs = rhs.GetCanonicalType().GetUnqualifiedType();
+
+  return strcmp(lhs.GetName(), rhs.GetName()) == 0;
+}
+
 void eval_and_print_expr(lldb::SBFrame& frame, const std::string& expr,
                          Verbosity verbosity) {
   auto lldb_value = frame.EvaluateExpression(expr.c_str());
@@ -69,15 +81,11 @@ void eval_and_print_expr(lldb::SBFrame& frame, const std::string& expr,
     value_mismatch = lldb_value.GetValue() != lldb_eval_value.GetValue();
   }
 
-  bool type_mismatch;
-  if (lldb_value.GetTypeName() != nullptr &&
-      lldb_eval_value.GetTypeName() != nullptr) {
-    type_mismatch =
-        strcmp(lldb_value.GetTypeName(), lldb_eval_value.GetTypeName()) != 0;
-  } else {
-    // Pointer comparison: Mismatch if one type is null and the other is not
-    type_mismatch = lldb_value.GetTypeName() != lldb_eval_value.GetTypeName();
-  }
+  // Since we don't care about type qualifiers, ignore them when comparing
+  // types. Otherwise there will be many noise caused by type mismatch, e.g.
+  // `int` vs `const int`.
+  bool type_mismatch =
+      !compare_types(lldb_value.GetType(), lldb_eval_value.GetType());
   bool has_error =
       lldb_err.GetCString() != nullptr || lldb_eval_err.GetCString() != nullptr;
 

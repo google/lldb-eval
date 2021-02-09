@@ -76,7 +76,8 @@ std::optional<Expr> ExprGenerator::gen_boolean_constant(
     const ExprConstraints& constraints) {
   const auto& type_constraints = constraints.type_constraints();
 
-  if (constraints.must_be_lvalue() || constraints.must_be_valid_pointer() ||
+  if (constraints.must_be_lvalue() ||
+      constraints.memory_constraints().must_be_valid() ||
       !type_constraints.allows_any_of(INT_TYPES | FLOAT_TYPES)) {
     return {};
   }
@@ -88,7 +89,8 @@ std::optional<Expr> ExprGenerator::gen_nullptr_constant(
     const ExprConstraints& constraints) {
   const auto& type_constraints = constraints.type_constraints();
 
-  if (constraints.must_be_lvalue() || constraints.must_be_valid_pointer() ||
+  if (constraints.must_be_lvalue() ||
+      constraints.memory_constraints().must_be_valid() ||
       !type_constraints.allows_nullptr()) {
     return {};
   }
@@ -98,7 +100,8 @@ std::optional<Expr> ExprGenerator::gen_nullptr_constant(
 
 std::optional<Expr> ExprGenerator::gen_integer_constant(
     const ExprConstraints& constraints) {
-  if (constraints.must_be_lvalue() || constraints.must_be_valid_pointer()) {
+  if (constraints.must_be_lvalue() ||
+      constraints.memory_constraints().must_be_valid()) {
     return {};
   }
 
@@ -126,7 +129,7 @@ std::optional<Expr> ExprGenerator::gen_double_constant(
   const auto& type_constraints = constraints.type_constraints();
   if (type_constraints.allows_any_of(FLOAT_TYPES)) {
     // Make sure a double constant isn't reached with valid pointer constraint.
-    assert(!constraints.must_be_valid_pointer() &&
+    assert(!constraints.memory_constraints().must_be_valid() &&
            "Floating points shouldn't be implicitly converted to pointers!");
 
     return rng_->gen_double_constant(cfg_.double_constant_min,
@@ -139,19 +142,16 @@ std::optional<Expr> ExprGenerator::gen_double_constant(
 std::optional<Expr> ExprGenerator::gen_variable_expr(
     const ExprConstraints& constraints) {
   const auto& type_constraints = constraints.type_constraints();
+  const auto& memory_constraints = constraints.memory_constraints();
 
   std::vector<std::reference_wrapper<const VariableExpr>> vars;
   for (const auto& [k, v] : symtab_.vars()) {
-    if (!constraints.must_be_lvalue() && constraints.must_be_valid_pointer() &&
-        std::holds_alternative<NullptrType>(k)) {
-      // If the current expression has to be a valid pointer, don't allow
-      // nullptr_t. The exception is if the parent is an address-of, which will
-      // result in a valid pointer.
-      continue;
-    }
-
     if (type_constraints.allows_type(k)) {
-      vars.insert(vars.end(), v.begin(), v.end());
+      for (const auto& var : v) {
+        if (var.freedom_index >= memory_constraints.required_freedom_index()) {
+          vars.emplace_back(var.expr);
+        }
+      }
     }
   }
 
@@ -164,7 +164,8 @@ std::optional<Expr> ExprGenerator::gen_variable_expr(
 
 std::optional<Expr> ExprGenerator::gen_binary_expr(
     const Weights& weights, const ExprConstraints& constraints) {
-  if (constraints.must_be_lvalue() || constraints.must_be_valid_pointer()) {
+  if (constraints.must_be_lvalue() ||
+      constraints.memory_constraints().must_be_valid()) {
     return {};
   }
 
@@ -379,7 +380,8 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
 
 std::optional<Expr> ExprGenerator::gen_unary_expr(
     const Weights& weights, const ExprConstraints& constraints) {
-  if (constraints.must_be_lvalue() || constraints.must_be_valid_pointer()) {
+  if (constraints.must_be_lvalue() ||
+      constraints.memory_constraints().must_be_valid()) {
     return {};
   }
 
@@ -458,23 +460,20 @@ std::optional<Expr> ExprGenerator::gen_ternary_expr(
 
   ExprConstraints new_constraints;
   if (constraints.must_be_lvalue()) {
-    new_constraints = ExprConstraints(
-        SpecificTypes(type),
-        static_cast<PointerValidity>(constraints.must_be_valid_pointer()),
-        ExprCategory::Lvalue);
+    new_constraints =
+        ExprConstraints(SpecificTypes(type), constraints.memory_constraints(),
+                        ExprCategory::Lvalue);
   } else if (std::holds_alternative<ScalarType>(type)) {
     ScalarMask mask = INT_TYPES;
     if (type_constraints.allows_any_of(FLOAT_TYPES)) {
       mask |= FLOAT_TYPES;
     }
 
-    new_constraints = ExprConstraints(
-        SpecificTypes(mask),
-        static_cast<PointerValidity>(constraints.must_be_valid_pointer()));
+    new_constraints =
+        ExprConstraints(SpecificTypes(mask), constraints.memory_constraints());
   } else {
-    new_constraints = ExprConstraints(
-        TypeConstraints(SpecificTypes(type)),
-        static_cast<PointerValidity>(constraints.must_be_valid_pointer()));
+    new_constraints = ExprConstraints(TypeConstraints(SpecificTypes(type)),
+                                      constraints.memory_constraints());
   }
 
   auto maybe_lhs = gen_with_weights(weights, new_constraints);
@@ -519,9 +518,8 @@ std::optional<Expr> ExprGenerator::gen_cast_expr(
     expr_types = INT_TYPES | FLOAT_TYPES;
   }
 
-  ExprConstraints new_constraints = ExprConstraints(
-      std::move(expr_types),
-      static_cast<PointerValidity>(constraints.must_be_valid_pointer()));
+  ExprConstraints new_constraints =
+      ExprConstraints(std::move(expr_types), constraints.memory_constraints());
   auto maybe_expr = gen_with_weights(weights, new_constraints);
   if (!maybe_expr.has_value()) {
     return {};
@@ -537,16 +535,22 @@ std::optional<Expr> ExprGenerator::gen_cast_expr(
 
 std::optional<Expr> ExprGenerator::gen_address_of_expr(
     const Weights& weights, const ExprConstraints& constraints) {
+  const auto& memory_constraints = constraints.memory_constraints();
+
   if (constraints.must_be_lvalue()) {
+    return {};
+  }
+
+  if (memory_constraints.must_be_valid() &&
+      memory_constraints.required_freedom_index() == 0) {
     return {};
   }
 
   TypeConstraints new_type_constraints =
       constraints.type_constraints().allowed_to_point_to();
-  ExprConstraints new_constraints(
-      std::move(new_type_constraints),
-      static_cast<PointerValidity>(constraints.must_be_valid_pointer()),
-      ExprCategory::Lvalue);
+  ExprConstraints new_constraints(std::move(new_type_constraints),
+                                  memory_constraints.from_address_of(),
+                                  ExprCategory::Lvalue);
 
   auto maybe_expr = gen_with_weights(weights, new_constraints);
   if (!maybe_expr.has_value()) {
@@ -564,6 +568,15 @@ std::optional<Expr> ExprGenerator::gen_address_of_expr(
 std::optional<Expr> ExprGenerator::gen_member_of_expr(
     const Weights& weights, const ExprConstraints& constraints) {
   const auto& type_constraints = constraints.type_constraints();
+  const auto& memory_constraints = constraints.memory_constraints();
+
+  if (memory_constraints.required_freedom_index() > 0) {
+    // TODO: Think about options to handle memory constraints for member-of
+    // fields. Freedom index isn't tied to type field, but to the actual value.
+    // Even if the required freedom index is 0, it can still be problematic to
+    // access reference fields, e.g. in `(*(Type*)ptr_int).ref_field`.
+    return {};
+  }
 
   std::vector<std::reference_wrapper<const Field>> fields;
   for (const auto& [k, v] : symtab_.fields_by_type()) {
@@ -576,15 +589,10 @@ std::optional<Expr> ExprGenerator::gen_member_of_expr(
     return {};
   }
 
-  // Accessing a member should be done on a valid object. The exception is the
-  // case when the parent is an address-of (lvalue constraint set).
-  bool must_be_valid_pointer =
-      constraints.must_be_lvalue() ? constraints.must_be_valid_pointer() : true;
-
   Field field = rng_->pick_field(fields);
-  ExprConstraints new_constraints =
-      ExprConstraints(SpecificTypes(field.containing_type()),
-                      static_cast<PointerValidity>(must_be_valid_pointer));
+  ExprConstraints new_constraints = ExprConstraints(
+      SpecificTypes(field.containing_type()),
+      memory_constraints.from_member_of(constraints.must_be_lvalue(), 0));
   auto maybe_expr = gen_with_weights(weights, std::move(new_constraints));
   if (!maybe_expr.has_value()) {
     return {};
@@ -601,6 +609,13 @@ std::optional<Expr> ExprGenerator::gen_member_of_expr(
 std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
     const Weights& weights, const ExprConstraints& constraints) {
   const auto& type_constraints = constraints.type_constraints();
+  const auto& memory_constraints = constraints.memory_constraints();
+
+  if (memory_constraints.required_freedom_index() > 0) {
+    // TODO: Think about options to handle memory constraints for member-of
+    // fields.
+    return {};
+  }
 
   std::vector<std::reference_wrapper<const Field>> fields;
 
@@ -613,16 +628,12 @@ std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
   if (fields.empty()) {
     return {};
   }
-  // Accessing a member should be done on a valid pointer. The exception is the
-  // case when the parent is an address-of (lvalue constraint set).
-  bool must_be_valid_pointer =
-      constraints.must_be_lvalue() ? constraints.must_be_valid_pointer() : true;
 
   Field field = rng_->pick_field(fields);
   TypeConstraints new_type_constraints = SpecificTypes(field.containing_type());
-  ExprConstraints new_constraints =
-      ExprConstraints(new_type_constraints.make_pointer_constraints(),
-                      static_cast<PointerValidity>(must_be_valid_pointer));
+  ExprConstraints new_constraints = ExprConstraints(
+      new_type_constraints.make_pointer_constraints(),
+      memory_constraints.from_member_of(constraints.must_be_lvalue(), 1));
   auto maybe_expr = gen_with_weights(weights, std::move(new_constraints));
   if (!maybe_expr.has_value()) {
     return {};
@@ -644,7 +655,8 @@ std::optional<Expr> ExprGenerator::gen_array_index_expr(
   // `&(ptr_expr)[int_expr]` (and its flipped alternative) are considered valid.
   // TODO: Try to extend this constraint by allowing a small integer offset
   // along with valid pointers.
-  if (constraints.must_be_valid_pointer() || !constraints.must_be_lvalue()) {
+  if (constraints.memory_constraints().must_be_valid() ||
+      !constraints.must_be_lvalue()) {
     return {};
   }
 
@@ -677,16 +689,10 @@ std::optional<Expr> ExprGenerator::gen_array_index_expr(
 
 std::optional<Expr> ExprGenerator::gen_dereference_expr(
     const Weights& weights, const ExprConstraints& constraints) {
-  // In the case that the parent is an address-of (i.e. the lvalue constraint is
-  // set), allow invalid pointers only if the parent allows them. That ensures
-  // that the pointer validity constraint isn't set for expressions such as
-  // `&*(ptr_expr)`. Otherwise, the child expression should be a valid pointer
-  // to avoid invalid memory access.
-  bool must_be_valid_pointer =
-      constraints.must_be_lvalue() ? constraints.must_be_valid_pointer() : true;
   ExprConstraints new_constraints =
       ExprConstraints(constraints.type_constraints().make_pointer_constraints(),
-                      static_cast<PointerValidity>(must_be_valid_pointer));
+                      constraints.memory_constraints().from_dereference_of(
+                          constraints.must_be_lvalue()));
 
   auto maybe_expr = gen_with_weights(weights, new_constraints);
   if (!maybe_expr.has_value()) {

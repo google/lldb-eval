@@ -38,7 +38,6 @@ class TypeConstraints;
 
 enum class VoidPointerConstraint : bool { Deny, Allow };
 enum class ExprCategory : bool { LvalueOrRvalue, Lvalue };
-enum class PointerValidity : bool { ValidOrInvalid, Valid };
 
 // The type constraints an expression can have. This class represents the fact
 // that an expression can be:
@@ -322,6 +321,71 @@ class TypeConstraints {
   std::variant<NoType, AnyType, SpecificTypes> constraints_;
 };
 
+// Constraints that regulate memory access as an expression is being
+// constructed.
+class MemoryConstraints {
+ public:
+  MemoryConstraints(bool must_be_valid, int freedom)
+      : must_be_valid_(must_be_valid),
+        // Set required freedom index to 0 if invalid memory is allowed.
+        required_freedom_index_(must_be_valid ? freedom : 0) {
+    assert(required_freedom_index_ >= 0 &&
+           "Required freedom index shouldn't be negative!");
+  }
+
+  // Constructs memory constraints from the required freedom index.
+  // It's assumed that memory in this case should be valid.
+  explicit MemoryConstraints(int freedom)
+      : must_be_valid_(true), required_freedom_index_(freedom) {
+    assert(required_freedom_index_ >= 0 &&
+           "Required freedom index shouldn't be negative!");
+  }
+
+  // Empty constructor. Allows invalid memory.
+  MemoryConstraints() = default;
+
+  // Indicates whether the expression that is being constructed is going to
+  // read from memory. If it's going to, it has to be valid to avoid illegal
+  // memory access.
+  bool must_be_valid() const { return must_be_valid_; }
+
+  // Indicates a number of times the expression that is being constructed is
+  // going to be dereferenced.
+  int required_freedom_index() const { return required_freedom_index_; }
+
+  // Creates new memory constraints assuming that current expression is an
+  // address-of. It decreases required freedom index by 1.
+  MemoryConstraints from_address_of() const {
+    return MemoryConstraints(must_be_valid_, required_freedom_index_ - 1);
+  }
+
+  // Creates new memory constraints assuming that current expression is a
+  // dereference-of. In most cases it means that from this point, memory
+  // should be valid. The exception is if the parent was an address-of. In
+  // that case, inherit validity from the current constraints, to allow
+  // elimination of `&*`. It increases the required freedom index by 1.
+  MemoryConstraints from_dereference_of(bool is_parent_address_of) const {
+    return is_parent_address_of
+               ? MemoryConstraints(must_be_valid_, required_freedom_index_ + 1)
+               : MemoryConstraints(required_freedom_index_ + 1);
+  }
+
+  // Creates new memory constraints assuming that current expression is a
+  // member-of. In the case that the parent expression is an address-of, it
+  // inherits validity from the current constraints, to allow expression such
+  // as `&(invalid_ptr)->field`. Required freedom index should be 1 for access
+  // on pointers `->` and 0 for the dot `.` access.
+  MemoryConstraints from_member_of(bool is_parent_address_of,
+                                   int freedom) const {
+    return is_parent_address_of ? MemoryConstraints(must_be_valid_, freedom)
+                                : MemoryConstraints(freedom);
+  }
+
+ private:
+  bool must_be_valid_ = false;
+  int required_freedom_index_ = 0;
+};
+
 // The main class that deals with expression constraints.
 class ExprConstraints {
  public:
@@ -330,32 +394,33 @@ class ExprConstraints {
   // Allow implicit conversion from `TypeConstraints` for convenience (plus,
   // in most cases expressions don't have to be lvalues.
   ExprConstraints(TypeConstraints type_constraints,
-                  PointerValidity validity = PointerValidity::ValidOrInvalid,
+                  MemoryConstraints memory_constraints = MemoryConstraints(),
                   ExprCategory category = ExprCategory::LvalueOrRvalue)
       : type_constraints_(std::move(type_constraints)),
-        must_be_valid_pointer_((bool)validity),
+        memory_constraints_(std::move(memory_constraints)),
         must_be_lvalue_((bool)category) {}
 
   ExprConstraints(ScalarMask mask,
-                  PointerValidity validity = PointerValidity::ValidOrInvalid,
+                  MemoryConstraints memory_constraints = MemoryConstraints(),
                   ExprCategory category = ExprCategory::LvalueOrRvalue)
       : type_constraints_(TypeConstraints(mask)),
-        must_be_valid_pointer_((bool)validity),
+        memory_constraints_(std::move(memory_constraints)),
         must_be_lvalue_((bool)category) {}
 
   // Must the expression we generate be an lvalue?
   bool must_be_lvalue() const { return must_be_lvalue_; }
 
-  // Must the expression (or one of its subexpressions) be a valid pointer?
-  // Most common use case of this constraint is dereferencing pointers.
-  bool must_be_valid_pointer() const { return must_be_valid_pointer_; }
-
   // Type constraints of the expression to generate
   const TypeConstraints& type_constraints() const { return type_constraints_; }
 
+  // Memory constraints of the expression to generate
+  const MemoryConstraints& memory_constraints() const {
+    return memory_constraints_;
+  }
+
  private:
   TypeConstraints type_constraints_;
-  bool must_be_valid_pointer_ = false;
+  MemoryConstraints memory_constraints_;
   bool must_be_lvalue_ = false;
 };
 

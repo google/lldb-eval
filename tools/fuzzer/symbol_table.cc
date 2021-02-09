@@ -19,7 +19,12 @@
 #include <optional>
 #include <string>
 
+#include "lldb/API/SBError.h"
 #include "lldb/API/SBFrame.h"
+#include "lldb/API/SBMemoryRegionInfo.h"
+#include "lldb/API/SBMemoryRegionInfoList.h"
+#include "lldb/API/SBProcess.h"
+#include "lldb/API/SBThread.h"
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
 #include "lldb/API/SBVariablesOptions.h"
@@ -97,6 +102,41 @@ std::optional<Type> convert_type(lldb::SBType type) {
   }
 }
 
+bool is_valid_address(lldb::addr_t address,
+                      lldb::SBMemoryRegionInfoList& regions) {
+  for (size_t i = 0; i < regions.GetSize(); ++i) {
+    lldb::SBMemoryRegionInfo region;
+    if (!regions.GetMemoryRegionAtIndex(i, region) || !region.IsReadable()) {
+      continue;
+    }
+    if (address >= region.GetRegionBase() && address < region.GetRegionEnd()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Calculates freedom index of the given variable, i.e. a number of times the
+// variable can be dereferenced (it ignores references).
+int calculate_freedom_index(lldb::SBValue value,
+                            lldb::SBMemoryRegionInfoList& memory_regions) {
+  auto type = value.GetType().GetCanonicalType();
+  if (type.IsReferenceType()) {
+    value = value.Dereference();
+    type = value.GetType().GetCanonicalType();
+  }
+
+  if (type.IsPointerType()) {
+    lldb::addr_t address =
+        static_cast<lldb::addr_t>(value.GetValueAsUnsigned());
+    if (is_valid_address(address, memory_regions)) {
+      return 1 + calculate_freedom_index(value.Dereference(), memory_regions);
+    }
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 // Creates a symbol table from the lldb context. It populates most of the
@@ -112,11 +152,15 @@ SymbolTable SymbolTable::create_from_lldb_context(lldb::SBFrame& frame) {
   lldb::SBValueList variables = frame.GetVariables(options);
   uint32_t variables_size = variables.GetSize();
 
+  lldb::SBMemoryRegionInfoList memory_regions =
+      frame.GetThread().GetProcess().GetMemoryRegions();
+
   for (uint32_t i = 0; i < variables_size; ++i) {
     lldb::SBValue value = variables.GetValueAtIndex(i);
     auto maybe_type = convert_type(value.GetType());
     if (maybe_type.has_value()) {
-      symtab.add_var(maybe_type.value(), VariableExpr(value.GetName()));
+      symtab.add_var(maybe_type.value(), VariableExpr(value.GetName()),
+                     calculate_freedom_index(value, memory_regions));
     }
   }
 

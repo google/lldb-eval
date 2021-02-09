@@ -242,7 +242,9 @@ int main() {
   (void)array2d;
 
   std::nullptr_t null_ptr = nullptr;
-  (void)null_ptr;
+  std::nullptr_t* addr_null_ptr = &null_ptr;
+  std::nullptr_t& ref_null_ptr = null_ptr;
+  (void)null_ptr, (void)addr_null_ptr, (void)ref_null_ptr;
 
   MultiInheritDerived multi;
   DeadlyDiamondSubclass diamond;
@@ -251,7 +253,8 @@ int main() {
 
   const char* null_char_ptr = nullptr;
   const char* test_str = "Hee hee hee";
-  (void)null_char_ptr, (void)test_str;
+  const char** addr_null_char_ptr = &null_char_ptr;
+  (void)null_char_ptr, (void)test_str, (void)addr_null_char_ptr;
 
   NonEmptyDerived empty_base;
   (void)empty_base;

@@ -150,7 +150,7 @@ struct GenConfig {
       {1.0f, 0.0f},  // TypeKind::TaggedType
       {1.0f, 0.1f},  // TypeKind::PointerType
       {1.0f, 0.1f},  // TypeKind::VoidPointerType
-      {0.5f, 0.2f},  // TypeKind::NullptrType
+      {0.2f, 0.2f},  // TypeKind::NullptrType
   }};
 };
 

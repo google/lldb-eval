@@ -176,3 +176,38 @@ TEST(Constraints, Unsatisfiability) {
   EXPECT_THAT(default_ctor.satisfiable(), IsFalse());
   EXPECT_THAT(default_specific_types.satisfiable(), IsFalse());
 }
+
+namespace fuzzer {
+bool operator==(const MemoryConstraints& lhs, const MemoryConstraints& rhs) {
+  return lhs.must_be_valid() == rhs.must_be_valid() &&
+         lhs.required_freedom_index() == rhs.required_freedom_index();
+}
+}  // namespace fuzzer
+
+TEST(Constraints, MemoryConstraints) {
+  MemoryConstraints default_ctor;
+  MemoryConstraints freedom_ctor(0);
+  MemoryConstraints invalid(false, 5);
+  MemoryConstraints valid(true, 5);
+
+  EXPECT_EQ(default_ctor.must_be_valid(), false);
+  EXPECT_EQ(default_ctor.required_freedom_index(), 0);
+  EXPECT_EQ(freedom_ctor.must_be_valid(), true);
+  EXPECT_EQ(freedom_ctor.required_freedom_index(), 0);
+  EXPECT_EQ(invalid.must_be_valid(), false);
+  EXPECT_EQ(invalid.required_freedom_index(), 0);
+  EXPECT_EQ(valid.must_be_valid(), true);
+  EXPECT_EQ(valid.required_freedom_index(), 5);
+
+  EXPECT_EQ(invalid.from_address_of(), MemoryConstraints(false, 0));
+  EXPECT_EQ(invalid.from_dereference_of(false), MemoryConstraints(true, 1));
+  EXPECT_EQ(invalid.from_dereference_of(true), MemoryConstraints(false, 0));
+  EXPECT_EQ(invalid.from_member_of(false, 1), MemoryConstraints(true, 1));
+  EXPECT_EQ(invalid.from_member_of(true, 1), MemoryConstraints(false, 0));
+
+  EXPECT_EQ(valid.from_address_of(), MemoryConstraints(true, 4));
+  EXPECT_EQ(valid.from_dereference_of(false), MemoryConstraints(true, 6));
+  EXPECT_EQ(valid.from_dereference_of(true), MemoryConstraints(true, 6));
+  EXPECT_EQ(valid.from_member_of(false, 1), MemoryConstraints(true, 1));
+  EXPECT_EQ(valid.from_member_of(true, 1), MemoryConstraints(true, 1));
+}

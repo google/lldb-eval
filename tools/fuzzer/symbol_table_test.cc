@@ -52,8 +52,8 @@ TEST(SymbolTableTest, CreateFromLldbContext) {
     auto var_it = symtab.vars().find(type);
     ASSERT_NE(var_it, symtab.vars().end());
     std::set<std::string> names_from_symtab;
-    for (const auto& var_expr : var_it->second) {
-      names_from_symtab.insert(var_expr.name());
+    for (const auto& var : var_it->second) {
+      names_from_symtab.insert(var.expr.name());
     }
     EXPECT_EQ(names, names_from_symtab);
     count_checked_types++;
@@ -88,13 +88,38 @@ TEST(SymbolTableTest, CreateFromLldbContext) {
   expect_vars(
       fuzzer::PointerType(fuzzer::QualifiedType(fuzzer::ScalarType::Void)),
       {"void_ptr"});
-  expect_vars(
-      fuzzer::PointerType(fuzzer::QualifiedType(fuzzer::ScalarType::Char)),
-      {"test_str", "null_char_ptr"});
-  expect_vars(fuzzer::NullptrType{}, {"null_ptr"});
+  fuzzer::Type char_ptr =
+      fuzzer::PointerType(fuzzer::QualifiedType(fuzzer::ScalarType::Char));
+  expect_vars(char_ptr, {"test_str", "null_char_ptr"});
+  expect_vars(fuzzer::PointerType(fuzzer::QualifiedType(char_ptr)),
+              {"addr_null_char_ptr"});
+  expect_vars(fuzzer::NullptrType{}, {"null_ptr", "ref_null_ptr"});
+  expect_vars(fuzzer::PointerType(fuzzer::QualifiedType(fuzzer::NullptrType{})),
+              {"addr_null_ptr"});
 
   // Make sure there isn't a type we forgot to check.
   EXPECT_EQ(count_checked_types, symtab.vars().size());
+
+  // Compare freedom indices.
+  std::unordered_map<std::string, int> freedom_indices;
+  freedom_indices["p"] = 1;
+  freedom_indices["q"] = 2;
+  freedom_indices["refp"] = 2;
+  freedom_indices["void_ptr"] = 1;
+  freedom_indices["addr_null_ptr"] = 1;
+  freedom_indices["test_str"] = 1;
+  freedom_indices["addr_null_char_ptr"] = 1;
+
+  size_t variable_count = 0;
+  for (const auto& [type, vars] : symtab.vars()) {
+    for (const auto& var : vars) {
+      variable_count++;
+      EXPECT_EQ(var.freedom_index, freedom_indices[var.expr.name()]);
+    }
+  }
+
+  // Make sure we checked freedom indices of all variables.
+  EXPECT_EQ(variable_count, freedom_indices.size());
 
   // Teardown the test.
   process.Destroy();
