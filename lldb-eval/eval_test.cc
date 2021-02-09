@@ -575,7 +575,7 @@ TEST_F(EvalTest, TestPointerArithmetic) {
   EXPECT_THAT(Eval("array - 1"), IsOk());
   EXPECT_THAT(
       Eval("1 - array"),
-      IsError("invalid operands to binary expression ('int' and 'int [2]')\n"
+      IsError("invalid operands to binary expression ('int' and 'int [10]')\n"
               "1 - array\n"
               "  ^"));
 
@@ -583,7 +583,7 @@ TEST_F(EvalTest, TestPointerArithmetic) {
   EXPECT_THAT(
       Eval("array + array"),
       IsError(
-          "invalid operands to binary expression ('int [2]' and 'int [2]')\n"
+          "invalid operands to binary expression ('int [10]' and 'int [10]')\n"
           "array + array\n"
           "      ^"));
 }
