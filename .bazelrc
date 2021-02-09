@@ -19,7 +19,7 @@ build:windows --cxxopt=/GR-  # Disable RTTI
 # Disable some warnings completely, since in MSVC 19.28.29333 "/external" option doesn't work:
 https://developercommunity.visualstudio.com/content/problem/1252451/clexe-flag-externalw0-doesnt-work-in-msvc-19282933.html
 # Full list of warnings that are disabled for LLVM on Windows:
-https://github.com/llvm/llvm-project/blob/master/llvm/cmake/modules/HandleLLVMOptions.cmake
+https://github.com/llvm/llvm-project/blob/main/llvm/cmake/modules/HandleLLVMOptions.cmake
 build:windows --copt=/wd4100
 build:windows --copt=/wd4146
 build:windows --copt=/wd4244
