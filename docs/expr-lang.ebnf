@@ -46,11 +46,12 @@ unary_expression = postfix_expression
 
 unary_operator = "*" | "&" | "+" | "-" | "!" | "~" ;
 
-postfix_expression = primary_expression {"[" expression "]"}
-                   | primary_expression {"." id_expression}
-                   | primary_expression {"->" id_expression}
-                   | primary_expression {"++"}
-                   | primary_expression {"--"}
+postfix_expression = primary_expression
+                   | postfix_expression "[" expression "]"
+                   | postfix_expression "." id_expression
+                   | postfix_expression "->" id_expression
+                   | postfix_expression "++"
+                   | postfix_expression "--"
                    | static_cast "<" type_id ">" "(" expression ")" ;
                    | dynamic_cast "<" type_id ">" "(" expression ")" ;
                    | reinterpret_cast "<" type_id ">" "(" expression ")" ;

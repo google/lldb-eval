@@ -935,11 +935,11 @@ ExprResult Parser::ParseUnaryExpression() {
 //
 //  postfix_expression:
 //    primary_expression
-//    postfix_expression {"[" expression "]"}
-//    postfix_expression {"." id_expression}
-//    postfix_expression {"->" id_expression}
-//    postfix_expression {"++"}
-//    postfix_expression {"--"}
+//    postfix_expression "[" expression "]"
+//    postfix_expression "." id_expression
+//    postfix_expression "->" id_expression
+//    postfix_expression "++"
+//    postfix_expression "--"
 //    static_cast "<" type_id ">" "(" expression ")" ;
 //    dynamic_cast "<" type_id ">" "(" expression ")" ;
 //    reinterpret_cast "<" type_id ">" "(" expression ")" ;
