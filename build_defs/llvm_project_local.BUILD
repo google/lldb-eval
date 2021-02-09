@@ -286,6 +286,12 @@ cc_library(
         "include/lldb/**/*.def",
         "include/lldb/**/*.inc",
     ]),
+    defines = select({
+        "@bazel_tools//src/conditions:windows": [
+            "IMPORT_LIBLLDB",
+        ],
+        "//conditions:default": [],
+    }),
     includes = ["include"],
     deps = select({
         ":llvm_build_dynamic": [

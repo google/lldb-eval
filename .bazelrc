@@ -24,6 +24,7 @@ build:windows --copt=/wd4100
 build:windows --copt=/wd4146
 build:windows --copt=/wd4244
 build:windows --copt=/wd4245
+build:windows --copt=/wd4251
 build:windows --copt=/wd4267
 build:windows --copt=/wd4324
 build:windows --copt=/wd4389
