@@ -19,6 +19,7 @@
 
 #include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "clang/Basic/FileManager.h"
@@ -53,7 +54,8 @@ class TypeDeclaration {
   std::vector<std::string> typenames_;
 
   // Pointer and reference operators (* and &).
-  std::vector<clang::tok::TokenKind> ptr_operators_;
+  std::vector<std::tuple<clang::tok::TokenKind, clang::SourceLocation>>
+      ptr_operators_;
 };
 
 // Pure recursive descent parser for C++ like expressions.
