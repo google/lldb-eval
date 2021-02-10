@@ -732,6 +732,7 @@ void main() {
   TestScopedEnum();
   TestUnscopedEnum();
   TestTernaryOperator();
+  TestSizeOf();
 
   // BREAK HERE
 }
