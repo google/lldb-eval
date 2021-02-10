@@ -491,7 +491,7 @@ std::string TypeDeclaration::GetName() const {
   if (ptr_operators_.size() > 0) {
     name.append(" ");
   }
-  for (auto tok : ptr_operators_) {
+  for (auto& [tok, _] : ptr_operators_) {
     if (tok == clang::tok::star) {
       name.append("*");
     } else if (tok == clang::tok::amp) {
@@ -1460,7 +1460,8 @@ void Parser::ParsePtrOperator(TypeDeclaration* type_decl) {
   ExpectOneOf(clang::tok::star, clang::tok::amp);
 
   if (token_.is(clang::tok::star)) {
-    type_decl->ptr_operators_.push_back(clang::tok::star);
+    type_decl->ptr_operators_.emplace_back(clang::tok::star,
+                                           token_.getLocation());
     ConsumeToken();
 
     //
@@ -1477,7 +1478,8 @@ void Parser::ParsePtrOperator(TypeDeclaration* type_decl) {
     }
 
   } else if (token_.is(clang::tok::amp)) {
-    type_decl->ptr_operators_.push_back(clang::tok::amp);
+    type_decl->ptr_operators_.emplace_back(clang::tok::amp,
+                                           token_.getLocation());
     ConsumeToken();
   }
 }
@@ -1494,7 +1496,7 @@ lldb::SBType Parser::ResolveTypeFromTypeDecl(const TypeDeclaration& type_decl) {
 lldb::SBType Parser::ResolveTypeDeclarators(lldb::SBType type,
                                             const TypeDeclaration& type_decl) {
   // Resolve pointers/references.
-  for (clang::tok::TokenKind tk : type_decl.ptr_operators_) {
+  for (auto& [tk, loc] : type_decl.ptr_operators_) {
     if (tk == clang::tok::star) {
       // Pointers to reference types are forbidden.
       if (type.IsReferenceType()) {
@@ -1502,7 +1504,7 @@ lldb::SBType Parser::ResolveTypeDeclarators(lldb::SBType type,
                 llvm::formatv("'type name' declared as a pointer to a "
                               "reference of type '{0}'",
                               type.GetName()),
-                token_.getLocation());
+                loc);
         return lldb::SBType();
       }
       // Get pointer type for the base type: e.g. int* -> int**.
@@ -1512,8 +1514,7 @@ lldb::SBType Parser::ResolveTypeDeclarators(lldb::SBType type,
       // References to references are forbidden.
       if (type.IsReferenceType()) {
         BailOut(ErrorCode::kInvalidOperandType,
-                "type name declared as a reference to a reference",
-                token_.getLocation());
+                "type name declared as a reference to a reference", loc);
         return lldb::SBType();
       }
       // Get reference type for the base type: e.g. int -> int&.

@@ -964,12 +964,12 @@ TEST_F(EvalTest, TestCStyleCastBuiltins) {
       IsError(
           "'type name' declared as a pointer to a reference of type 'long &'\n"
           "(long&*)1\n"
-          "       ^"));
+          "      ^"));
 
   EXPECT_THAT(Eval("(long& &)1"),
               IsError("type name declared as a reference to a reference\n"
                       "(long& &)1\n"
-                      "        ^"));
+                      "       ^"));
 
   EXPECT_THAT(
       Eval("(long 1)1"),
