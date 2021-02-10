@@ -1138,6 +1138,9 @@ TEST_F(EvalTest, TestCxxStaticCast) {
 }
 
 TEST_F(EvalTest, TestCxxDynamicCast) {
+  // LLDB doesn't support `dynamic_cast` in the expression evaluator.
+  this->compare_with_lldb_ = false;
+
   EXPECT_THAT(Eval("dynamic_cast<int>(0)"),
               IsError("invalid target type 'int' for dynamic_cast"));
   EXPECT_THAT(Eval("dynamic_cast<int*>(0)"),
