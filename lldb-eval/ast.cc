@@ -27,6 +27,8 @@ void LiteralNode::Accept(Visitor* v) const { v->Visit(this); }
 
 void IdentifierNode::Accept(Visitor* v) const { v->Visit(this); }
 
+void SizeOfNode::Accept(Visitor* v) const { v->Visit(this); }
+
 void CStyleCastNode::Accept(Visitor* v) const { v->Visit(this); }
 
 void MemberOfNode::Accept(Visitor* v) const { v->Visit(this); }

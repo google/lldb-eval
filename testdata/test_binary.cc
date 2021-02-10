@@ -690,6 +690,18 @@ void TestTernaryOperator() {
   // BREAK(TestTernaryOperator)
 }
 
+void TestSizeOf() {
+  int i = 1;
+  int* p = &i;
+  int arr[] = {1, 2, 3};
+
+  struct SizeOfFoo {
+    int x, y;
+  } foo;
+
+  // BREAK(TestSizeOf)
+}
+
 namespace test_binary {
 
 void main() {
@@ -720,6 +732,7 @@ void main() {
   TestScopedEnum();
   TestUnscopedEnum();
   TestTernaryOperator();
+  TestSizeOf();
 
   // BREAK HERE
 }

@@ -1587,3 +1587,34 @@ TEST_F(EvalTest, TestTernaryOperator) {
   EXPECT_THAT(Eval("false ? nullptr : pi"), IsOk());
   EXPECT_THAT(Eval("false ? pi : nullptr"), IsEqual("0x0000000000000000"));
 }
+
+TEST_F(EvalTest, TestSizeOf) {
+  EXPECT_THAT(Eval("sizeof(int)"), IsEqual("4"));
+  EXPECT_THAT(Eval("sizeof(int&)"), IsEqual("4"));
+  EXPECT_THAT(Eval("sizeof(int*)"), IsEqual("8"));
+  EXPECT_THAT(Eval("sizeof(int***)"), IsEqual("8"));
+
+  EXPECT_THAT(Eval("sizeof(i)"), IsEqual("4"));
+  EXPECT_THAT(Eval("sizeof i "), IsEqual("4"));
+  EXPECT_THAT(Eval("sizeof p "), IsEqual("8"));
+  EXPECT_THAT(Eval("sizeof(arr)"), IsEqual("12"));
+  EXPECT_THAT(Eval("sizeof arr "), IsEqual("12"));
+  EXPECT_THAT(Eval("sizeof(arr + 1)"), IsEqual("8"));
+  EXPECT_THAT(Eval("sizeof arr + 1 "), IsEqual("13"));
+
+  EXPECT_THAT(Eval("sizeof(foo)"), IsEqual("8"));
+  EXPECT_THAT(Eval("sizeof foo "), IsEqual("8"));
+  EXPECT_THAT(Eval("sizeof(SizeOfFoo)"), IsEqual("8"));
+
+  EXPECT_THAT(
+      Eval("sizeof(int & *)"),
+      IsError(
+          "'type name' declared as a pointer to a reference of type 'int &'\n"
+          "sizeof(int & *)\n"
+          "             ^"));
+
+  EXPECT_THAT(Eval("sizeof(intt + 1)"),
+              IsError("use of undeclared identifier 'intt'\n"
+                      "sizeof(intt + 1)\n"
+                      "       ^"));
+}

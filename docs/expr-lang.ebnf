@@ -42,7 +42,9 @@ cast_expression = unary_expression
 unary_expression = postfix_expression
                  | "++" cast_expression
                  | "--" cast_expression
-                 | unary_operator cast_expression ;
+                 | unary_operator cast_expression
+                 | "sizeof" unary_expression
+                 | "sizeof" "(" type_id ")" ;
 
 unary_operator = "*" | "&" | "+" | "-" | "!" | "~" ;
 
