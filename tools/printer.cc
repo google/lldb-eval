@@ -46,6 +46,10 @@ class AstPrinter : Visitor {
     std::cout << "IdentifierNode value=" << node->name() << std::endl;
   }
 
+  void Visit(const SizeOfNode* node) override {
+    std::cout << "SizeOfNode type=" << node->operand().GetName() << std::endl;
+  }
+
   void Visit(const CStyleCastNode* node) override {
     const char* type = node->type().GetName();
     std::cout << "CStyleCastNode type=" << type << std::endl;

@@ -88,6 +88,22 @@ class IdentifierNode : public AstNode {
   Value value_;
 };
 
+class SizeOfNode : public AstNode {
+ public:
+  SizeOfNode(lldb::SBType type, lldb::SBType operand)
+      : type_(type), operand_(operand) {}
+
+  void Accept(Visitor* v) const override;
+  bool is_rvalue() const override { return true; }
+  lldb::SBType result_type() const override { return type_; }
+
+  lldb::SBType operand() const { return operand_; }
+
+ private:
+  lldb::SBType type_;
+  lldb::SBType operand_;
+};
+
 enum class CStyleCastKind {
   kArithmetic,
   kEnumeration,
@@ -247,6 +263,7 @@ class Visitor {
   virtual void Visit(const ErrorNode* node) = 0;
   virtual void Visit(const LiteralNode* node) = 0;
   virtual void Visit(const IdentifierNode* node) = 0;
+  virtual void Visit(const SizeOfNode* node) = 0;
   virtual void Visit(const CStyleCastNode* node) = 0;
   virtual void Visit(const MemberOfNode* node) = 0;
   virtual void Visit(const ArraySubscriptNode* node) = 0;

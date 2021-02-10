@@ -215,6 +215,17 @@ void Interpreter::Visit(const IdentifierNode* node) {
   result_ = val;
 }
 
+void Interpreter::Visit(const SizeOfNode* node) {
+  lldb::SBType operand = node->operand();
+
+  // For reference type (int&) we need to look at the referenced type.
+  size_t size = operand.IsReferenceType()
+                    ? operand.GetDereferencedType().GetByteSize()
+                    : operand.GetByteSize();
+  result_ =
+      CreateValueFromBytes(target_, &size, lldb::eBasicTypeUnsignedLongLong);
+}
+
 void Interpreter::Visit(const CStyleCastNode* node) {
   // Get the type and the value we need to cast.
   lldb::SBType type = node->type();

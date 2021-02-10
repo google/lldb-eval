@@ -915,6 +915,8 @@ ExprResult Parser::ParseCastExpression() {
 //    "++" cast_expression
 //    "--" cast_expression
 //    unary_operator cast_expression
+//    sizeof unary_expression
+//    sizeof "(" type_id ")"
 //
 //  unary_operator:
 //    "&"
@@ -933,6 +935,58 @@ ExprResult Parser::ParseUnaryExpression() {
     ConsumeToken();
     auto rhs = ParseCastExpression();
     return BuildUnaryOp(token.getKind(), std::move(rhs), token.getLocation());
+  }
+
+  if (token_.is(clang::tok::kw_sizeof)) {
+    ConsumeToken();
+
+    // [expr.sizeof](http://eel.is/c++draft/expr.sizeof#1)
+    //
+    // The operand is either an expression, which is an unevaluated operand,
+    // or a parenthesized type-id.
+
+    // Either operand itself (if it's a type_id), or an operand return type
+    // (if it's an expression).
+    Type operand;
+
+    // `(` can mean either a type_id or a parenthesized expression.
+    if (token_.is(clang::tok::l_paren)) {
+      TentativeParsingAction tentative_parsing(this);
+
+      Expect(clang::tok::l_paren);
+      ConsumeToken();
+
+      // Parse the type definition and resolve the type.
+      TypeDeclaration type_decl = ParseTypeId();
+      lldb::SBType type = ResolveTypeFromTypeDecl(type_decl);
+      if (type) {
+        tentative_parsing.Commit();
+
+        // type_id requires parentheses, so there must be a closing one.
+        Expect(clang::tok::r_paren);
+        ConsumeToken();
+        // Resolve type declarators. This can fail, in this case the operand
+        // will be empty and the corresponding diagnostics will be reported.
+        operand = ResolveTypeDeclarators(type, type_decl);
+
+      } else {
+        tentative_parsing.Rollback();
+
+        // Failed to parse type_id, fallback to parsing an unary_expression.
+        operand = ParseUnaryExpression()->result_type_deref();
+      }
+
+    } else {
+      // No opening parenthesis means this must be an unary_expression.
+      operand = ParseUnaryExpression()->result_type_deref();
+    }
+    if (!operand) {
+      return std::make_unique<ErrorNode>();
+    }
+
+    lldb::SBType result_type =
+        target_.GetBasicType(lldb::eBasicTypeUnsignedLongLong);
+    return std::make_unique<SizeOfNode>(result_type, operand);
   }
 
   return ParsePostfixExpression();
