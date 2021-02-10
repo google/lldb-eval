@@ -247,7 +247,7 @@ static lldb::SBType DoIntegralPromotion(lldb::SBTarget target, Type from) {
 static ExprResult UsualUnaryConversions(lldb::SBTarget target,
                                         ExprResult expr) {
   // Perform usual conversions for unary operators. At the moment this includes
-  // only the integral promotion for eligible types.
+  // array-to-pointer and the integral promotion for eligible types.
   Type result_type = expr->result_type();
 
   // TODO(werat): Promote bitfields: e.g. uint32_t:10 -> int (not unsigned int).
