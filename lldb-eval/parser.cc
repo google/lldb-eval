@@ -247,10 +247,17 @@ static lldb::SBType DoIntegralPromotion(lldb::SBTarget target, Type from) {
 static ExprResult UsualUnaryConversions(lldb::SBTarget target,
                                         ExprResult expr) {
   // Perform usual conversions for unary operators. At the moment this includes
-  // only the integral promotion for eligible types.
+  // array-to-pointer and the integral promotion for eligible types.
   Type result_type = expr->result_type();
 
   // TODO(werat): Promote bitfields: e.g. uint32_t:10 -> int (not unsigned int).
+
+  if (result_type.IsArrayType()) {
+    // TODO(werat): Make this an explicit array-to-pointer conversion.
+    expr = std::make_unique<CStyleCastNode>(
+        result_type.GetArrayElementType().GetPointerType(), std::move(expr),
+        CStyleCastKind::kPointer);
+  }
 
   if (result_type.IsInteger() || result_type.IsUnscopedEnum()) {
     lldb::SBType promoted_type = DoIntegralPromotion(target, result_type);
@@ -1915,6 +1922,7 @@ ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind kind, ExprResult rhs,
     case clang::tok::plus:
     case clang::tok::minus: {
       rhs = UsualUnaryConversions(target_, std::move(rhs));
+      rhs_type = rhs->result_type_deref();
       if (rhs_type.IsScalar() || rhs_type.IsUnscopedEnum() ||
           // Unary plus is allowed for pointers.
           (kind == clang::tok::plus && rhs_type.IsPointerType())) {
@@ -1924,6 +1932,7 @@ ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind kind, ExprResult rhs,
     }
     case clang::tok::tilde: {
       rhs = UsualUnaryConversions(target_, std::move(rhs));
+      rhs_type = rhs->result_type_deref();
       if (rhs_type.IsInteger() || rhs_type.IsUnscopedEnum()) {
         result_type = rhs->result_type();
       }

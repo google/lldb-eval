@@ -562,6 +562,30 @@ TEST_F(EvalTest, TestPointerArithmetic) {
   EXPECT_THAT(Eval("pp_void0 == p_char1"),
               IsError("comparison of distinct pointer types ('void **' and "
                       "'const char *')"));
+
+  EXPECT_THAT(Eval("+array"), IsOk());
+  EXPECT_THAT(Eval("-array"),
+              IsError("invalid argument type 'int *' to unary expression\n"
+                      "-array\n"
+                      "^"));
+
+  EXPECT_THAT(Eval("array + 1"), IsOk());
+  EXPECT_THAT(Eval("1 + array"), IsOk());
+
+  EXPECT_THAT(Eval("array - 1"), IsOk());
+  EXPECT_THAT(
+      Eval("1 - array"),
+      IsError("invalid operands to binary expression ('int' and 'int [10]')\n"
+              "1 - array\n"
+              "  ^"));
+
+  EXPECT_THAT(Eval("array - array"), IsEqual("0"));
+  EXPECT_THAT(
+      Eval("array + array"),
+      IsError(
+          "invalid operands to binary expression ('int [10]' and 'int [10]')\n"
+          "array + array\n"
+          "      ^"));
 }
 
 TEST_F(EvalTest, PointerPointerArithmeticFloat) {
