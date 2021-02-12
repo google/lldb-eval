@@ -248,7 +248,7 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
         // If not, we'll just compare scalars.
         bool gen_ptr_or_enum =
             rng_->gen_binop_ptr_or_enum(cfg_.binop_gen_ptr_or_enum_prob);
-        if (gen_ptr_exprs) {
+        if (gen_ptr_or_enum) {
           SpecificTypes types = SpecificTypes::make_any_pointer_constraints();
           types.allow_scoped_enums();
           auto maybe_type = gen_type(weights, types);
