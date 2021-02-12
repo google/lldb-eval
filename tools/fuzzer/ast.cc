@@ -137,6 +137,20 @@ std::ostream& operator<<(std::ostream& os, const NullptrType&) {
 bool NullptrType::operator==(const NullptrType&) const { return true; }
 bool NullptrType::operator!=(const NullptrType&) const { return false; }
 
+EnumType::EnumType(std::string name, bool scoped)
+    : name_(std::move(name)), scoped_(scoped) {}
+const std::string& EnumType::name() const { return name_; }
+bool EnumType::is_scoped() const { return scoped_; }
+std::ostream& operator<<(std::ostream& os, const EnumType& type) {
+  return os << type.name();
+}
+bool EnumType::operator==(const EnumType& rhs) const {
+  return name_ == rhs.name_ && scoped_ == rhs.scoped_;
+}
+bool EnumType::operator!=(const EnumType& rhs) const {
+  return name_ != rhs.name_ || scoped_ != rhs.scoped_;
+}
+
 QualifiedType::QualifiedType(Type type, CvQualifiers cv_qualifiers)
     : type_(std::make_shared<Type>(std::move(type))),
       cv_qualifiers_(cv_qualifiers) {}
@@ -403,6 +417,12 @@ std::ostream& operator<<(std::ostream& os, const NullptrConstant&) {
   return os << "nullptr";
 }
 
+std::ostream& operator<<(std::ostream& os, const EnumConstant& expr) {
+  // TODO: Support unscoped enum literals. Currently, unscoped enums aren't
+  // supported well by LLDB.
+  return os << expr.type() << "::" << expr.literal();
+}
+
 std::ostream& operator<<(std::ostream& os, const Expr& e) {
   std::visit([&os](const auto& expr) { os << expr; }, e);
   return os;
@@ -446,6 +466,11 @@ class ExprDumper {
   void operator()(const NullptrConstant&) {
     emit_marked_indentation();
     printf("Pointer constant: `nullptr`\n");
+  }
+
+  void operator()(const EnumConstant& e) {
+    emit_marked_indentation();
+    printf("Enum constant: `%s`\n", e.literal().c_str());
   }
 
   void operator()(const UnaryExpr& e) {
@@ -587,10 +612,12 @@ enum class HashingTypeKind {
   QualifiedType,
   TaggedType,
   NullptrType,
+  EnumType,
 };
 
 namespace std {
 
+using fuzzer::EnumType;
 using fuzzer::NullptrType;
 using fuzzer::PointerType;
 using fuzzer::QualifiedType;
@@ -611,6 +638,10 @@ size_t hash<TaggedType>::operator()(const TaggedType& type) const {
 
 size_t hash<NullptrType>::operator()(const NullptrType&) const {
   return hash_combine(HashingTypeKind::NullptrType);
+}
+
+size_t hash<EnumType>::operator()(const EnumType& type) const {
+  return hash_combine(HashingTypeKind::EnumType, type.name());
 }
 
 }  // namespace std

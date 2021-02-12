@@ -46,6 +46,16 @@ SpecificTypes::SpecificTypes(const Type& type) {
     return;
   }
 
+  const auto* enum_type = std::get_if<EnumType>(&type);
+  if (enum_type != nullptr) {
+    if (enum_type->is_scoped()) {
+      scoped_enum_types_ = *enum_type;
+    } else {
+      unscoped_enum_types_ = *enum_type;
+    }
+    return;
+  }
+
   if (std::holds_alternative<NullptrType>(type)) {
     allows_nullptr_ = true;
     return;
@@ -124,7 +134,38 @@ TypeConstraints TypeConstraints::make_pointer_constraints() const {
   return SpecificTypes::make_pointer_constraints(*specific_types);
 }
 
+static bool allows_enum_type(const SpecificTypes& types, const EnumType& type) {
+  std::variant<NoType, AnyType, EnumType> enum_types;
+  if (type.is_scoped()) {
+    enum_types = types.allowed_scoped_enum_types();
+  } else {
+    enum_types = types.allowed_unscoped_enum_types();
+  }
+
+  if (std::holds_alternative<NoType>(enum_types)) {
+    return false;
+  }
+
+  if (std::holds_alternative<AnyType>(enum_types)) {
+    return true;
+  }
+
+  const auto* as_enum = std::get_if<EnumType>(&enum_types);
+  assert(as_enum != nullptr &&
+         "Should never be null, did you introduce a new alternative?");
+
+  return *as_enum == type;
+}
+
 bool TypeConstraints::allows_type(const Type& type) const {
+  if (!satisfiable()) {
+    return false;
+  }
+
+  if (allows_any()) {
+    return true;
+  }
+
   const auto* as_scalar = std::get_if<ScalarType>(&type);
   if (as_scalar != nullptr) {
     auto scalar_types = allowed_scalar_types();
@@ -155,6 +196,14 @@ bool TypeConstraints::allows_type(const Type& type) const {
 
     const auto can_point_to = allowed_to_point_to();
     return can_point_to.allows_type(inner);
+  }
+
+  const auto* as_enum = std::get_if<EnumType>(&type);
+  if (as_enum != nullptr) {
+    const auto* specific_types = as_specific_types();
+    assert(specific_types != nullptr && "Did you introduce a new alternative?");
+
+    return allows_enum_type(*specific_types, *as_enum);
   }
 
   if (std::holds_alternative<NullptrType>(type)) {

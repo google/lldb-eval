@@ -33,8 +33,10 @@ enum class ScalarType : unsigned char;
 class TaggedType;
 class PointerType;
 class NullptrType;
+class EnumType;
 
-using Type = std::variant<ScalarType, TaggedType, PointerType, NullptrType>;
+using Type =
+    std::variant<ScalarType, TaggedType, PointerType, NullptrType, EnumType>;
 std::ostream& operator<<(std::ostream& os, const Type& type);
 
 enum class CvQualifier : unsigned char {
@@ -136,6 +138,24 @@ class NullptrType {
   bool operator!=(const NullptrType& type) const;
 };
 
+class EnumType {
+ public:
+  EnumType() = default;
+  EnumType(std::string name, bool scoped);
+
+  const std::string& name() const;
+
+  bool is_scoped() const;
+
+  friend std::ostream& operator<<(std::ostream& os, const EnumType& type);
+  bool operator==(const EnumType& type) const;
+  bool operator!=(const EnumType& type) const;
+
+ private:
+  std::string name_;
+  bool scoped_;
+};
+
 class BinaryExpr;
 class UnaryExpr;
 class VariableExpr;
@@ -151,6 +171,7 @@ class CastExpr;
 class DereferenceExpr;
 class BooleanConstant;
 class NullptrConstant;
+class EnumConstant;
 
 enum class UnOp : unsigned char {
   // Used to determine the first enum element.
@@ -199,7 +220,7 @@ using Expr =
     std::variant<IntegerConstant, DoubleConstant, VariableExpr, UnaryExpr,
                  BinaryExpr, AddressOf, MemberOf, MemberOfPtr, ArrayIndex,
                  TernaryExpr, CastExpr, DereferenceExpr, BooleanConstant,
-                 NullptrConstant, ParenthesizedExpr>;
+                 NullptrConstant, EnumConstant, ParenthesizedExpr>;
 inline constexpr size_t NUM_EXPR_KINDS = std::variant_size_v<Expr>;
 void dump_expr(const Expr& expr);
 std::ostream& operator<<(std::ostream& os, const Expr& expr);
@@ -533,6 +554,25 @@ class NullptrConstant {
   int precedence() const { return PRECEDENCE; }
 };
 
+class EnumConstant {
+ public:
+  static constexpr int PRECEDENCE = 0;
+
+  EnumConstant() = default;
+  EnumConstant(EnumType type, std::string literal)
+      : type_(std::move(type)), literal_(std::move(literal)) {}
+
+  friend std::ostream& operator<<(std::ostream& os, const EnumConstant& expr);
+
+  const EnumType& type() const { return type_; }
+  const std::string& literal() const { return literal_; }
+  int precedence() const { return PRECEDENCE; }
+
+ private:
+  EnumType type_;
+  std::string literal_;
+};
+
 }  // namespace fuzzer
 
 // Forward declarations of hash specializations
@@ -556,6 +596,11 @@ struct hash<fuzzer::TaggedType> {
 template <>
 struct hash<fuzzer::NullptrType> {
   size_t operator()(const fuzzer::NullptrType& type) const;
+};
+
+template <>
+struct hash<fuzzer::EnumType> {
+  size_t operator()(const fuzzer::EnumType& type) const;
 };
 
 }  // namespace std

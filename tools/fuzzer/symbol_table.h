@@ -76,8 +76,16 @@ class SymbolTable {
     tagged_types_.insert(std::move(containing_type));
   }
 
+  void add_enum_literal(const EnumType& enum_type, std::string enum_literal) {
+    enum_map_[enum_type].emplace_back(enum_type, std::move(enum_literal));
+  }
+
   const std::unordered_map<Type, std::vector<Field>>& fields_by_type() const {
     return fields_by_type_;
+  }
+
+  const std::unordered_map<EnumType, std::vector<EnumConstant>>& enums() const {
+    return enum_map_;
   }
 
   const std::unordered_set<TaggedType>& tagged_types() const {
@@ -87,6 +95,7 @@ class SymbolTable {
  private:
   std::unordered_map<Type, std::vector<VariableFreedomPair>> var_map_;
   std::unordered_map<Type, std::vector<Field>> fields_by_type_;
+  std::unordered_map<EnumType, std::vector<EnumConstant>> enum_map_;
   std::unordered_set<TaggedType> tagged_types_;
 };
 
