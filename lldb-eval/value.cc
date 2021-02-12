@@ -267,8 +267,25 @@ Value CastScalarToBasicType(lldb::SBTarget target, Value val,
 }
 
 Value CastEnumToBasicType(lldb::SBTarget target, Value val, lldb::SBType type) {
-  uint64_t bytes = val.GetUInt64();
-  return CreateValueFromBytes(target, &bytes, type);
+  Value ret;
+
+  switch (type.GetCanonicalType().GetBasicType()) {
+#define CASE(basic_type, builtin_type)                   \
+  case basic_type: {                                     \
+    auto v = static_cast<builtin_type>(val.GetUInt64()); \
+    ret = CreateValueFromBytes(target, &v, type);        \
+    break;                                               \
+  }
+
+    LLDB_TYPE_BUILTIN(CASE)
+#undef CASE
+
+    default:
+      // Invalid basic type, can't cast to it.
+      break;
+  }
+
+  return ret;
 }
 
 Value CastPointerToBasicType(lldb::SBTarget target, Value val,
