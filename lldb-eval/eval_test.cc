@@ -1452,6 +1452,13 @@ TEST_F(EvalTest, TestScopedEnum) {
   EXPECT_THAT(Eval("(ScopedEnum)-1"), IsOk());
   EXPECT_THAT(Eval("(ScopedEnum)256"), IsOk());
   EXPECT_THAT(Eval("(ScopedEnum)257"), IsOk());
+
+  EXPECT_THAT(Eval("(int)enum_foo"), IsEqual("0"));
+  EXPECT_THAT(Eval("(short)ScopedEnum::kBar"), IsEqual("1"));
+  EXPECT_THAT(Eval("(char*)enum_u8_bar"), IsEqual("0x0000000000000001"));
+  EXPECT_THAT(Eval("(float)enum_bar"), IsEqual("1"));
+  EXPECT_THAT(Eval("(float)enum_foo"), IsEqual("0"));
+  EXPECT_THAT(Eval("(double)ScopedEnumUInt8::kBar"), IsEqual("1"));
 }
 
 TEST_F(EvalTest, TestScopedEnumArithmetic) {
@@ -1535,6 +1542,14 @@ TEST_F(EvalTest, TestUnscopedEnum) {
   EXPECT_THAT(Eval("!enum_one"), IsEqual("false"));
   EXPECT_THAT(Eval("(int*)1 + enum_one"), IsEqual("0x0000000000000005"));
   EXPECT_THAT(Eval("(int*)5 - enum_one"), IsEqual("0x0000000000000001"));
+
+  EXPECT_THAT(Eval("(long long)UnscopedEnum::kTwo"), IsEqual("2"));
+  EXPECT_THAT(Eval("(unsigned int)enum_one"), IsEqual("1"));
+  EXPECT_THAT(Eval("(short*)UnscopedEnumUInt8::kTwoU8"),
+              IsEqual("0x0000000000000002"));
+  EXPECT_THAT(Eval("(float)UnscopedEnum::kOne"), IsEqual("1"));
+  EXPECT_THAT(Eval("(float)enum_two"), IsEqual("2"));
+  EXPECT_THAT(Eval("(double)enum_one"), IsEqual("1"));
 }
 
 TEST_F(EvalTest, TestUnscopedEnumNegation) {
@@ -1555,6 +1570,7 @@ TEST_F(EvalTest, TestUnscopedEnumWithUnderlyingType) {
 
 TEST_F(EvalTest, TestUnscopedEnumEmpty) {
   EXPECT_THAT(Eval("(UnscopedEnumEmpty)1"), IsOk());
+  EXPECT_THAT(Eval("(int)enum_empty"), IsOk());
 }
 
 TEST_F(EvalTest, TestTernaryOperator) {
