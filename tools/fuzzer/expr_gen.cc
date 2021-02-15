@@ -139,6 +139,26 @@ std::optional<Expr> ExprGenerator::gen_double_constant(
   return {};
 }
 
+std::optional<Expr> ExprGenerator::gen_enum_constant(
+    const ExprConstraints& constraints) {
+  if (constraints.must_be_lvalue()) {
+    return {};
+  }
+
+  std::vector<std::reference_wrapper<const EnumConstant>> enums;
+  for (const auto& [k, v] : symtab_.enums()) {
+    if (constraints.type_constraints().allows_type(k)) {
+      enums.insert(enums.end(), v.begin(), v.end());
+    }
+  }
+
+  if (enums.empty()) {
+    return {};
+  }
+
+  return rng_->pick_enum_literal(enums);
+}
+
 std::optional<Expr> ExprGenerator::gen_variable_expr(
     const ExprConstraints& constraints) {
   const auto& type_constraints = constraints.type_constraints();
@@ -224,13 +244,14 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
         lhs_types = INT_TYPES | FLOAT_TYPES;
         rhs_types = INT_TYPES | FLOAT_TYPES;
 
-        // Try and see if we can generate a pointer type. If not, we'll just
-        // compare scalars.
-        bool gen_ptr_exprs =
-            rng_->gen_binop_ptr_expr(cfg_.binop_gen_ptr_expr_prob);
-        if (gen_ptr_exprs) {
-          auto maybe_type =
-              gen_type(weights, SpecificTypes::make_any_pointer_constraints());
+        // Try and see if we can generate a pointer or scoped enum type.
+        // If not, we'll just compare scalars.
+        bool gen_ptr_or_enum =
+            rng_->gen_binop_ptr_or_enum(cfg_.binop_gen_ptr_or_enum_prob);
+        if (gen_ptr_or_enum) {
+          SpecificTypes types = SpecificTypes::make_any_pointer_constraints();
+          types.allow_scoped_enums();
+          auto maybe_type = gen_type(weights, types);
           if (maybe_type.has_value()) {
             const auto& type = maybe_type.value();
             lhs_types = SpecificTypes(type);
@@ -324,6 +345,14 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
         lldb_eval_unreachable(
             "Unhandled switch case, did you introduce a new binary "
             "operator?");
+    }
+
+    if (lhs_types.allows_any_of(INT_TYPES)) {
+      lhs_types.allow_unscoped_enums();
+    }
+
+    if (rhs_types.allows_any_of(INT_TYPES)) {
+      rhs_types.allow_unscoped_enums();
     }
 
     TypeConstraints lhs_constraints = std::move(lhs_types);
@@ -469,8 +498,13 @@ std::optional<Expr> ExprGenerator::gen_ternary_expr(
       mask |= FLOAT_TYPES;
     }
 
+    SpecificTypes allowed_types = mask;
+    if (allowed_types.allows_any_of(INT_TYPES)) {
+      allowed_types.allow_unscoped_enums();
+    }
+
     new_constraints =
-        ExprConstraints(SpecificTypes(mask), constraints.memory_constraints());
+        ExprConstraints(allowed_types, constraints.memory_constraints());
   } else {
     new_constraints = ExprConstraints(TypeConstraints(SpecificTypes(type)),
                                       constraints.memory_constraints());
@@ -514,8 +548,16 @@ std::optional<Expr> ExprGenerator::gen_cast_expr(
     expr_types = SpecificTypes::make_any_pointer_constraints();
   } else if (std::holds_alternative<NullptrType>(type)) {
     expr_types = SpecificTypes(type);
+  } else if (std::holds_alternative<EnumType>(type)) {
+    // So far, casting other types to both (scoped and unscoped) enum types
+    // didn't cause any problems. If it does, change this.
+    expr_types = INT_TYPES | FLOAT_TYPES;
+    expr_types.allow_unscoped_enums();
+    expr_types.allow_scoped_enums();
   } else {
     expr_types = INT_TYPES | FLOAT_TYPES;
+    expr_types.allow_unscoped_enums();
+    expr_types.allow_scoped_enums();
   }
 
   ExprConstraints new_constraints =
@@ -757,6 +799,10 @@ std::optional<Expr> ExprGenerator::gen_with_weights(
         maybe_expr = gen_nullptr_constant(constraints);
         break;
 
+      case ExprKind::EnumConstant:
+        maybe_expr = gen_enum_constant(constraints);
+        break;
+
       case ExprKind::CastExpr:
         maybe_expr = gen_cast_expr(new_weights, constraints);
         break;
@@ -865,6 +911,10 @@ std::optional<Type> ExprGenerator::gen_type(
       case TypeKind::NullptrType:
         maybe_type = NullptrType{};
         break;
+
+      case TypeKind::EnumType:
+        maybe_type = gen_enum_type(type_constraints);
+        break;
     }
 
     if (maybe_type.has_value()) {
@@ -943,6 +993,22 @@ std::optional<Type> ExprGenerator::gen_scalar_type(
   return rng_->gen_scalar_type(mask);
 }
 
+std::optional<Type> ExprGenerator::gen_enum_type(
+    const TypeConstraints& constraints) {
+  std::vector<std::reference_wrapper<const EnumType>> enum_types;
+  for (const auto& [enum_type, _] : symtab_.enums()) {
+    if (constraints.allows_type(enum_type)) {
+      enum_types.emplace_back(enum_type);
+    }
+  }
+
+  if (enum_types.empty()) {
+    return {};
+  }
+
+  return rng_->pick_enum_type(enum_types);
+}
+
 CvQualifiers ExprGenerator::gen_cv_qualifiers() {
   return rng_->gen_cv_qualifiers(cfg_.const_prob, cfg_.volatile_prob);
 }
@@ -960,8 +1026,10 @@ std::optional<Expr> ExprGenerator::generate() {
     type_weights[i] = cfg_.type_kind_weights[i].initial_weight;
   }
 
-  return gen_with_weights(weights,
-                          TypeConstraints(SpecificTypes::all_in_bool_ctx()));
+  auto allowed_types = SpecificTypes::all_in_bool_ctx();
+  allowed_types.allow_scoped_enums();
+
+  return gen_with_weights(weights, TypeConstraints(allowed_types));
 }
 
 template <typename Enum, typename Rng>
@@ -1104,6 +1172,16 @@ TaggedType DefaultGeneratorRng::pick_tagged_type(
   return pick_element(types, rng_);
 }
 
+EnumType DefaultGeneratorRng::pick_enum_type(
+    const std::vector<std::reference_wrapper<const EnumType>>& types) {
+  return pick_element(types, rng_);
+}
+
+EnumConstant DefaultGeneratorRng::pick_enum_literal(
+    const std::vector<std::reference_wrapper<const EnumConstant>>& enums) {
+  return pick_element(enums, rng_);
+}
+
 bool DefaultGeneratorRng::gen_binop_ptr_expr(float probability) {
   std::bernoulli_distribution distr(probability);
   return distr(rng_);
@@ -1115,6 +1193,11 @@ bool DefaultGeneratorRng::gen_binop_flip_operands(float probability) {
 }
 
 bool DefaultGeneratorRng::gen_binop_ptrdiff_expr(float probability) {
+  std::bernoulli_distribution distr(probability);
+  return distr(rng_);
+}
+
+bool DefaultGeneratorRng::gen_binop_ptr_or_enum(float probability) {
   std::bernoulli_distribution distr(probability);
   return distr(rng_);
 }

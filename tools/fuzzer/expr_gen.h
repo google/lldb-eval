@@ -43,6 +43,7 @@ enum class ExprKind : unsigned char {
   TernaryExpr,
   BooleanConstant,
   NullptrConstant,
+  EnumConstant,
   DereferenceExpr,
   CastExpr,
   EnumLast = CastExpr,
@@ -56,7 +57,8 @@ enum class TypeKind : unsigned char {
   PointerType,
   VoidPointerType,
   NullptrType,
-  EnumLast = NullptrType,
+  EnumType,
+  EnumLast = EnumType,
 };
 inline constexpr size_t NUM_GEN_TYPE_KINDS = (size_t)TypeKind::EnumLast + 1;
 
@@ -111,6 +113,9 @@ struct GenConfig {
   // Probability that the operands of a binary expression or array indexing will
   // be flipped (`ptr + idx` -> `idx + ptr`, `arr[idx]` -> `idx[arr]`, etc).
   float binop_flip_operands_prob = 0.1f;
+  // Probability that pointer or scoped enum types will be compared in a binary
+  // expression (the alternative is to compare scalars).
+  float binop_gen_ptr_or_enum_prob = 0.5;
 
   // Probabilities that a const/volatile qualifier will be generated
   // respectively.
@@ -139,6 +144,7 @@ struct GenConfig {
       {1.0f, 0.1f},  // ExprKind::TernaryExpr
       {1.0f, 0.0f},  // ExprKind::BooleanConstant
       {1.0f, 0.0f},  // ExprKind::NullptrConstant
+      {1.0f, 0.0f},  // ExprKind::EnumConstant
       {1.0f, 0.1f},  // ExprKind::DereferenceExpr
       {1.0f, 0.4f},  // ExprKind::CastExpr
   }};
@@ -146,11 +152,12 @@ struct GenConfig {
   // Type kind weights. Make sure that weights are all non-zero and that
   // any non-terminal expression has a dampening factor in the range `(0, 1)`.
   std::array<TypeKindWeightInfo, NUM_GEN_TYPE_KINDS> type_kind_weights = {{
-      {2.0f, 0.0f},  // TypeKind::ScalarType
+      {3.0f, 0.0f},  // TypeKind::ScalarType
       {1.0f, 0.0f},  // TypeKind::TaggedType
       {1.0f, 0.1f},  // TypeKind::PointerType
       {1.0f, 0.1f},  // TypeKind::VoidPointerType
       {0.2f, 0.2f},  // TypeKind::NullptrType
+      {1.0f, 0.0f},  // TypeKind::EnumType
   }};
 };
 
@@ -172,6 +179,7 @@ class GeneratorRng {
   virtual bool gen_binop_ptr_expr(float probability) = 0;
   virtual bool gen_binop_flip_operands(float probability) = 0;
   virtual bool gen_binop_ptrdiff_expr(float probability) = 0;
+  virtual bool gen_binop_ptr_or_enum(float probability) = 0;
   virtual CvQualifiers gen_cv_qualifiers(float const_prob,
                                          float volatile_prob) = 0;
   virtual VariableExpr pick_variable(
@@ -180,6 +188,10 @@ class GeneratorRng {
       const std::vector<std::reference_wrapper<const TaggedType>>& types) = 0;
   virtual Field pick_field(
       const std::vector<std::reference_wrapper<const Field>>& fields) = 0;
+  virtual EnumType pick_enum_type(
+      const std::vector<std::reference_wrapper<const EnumType>>& types) = 0;
+  virtual EnumConstant pick_enum_literal(
+      const std::vector<std::reference_wrapper<const EnumConstant>>& enums) = 0;
 };
 
 class DefaultGeneratorRng : public GeneratorRng {
@@ -200,6 +212,7 @@ class DefaultGeneratorRng : public GeneratorRng {
   bool gen_binop_ptr_expr(float probability) override;
   bool gen_binop_flip_operands(float probability) override;
   bool gen_binop_ptrdiff_expr(float probability) override;
+  bool gen_binop_ptr_or_enum(float probability) override;
   CvQualifiers gen_cv_qualifiers(float const_prob,
                                  float volatile_prob) override;
   VariableExpr pick_variable(
@@ -210,6 +223,12 @@ class DefaultGeneratorRng : public GeneratorRng {
       override;
   Field pick_field(
       const std::vector<std::reference_wrapper<const Field>>& fields) override;
+  EnumType pick_enum_type(
+      const std::vector<std::reference_wrapper<const EnumType>>& types)
+      override;
+  EnumConstant pick_enum_literal(
+      const std::vector<std::reference_wrapper<const EnumConstant>>& enums)
+      override;
 
  private:
   std::mt19937 rng_;
@@ -232,6 +251,7 @@ class ExprGenerator {
   std::optional<Expr> gen_integer_constant(const ExprConstraints& constraints);
   std::optional<Expr> gen_double_constant(const ExprConstraints& constraints);
   std::optional<Expr> gen_nullptr_constant(const ExprConstraints& constraints);
+  std::optional<Expr> gen_enum_constant(const ExprConstraints& constraints);
   std::optional<Expr> gen_variable_expr(const ExprConstraints& constraints);
   std::optional<Expr> gen_binary_expr(const Weights& weights,
                                       const ExprConstraints& constraints);
@@ -261,6 +281,7 @@ class ExprGenerator {
   std::optional<Type> gen_void_pointer_type(const TypeConstraints& constraints);
   std::optional<Type> gen_tagged_type(const TypeConstraints& constraints);
   std::optional<Type> gen_scalar_type(const TypeConstraints& constraints);
+  std::optional<Type> gen_enum_type(const TypeConstraints& constraints);
   CvQualifiers gen_cv_qualifiers();
 
   std::optional<Expr> gen_with_weights(const Weights& weights,

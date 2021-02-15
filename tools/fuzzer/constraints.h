@@ -65,10 +65,13 @@ class SpecificTypes {
   // - Integers
   // - Floats
   // - Void/non-void pointers or the null pointer constant `0`
+  // - Unscoped enums
   static SpecificTypes all_in_bool_ctx() {
     SpecificTypes retval;
     retval.scalar_types_ = ~ScalarMask(ScalarType::Void);
     retval.ptr_types_ = AnyType{};
+    retval.unscoped_enum_types_ = AnyType{};
+    retval.scoped_enum_types_ = NoType{};
     retval.allows_void_pointer_ = true;
     retval.allows_nullptr_ = true;
 
@@ -105,6 +108,8 @@ class SpecificTypes {
   bool satisfiable() const {
     return scalar_types_.any() || !tagged_types_.empty() ||
            !std::holds_alternative<NoType>(ptr_types_) ||
+           !std::holds_alternative<NoType>(unscoped_enum_types_) ||
+           !std::holds_alternative<NoType>(scoped_enum_types_) ||
            allows_void_pointer_ || allows_nullptr_;
   }
 
@@ -114,6 +119,16 @@ class SpecificTypes {
   // Tagged types allowed by these constraints. An empty
   const std::unordered_set<TaggedType>& allowed_tagged_types() const {
     return tagged_types_;
+  }
+
+  const std::variant<NoType, AnyType, EnumType>& allowed_scoped_enum_types()
+      const {
+    return scoped_enum_types_;
+  }
+
+  const std::variant<NoType, AnyType, EnumType>& allowed_unscoped_enum_types()
+      const {
+    return unscoped_enum_types_;
   }
 
   // Do these constraints allow any of the types in `mask`?
@@ -135,6 +150,12 @@ class SpecificTypes {
   // Disallows `nullptr`s.
   void disallow_nullptr() { allows_nullptr_ = false; }
 
+  // Allows unscoped enum types.
+  void allow_unscoped_enums() { unscoped_enum_types_ = AnyType{}; }
+
+  // Allows scoped enum types.
+  void allow_scoped_enums() { scoped_enum_types_ = AnyType{}; }
+
   // What kind of types do these constraints allow a pointer to?
   TypeConstraints allowed_to_point_to() const;
 
@@ -142,6 +163,8 @@ class SpecificTypes {
   ScalarMask scalar_types_;
   std::unordered_set<TaggedType> tagged_types_;
   std::variant<NoType, AnyType, std::shared_ptr<SpecificTypes>> ptr_types_;
+  std::variant<NoType, AnyType, EnumType> unscoped_enum_types_;
+  std::variant<NoType, AnyType, EnumType> scoped_enum_types_;
   bool allows_void_pointer_ = false;
   bool allows_nullptr_ = false;
 };
@@ -173,6 +196,7 @@ class TypeConstraints {
   // - Integers
   // - Floats
   // - Void/non-void pointers
+  // - Unscoped enums
   static TypeConstraints all_in_bool_ctx() {
     return SpecificTypes::all_in_bool_ctx();
   }

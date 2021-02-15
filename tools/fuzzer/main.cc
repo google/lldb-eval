@@ -284,6 +284,40 @@ fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame) {
                    fuzzer::VariableExpr("ns::nested_ns::global_int"));
   }
 
+  {
+    fuzzer::EnumType type("CStyleEnum", /*scoped=*/false);
+    symtab.add_enum_literal(type, "VALUE1");
+    symtab.add_enum_literal(type, "VALUE2");
+    symtab.add_enum_literal(type, "VALUE3");
+    symtab.add_var(type, fuzzer::VariableExpr("c_enum"));
+  }
+
+  {
+    fuzzer::EnumType type("ns::CStyleEnum", /*scoped=*/false);
+    symtab.add_enum_literal(type, "V1");
+    symtab.add_enum_literal(type, "V2");
+    symtab.add_enum_literal(type, "V3");
+    symtab.add_var(type, fuzzer::VariableExpr("ns_enum"));
+  }
+
+  {
+    fuzzer::EnumType type("EnumClass", /*scoped=*/true);
+    symtab.add_enum_literal(type, "ZERO");
+    symtab.add_enum_literal(type, "ONE");
+    symtab.add_enum_literal(type, "TWO");
+    symtab.add_enum_literal(type, "THREE");
+    symtab.add_var(type, fuzzer::VariableExpr("enum_class"));
+  }
+
+  {
+    fuzzer::EnumType type("ns::EnumClass", /*scoped=*/true);
+    symtab.add_enum_literal(type, "ZERO");
+    symtab.add_enum_literal(type, "ONE");
+    symtab.add_enum_literal(type, "TWO");
+    symtab.add_enum_literal(type, "THREE");
+    symtab.add_var(type, fuzzer::VariableExpr("ns_enum_class"));
+  }
+
   return symtab;
 }
 

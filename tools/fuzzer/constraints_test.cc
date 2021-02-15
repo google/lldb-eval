@@ -169,6 +169,44 @@ TEST(Constraints, PointerTypes) {
   EXPECT_THAT(none.allows_type(NullptrType{}), IsFalse());
 }
 
+TEST(Constraints, EnumTypes) {
+  EnumType scoped_enum("ScopedEnum", true);
+  EnumType unscoped_enum("UnscopedEnum", false);
+  EnumType specific_enum("SpecificEnum", true);
+
+  TypeConstraints any = AnyType();
+  TypeConstraints none;
+  TypeConstraints bool_ctx = TypeConstraints::all_in_bool_ctx();
+  TypeConstraints only_specific = SpecificTypes(specific_enum);
+
+  SpecificTypes only_scoped_types, only_unscoped_types;
+  only_scoped_types.allow_scoped_enums();
+  only_unscoped_types.allow_unscoped_enums();
+  TypeConstraints only_scoped = std::move(only_scoped_types);
+  TypeConstraints only_unscoped = std::move(only_unscoped_types);
+
+  EXPECT_THAT(any.allows_type(scoped_enum), IsTrue());
+  EXPECT_THAT(any.allows_type(unscoped_enum), IsTrue());
+
+  EXPECT_THAT(none.allows_type(scoped_enum), IsFalse());
+  EXPECT_THAT(none.allows_type(unscoped_enum), IsFalse());
+
+  EXPECT_THAT(bool_ctx.allows_type(scoped_enum), IsFalse());
+  EXPECT_THAT(bool_ctx.allows_type(unscoped_enum), IsTrue());
+
+  EXPECT_THAT(only_scoped.allows_type(scoped_enum), IsTrue());
+  EXPECT_THAT(only_scoped.allows_type(unscoped_enum), IsFalse());
+  EXPECT_THAT(only_scoped.allows_type(specific_enum), IsTrue());
+
+  EXPECT_THAT(only_unscoped.allows_type(scoped_enum), IsFalse());
+  EXPECT_THAT(only_unscoped.allows_type(unscoped_enum), IsTrue());
+  EXPECT_THAT(only_unscoped.allows_type(specific_enum), IsFalse());
+
+  EXPECT_THAT(only_specific.allows_type(scoped_enum), IsFalse());
+  EXPECT_THAT(only_specific.allows_type(unscoped_enum), IsFalse());
+  EXPECT_THAT(only_specific.allows_type(specific_enum), IsTrue());
+}
+
 TEST(Constraints, Unsatisfiability) {
   TypeConstraints default_ctor;
   TypeConstraints default_specific_types = SpecificTypes();

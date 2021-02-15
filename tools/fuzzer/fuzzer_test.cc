@@ -113,6 +113,15 @@ class FakeGeneratorRng : public GeneratorRng {
     return var;
   }
 
+  EnumConstant pick_enum_literal(
+      const std::vector<std::reference_wrapper<const EnumConstant>>&) override {
+    assert(!enums_.empty());
+    EnumConstant e = enums_.back();
+    enums_.pop_back();
+
+    return e;
+  }
+
   fuzzer::Field pick_field(
       const std::vector<std::reference_wrapper<const fuzzer::Field>>&)
       override {
@@ -132,6 +141,15 @@ class FakeGeneratorRng : public GeneratorRng {
     assert(!tagged_types_.empty());
     TaggedType type = tagged_types_.back();
     tagged_types_.pop_back();
+
+    return type;
+  }
+
+  EnumType pick_enum_type(
+      const std::vector<std::reference_wrapper<const EnumType>>&) override {
+    assert(!enum_types_.empty());
+    EnumType type = enum_types_.back();
+    enum_types_.pop_back();
 
     return type;
   }
@@ -166,6 +184,16 @@ class FakeGeneratorRng : public GeneratorRng {
     return gen;
   }
 
+  bool gen_binop_ptr_or_enum(float) override {
+    bool gen = false;
+    if (!gen_binop_ptr_or_enum_.empty()) {
+      gen = gen_binop_ptr_or_enum_.back();
+      gen_binop_ptr_or_enum_.pop_back();
+    }
+
+    return gen;
+  }
+
   CvQualifiers gen_cv_qualifiers(float, float) override {
     assert(!cv_qualifiers_.empty());
     CvQualifiers cv = cv_qualifiers_.back();
@@ -179,7 +207,8 @@ class FakeGeneratorRng : public GeneratorRng {
   static FakeGeneratorRng from_expr(
       const Expr& expr, const std::vector<bool>& flip_operands,
       const std::vector<bool>& gen_binop_ptr_expr,
-      const std::vector<bool>& gen_binop_ptrdiff_expr) {
+      const std::vector<bool>& gen_binop_ptrdiff_expr,
+      const std::vector<bool>& gen_binop_ptr_or_enum) {
     FakeGeneratorRng rng;
 
     std::visit(rng, expr);
@@ -195,6 +224,7 @@ class FakeGeneratorRng : public GeneratorRng {
     std::reverse(rng.cv_qualifiers_.begin(), rng.cv_qualifiers_.end());
     std::reverse(rng.scalar_types_.begin(), rng.scalar_types_.end());
     std::reverse(rng.tagged_types_.begin(), rng.tagged_types_.end());
+    std::reverse(rng.enum_types_.begin(), rng.enum_types_.end());
 
     std::reverse(rng.vars_.begin(), rng.vars_.end());
 
@@ -203,6 +233,8 @@ class FakeGeneratorRng : public GeneratorRng {
                                    gen_binop_ptr_expr.rend());
     rng.gen_binop_ptrdiff_expr_.assign(gen_binop_ptrdiff_expr.rbegin(),
                                        gen_binop_ptrdiff_expr.rend());
+    rng.gen_binop_ptr_or_enum_.assign(gen_binop_ptr_or_enum.rbegin(),
+                                      gen_binop_ptr_or_enum.rend());
 
     return rng;
   }
@@ -249,6 +281,11 @@ class FakeGeneratorRng : public GeneratorRng {
 
   void operator()(const NullptrConstant&) {
     expr_kinds_.push_back(ExprKind::NullptrConstant);
+  }
+
+  void operator()(const EnumConstant& e) {
+    expr_kinds_.push_back(ExprKind::EnumConstant);
+    enums_.push_back(e);
   }
 
   void operator()(const ParenthesizedExpr& e) { std::visit(*this, e.expr()); }
@@ -322,6 +359,11 @@ class FakeGeneratorRng : public GeneratorRng {
     type_kinds_.push_back(TypeKind::NullptrType);
   }
 
+  void operator()(const EnumType& e) {
+    type_kinds_.push_back(TypeKind::EnumType);
+    enum_types_.push_back(e);
+  }
+
   void operator()(const ScalarType& e) {
     type_kinds_.push_back(TypeKind::ScalarType);
     scalar_types_.push_back(e);
@@ -333,12 +375,14 @@ class FakeGeneratorRng : public GeneratorRng {
   std::vector<IntegerConstant> int_constants_;
   std::vector<DoubleConstant> double_constants_;
   std::vector<bool> bools_;
+  std::vector<EnumConstant> enums_;
   std::vector<ExprKind> expr_kinds_;
 
   std::vector<TypeKind> type_kinds_;
   std::vector<CvQualifiers> cv_qualifiers_;
   std::vector<ScalarType> scalar_types_;
   std::vector<TaggedType> tagged_types_;
+  std::vector<EnumType> enum_types_;
   std::vector<std::string> fields_;
 
   std::vector<VariableExpr> vars_;
@@ -346,6 +390,7 @@ class FakeGeneratorRng : public GeneratorRng {
   std::vector<bool> flip_operands_;
   std::vector<bool> gen_binop_ptr_expr_;
   std::vector<bool> gen_binop_ptrdiff_expr_;
+  std::vector<bool> gen_binop_ptr_or_enum_;
 };
 
 struct Mismatch {
@@ -461,6 +506,12 @@ class AstComparator {
     // Nothing to compare here.
   }
 
+  void operator()(const EnumType& lhs, const EnumType& rhs) {
+    if (lhs.name() != rhs.name()) {
+      add_mismatch(lhs.name(), rhs.name());
+    }
+  }
+
   void operator()(ScalarType lhs, ScalarType rhs) {
     if (lhs != rhs) {
       add_mismatch(lhs, rhs);
@@ -475,6 +526,12 @@ class AstComparator {
 
   void operator()(const NullptrConstant&, const NullptrConstant&) {
     // Nothing to compare here.
+  }
+
+  void operator()(const EnumConstant& lhs, const EnumConstant& rhs) {
+    if (lhs.literal() != rhs.literal()) {
+      add_mismatch(lhs.literal(), rhs.literal());
+    }
   }
 
   template <typename T, typename U,
@@ -527,17 +584,20 @@ struct PrecedenceTestParam {
   std::vector<bool> flip_operands;
   std::vector<bool> gen_binop_ptr_expr;
   std::vector<bool> gen_binop_ptrdiff_expr;
+  std::vector<bool> gen_binop_ptr_or_enum;
 
   PrecedenceTestParam(
       std::string str, Expr expr,
       std::vector<bool> flip_operands = std::vector<bool>(),
       std::vector<bool> gen_binop_ptr_expr = std::vector<bool>(),
-      std::vector<bool> gen_binop_ptrdiff_expr = std::vector<bool>())
+      std::vector<bool> gen_binop_ptrdiff_expr = std::vector<bool>(),
+      std::vector<bool> gen_binop_ptr_or_enum = std::vector<bool>())
       : str(std::move(str)),
         expr(std::move(expr)),
         flip_operands(std::move(flip_operands)),
         gen_binop_ptr_expr(std::move(gen_binop_ptr_expr)),
-        gen_binop_ptrdiff_expr(std::move(gen_binop_ptrdiff_expr)) {}
+        gen_binop_ptrdiff_expr(std::move(gen_binop_ptrdiff_expr)),
+        gen_binop_ptr_or_enum(std::move(gen_binop_ptr_or_enum)) {}
 };
 
 std::ostream& operator<<(std::ostream& os, const PrecedenceTestParam& param) {
@@ -552,7 +612,7 @@ TEST_P(OperatorPrecedence, CorrectAst) {
   auto fake_rng =
       std::make_unique<FakeGeneratorRng>(FakeGeneratorRng::from_expr(
           param.expr, param.flip_operands, param.gen_binop_ptr_expr,
-          param.gen_binop_ptrdiff_expr));
+          param.gen_binop_ptrdiff_expr, param.gen_binop_ptr_or_enum));
 
   ExprGenerator gen(std::move(fake_rng), GenConfig(), SymbolTable());
   auto maybe_expr = gen.generate();

@@ -123,6 +123,9 @@ class ClassWithNestedClass {
 };
 const int ClassWithNestedClass::NestedClass::s1 = 20;
 
+enum CStyleEnum { VALUE1, VALUE2, VALUE3 };
+enum class EnumClass { ZERO, ONE, TWO, THREE };
+
 // Global variables
 int global_int = 55;
 TestStruct global_ts;
@@ -134,6 +137,9 @@ class StaticMember {
   static const int s1;
 };
 const int StaticMember::s1 = 25;
+
+enum CStyleEnum { V1, V2, V3 };
+enum class EnumClass { ZERO, ONE, TWO, THREE };
 
 // Global variables:
 int global_int = 65;
@@ -279,6 +285,12 @@ int main() {
     double dbl_field;
   } ls{42, x, &x, p, -0.8};
   (void)ls;
+
+  CStyleEnum c_enum = VALUE1;
+  EnumClass enum_class = EnumClass::THREE;
+  ns::CStyleEnum ns_enum = ns::V2;
+  ns::EnumClass ns_enum_class = ns::EnumClass::TWO;
+  (void)c_enum, (void)enum_class, (void)ns_enum, (void)ns_enum_class;
 
   // Modify values of global variables.
   global_ts.flt_field = 2.71f;
