@@ -131,7 +131,7 @@ class Parser {
   ExprResult ParseIntegerLiteral(clang::NumericLiteralParser& literal,
                                  clang::Token token);
 
-  ExprResult ParseBuiltinFunction(std::shared_ptr<BuiltinFunctionDef> func_def);
+  ExprResult ParseBuiltinFunction(std::unique_ptr<BuiltinFunctionDef> func_def);
 
   ExprResult InsertImplicitConversion(ExprResult expr, Type type);
 

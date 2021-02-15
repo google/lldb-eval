@@ -520,7 +520,7 @@ std::string TypeDeclaration::GetBaseName() const {
   return base_name;
 }
 
-static std::shared_ptr<BuiltinFunctionDef> GetBuiltinFunctionDef(
+static std::unique_ptr<BuiltinFunctionDef> GetBuiltinFunctionDef(
     lldb::SBTarget target_, clang::Preprocessor* pp, clang::Token token) {
   if (token.isNot(clang::tok::identifier)) {
     return nullptr;
@@ -534,7 +534,7 @@ static std::shared_ptr<BuiltinFunctionDef> GetBuiltinFunctionDef(
     std::vector<lldb::SBType> arguments = {
         target_.GetBasicType(lldb::eBasicTypeUnsignedInt),
     };
-    return std::make_shared<BuiltinFunctionDef>("__log2", return_type,
+    return std::make_unique<BuiltinFunctionDef>("__log2", return_type,
                                                 std::move(arguments));
   }
 
@@ -1835,7 +1835,7 @@ ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
 //    expression
 //
 ExprResult Parser::ParseBuiltinFunction(
-    std::shared_ptr<BuiltinFunctionDef> func_def) {
+    std::unique_ptr<BuiltinFunctionDef> func_def) {
   // Check for builtin debugger intrinsic function.
   clang::SourceLocation loc = token_.getLocation();
   ConsumeToken();
