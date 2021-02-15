@@ -745,6 +745,7 @@ void main() {
   TestUnscopedEnum();
   TestTernaryOperator();
   TestSizeOf();
+  TestBuiltinFunction_Log2();
 
   // BREAK HERE
 }
