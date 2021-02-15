@@ -19,7 +19,9 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/TokenKinds.h"
 #include "lldb-eval/value.h"
 #include "lldb/API/SBType.h"
@@ -32,31 +34,42 @@ class Visitor;
 // better diagnostic messages during the evaluation.
 class AstNode {
  public:
+  AstNode(clang::SourceLocation location) : location_(location) {}
   virtual ~AstNode() {}
 
   virtual void Accept(Visitor* v) const = 0;
 
+  virtual bool is_error() const { return false; };
   virtual bool is_rvalue() const = 0;
   virtual bool is_bitfield() const { return false; };
   virtual lldb::SBType result_type() const = 0;
+
+  clang::SourceLocation location() const { return location_; }
 
   // The expression result type, but dereferenced in case it's a reference. This
   // is for convenience, since for the purposes of the semantic analysis only
   // the dereferenced type matters.
   lldb::SBType result_type_deref();
+
+ private:
+  clang::SourceLocation location_;
 };
 
 using ExprResult = std::unique_ptr<AstNode>;
 
 class ErrorNode : public AstNode {
+ public:
+  ErrorNode() : AstNode(clang::SourceLocation()) {}
   void Accept(Visitor* v) const override;
+  bool is_error() const override { return true; }
   bool is_rvalue() const override { return false; }
   lldb::SBType result_type() const override { return lldb::SBType(); }
 };
 
 class LiteralNode : public AstNode {
  public:
-  LiteralNode(Value value) : value_(std::move(value)) {}
+  LiteralNode(clang::SourceLocation location, Value value)
+      : AstNode(location), value_(std::move(value)) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return true; }
@@ -70,8 +83,10 @@ class LiteralNode : public AstNode {
 
 class IdentifierNode : public AstNode {
  public:
-  IdentifierNode(std::string name, Value value, bool is_rvalue)
-      : is_rvalue_(is_rvalue),
+  IdentifierNode(clang::SourceLocation location, std::string name, Value value,
+                 bool is_rvalue)
+      : AstNode(location),
+        is_rvalue_(is_rvalue),
         name_(std::move(name)),
         value_(std::move(value)) {}
 
@@ -90,8 +105,9 @@ class IdentifierNode : public AstNode {
 
 class SizeOfNode : public AstNode {
  public:
-  SizeOfNode(lldb::SBType type, lldb::SBType operand)
-      : type_(type), operand_(operand) {}
+  SizeOfNode(clang::SourceLocation location, lldb::SBType type,
+             lldb::SBType operand)
+      : AstNode(location), type_(type), operand_(operand) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return true; }
@@ -104,6 +120,29 @@ class SizeOfNode : public AstNode {
   lldb::SBType operand_;
 };
 
+class BuiltinFunctionCallNode : public AstNode {
+ public:
+  BuiltinFunctionCallNode(clang::SourceLocation location,
+                          lldb::SBType result_type, std::string name,
+                          std::vector<ExprResult> arguments)
+      : AstNode(location),
+        result_type_(result_type),
+        name_(std::move(name)),
+        arguments_(std::move(arguments)) {}
+
+  void Accept(Visitor* v) const override;
+  bool is_rvalue() const override { return true; }
+  lldb::SBType result_type() const override { return result_type_; }
+
+  std::string name() const { return name_; }
+  const std::vector<ExprResult>& arguments() const { return arguments_; };
+
+ private:
+  lldb::SBType result_type_;
+  std::string name_;
+  std::vector<ExprResult> arguments_;
+};
+
 enum class CStyleCastKind {
   kArithmetic,
   kEnumeration,
@@ -113,8 +152,12 @@ enum class CStyleCastKind {
 
 class CStyleCastNode : public AstNode {
  public:
-  CStyleCastNode(lldb::SBType type, ExprResult rhs, CStyleCastKind kind)
-      : type_(std::move(type)), rhs_(std::move(rhs)), kind_(kind) {}
+  CStyleCastNode(clang::SourceLocation location, lldb::SBType type,
+                 ExprResult rhs, CStyleCastKind kind)
+      : AstNode(location),
+        type_(std::move(type)),
+        rhs_(std::move(rhs)),
+        kind_(kind) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return true; }
@@ -132,9 +175,11 @@ class CStyleCastNode : public AstNode {
 
 class MemberOfNode : public AstNode {
  public:
-  MemberOfNode(lldb::SBType result_type, ExprResult lhs, bool is_bitfield,
+  MemberOfNode(clang::SourceLocation location, lldb::SBType result_type,
+               ExprResult lhs, bool is_bitfield,
                std::vector<uint32_t> member_index, bool is_arrow)
-      : result_type_(result_type),
+      : AstNode(location),
+        result_type_(result_type),
         lhs_(std::move(lhs)),
         is_bitfield_(is_bitfield),
         member_index_(std::move(member_index)),
@@ -159,9 +204,10 @@ class MemberOfNode : public AstNode {
 
 class ArraySubscriptNode : public AstNode {
  public:
-  ArraySubscriptNode(lldb::SBType result_type, ExprResult base,
-                     ExprResult index, bool is_pointer_base)
-      : result_type_(result_type),
+  ArraySubscriptNode(clang::SourceLocation location, lldb::SBType result_type,
+                     ExprResult base, ExprResult index, bool is_pointer_base)
+      : AstNode(location),
+        result_type_(result_type),
         base_(std::move(base)),
         index_(std::move(index)),
         is_pointer_base_(is_pointer_base) {}
@@ -183,9 +229,10 @@ class ArraySubscriptNode : public AstNode {
 
 class BinaryOpNode : public AstNode {
  public:
-  BinaryOpNode(lldb::SBType result_type, clang::tok::TokenKind op,
-               ExprResult lhs, ExprResult rhs)
-      : result_type_(result_type),
+  BinaryOpNode(clang::SourceLocation location, lldb::SBType result_type,
+               clang::tok::TokenKind op, ExprResult lhs, ExprResult rhs)
+      : AstNode(location),
+        result_type_(result_type),
         op_(op),
         lhs_(std::move(lhs)),
         rhs_(std::move(rhs)) {}
@@ -209,9 +256,12 @@ class BinaryOpNode : public AstNode {
 
 class UnaryOpNode : public AstNode {
  public:
-  UnaryOpNode(lldb::SBType result_type, clang::tok::TokenKind op,
-              ExprResult rhs)
-      : result_type_(result_type), op_(op), rhs_(std::move(rhs)) {}
+  UnaryOpNode(clang::SourceLocation location, lldb::SBType result_type,
+              clang::tok::TokenKind op, ExprResult rhs)
+      : AstNode(location),
+        result_type_(result_type),
+        op_(op),
+        rhs_(std::move(rhs)) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return op_ != clang::tok::star; }
@@ -230,9 +280,10 @@ class UnaryOpNode : public AstNode {
 
 class TernaryOpNode : public AstNode {
  public:
-  TernaryOpNode(lldb::SBType result_type, ExprResult cond, ExprResult lhs,
-                ExprResult rhs)
-      : result_type_(result_type),
+  TernaryOpNode(clang::SourceLocation location, lldb::SBType result_type,
+                ExprResult cond, ExprResult lhs, ExprResult rhs)
+      : AstNode(location),
+        result_type_(result_type),
         cond_(std::move(cond)),
         lhs_(std::move(lhs)),
         rhs_(std::move(rhs)) {}
@@ -264,6 +315,7 @@ class Visitor {
   virtual void Visit(const LiteralNode* node) = 0;
   virtual void Visit(const IdentifierNode* node) = 0;
   virtual void Visit(const SizeOfNode* node) = 0;
+  virtual void Visit(const BuiltinFunctionCallNode* node) = 0;
   virtual void Visit(const CStyleCastNode* node) = 0;
   virtual void Visit(const MemberOfNode* node) = 0;
   virtual void Visit(const ArraySubscriptNode* node) = 0;

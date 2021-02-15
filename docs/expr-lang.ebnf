@@ -63,7 +63,8 @@ primary_expression = numeric_literal
                    | pointer_literal
                    | id_expression
                    | "this"
-                   | "(" expression ")" ;
+                   | "(" expression ")"
+                   | builtin_func ;
 
 type_id = type_specifier_seq {abstract_declarator} ;
 
@@ -140,3 +141,12 @@ numeric_literal = ? clang::tok::numeric_constant ? ;
 boolean_literal = "true" | "false" ;
 
 pointer_literal = "nullptr" ;
+
+builtin_func = builtin_func_name "(" {builtin_func_argument_list} ")" ;
+
+builtin_func_name = "__log2" ;
+
+builtin_func_argument_list = builtin_func_argument
+                           | builtin_func_argument_list "," builtin_func_argument_list
+
+builtin_func_argument = expression ;
