@@ -966,7 +966,7 @@ ExprResult Parser::ParseUnaryExpression() {
   }
 
   if (token_.is(clang::tok::kw_sizeof)) {
-    clang::Token token = token_;
+    clang::SourceLocation sizeof_loc = token_.getLocation();
     ConsumeToken();
 
     // [expr.sizeof](http://eel.is/c++draft/expr.sizeof#1)
@@ -1015,8 +1015,7 @@ ExprResult Parser::ParseUnaryExpression() {
 
     lldb::SBType result_type =
         target_.GetBasicType(lldb::eBasicTypeUnsignedLongLong);
-    return std::make_unique<SizeOfNode>(token.getLocation(), result_type,
-                                        operand);
+    return std::make_unique<SizeOfNode>(sizeof_loc, result_type, operand);
   }
 
   return ParsePostfixExpression();
@@ -1188,7 +1187,7 @@ ExprResult Parser::ParsePrimaryExpression() {
 // Parse a type_id.
 //
 //  type_id:
-//    type_specifier_seq {abstract_declarator}
+//    type_specifier_seq [abstract_declarator]
 //
 TypeDeclaration Parser::ParseTypeId() {
   TypeDeclaration type_decl;
@@ -1198,7 +1197,7 @@ TypeDeclaration Parser::ParseTypeId() {
 
   //
   //  abstract_declarator:
-  //    ptr_operator {abstract_declarator}
+  //    ptr_operator [abstract_declarator]
   //
   while (IsPtrOperator(token_)) {
     ParsePtrOperator(&type_decl);
@@ -1210,7 +1209,7 @@ TypeDeclaration Parser::ParseTypeId() {
 // Parse a type_specifier_seq.
 //
 //  type_specifier_seq:
-//    type_specifier {type_specifier_seq}
+//    type_specifier [type_specifier_seq]
 //
 void Parser::ParseTypeSpecifierSeq(TypeDeclaration* type_decl) {
   while (true) {
@@ -1230,7 +1229,7 @@ void Parser::ParseTypeSpecifierSeq(TypeDeclaration* type_decl) {
 //    cv_qualifier
 //
 //  simple_type_specifier:
-//    {"::"} {nested_name_specifier} type_name
+//    ["::"] [nested_name_specifier] type_name
 //    "char"
 //    "char16_t"
 //    "char32_t"
@@ -1363,6 +1362,9 @@ std::string Parser::ParseNestedNameSpecifier() {
 //
 //  typedef_name
 //    identifier
+//
+//  simple_template_id:
+//    template_name "<" [template_argument_list] ">"
 //
 std::string Parser::ParseTypeName() {
   // Typename always starts with an identifier.
@@ -1541,7 +1543,7 @@ std::string Parser::ParseTemplateArgument() {
 // Parse a ptr_operator.
 //
 //  ptr_operator:
-//    "*" {cv_qualifier_seq}
+//    "*" [cv_qualifier_seq]
 //    "&"
 //
 void Parser::ParsePtrOperator(TypeDeclaration* type_decl) {
@@ -1554,7 +1556,7 @@ void Parser::ParsePtrOperator(TypeDeclaration* type_decl) {
 
     //
     //  cv_qualifier_seq:
-    //    cv_qualifier {cv_qualifier_seq}
+    //    cv_qualifier [cv_qualifier_seq]
     //
     //  cv_qualifier:
     //    "const"
@@ -1637,8 +1639,8 @@ bool Parser::IsPtrOperator(clang::Token token) const {
 //    qualified_id
 //
 //  qualified_id:
-//    {"::"} {nested_name_specifier} unqualified_id
-//    {"::"} identifier
+//    ["::"] [nested_name_specifier] unqualified_id
+//    ["::"] identifier
 //
 //  identifier:
 //    ? clang::tok::identifier ?
@@ -1822,14 +1824,14 @@ ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
 // Parse a builtin_func.
 //
 //  builtin_func:
-//    builtin_func_name "(" {builtin_func_argument_list} ")"
+//    builtin_func_name "(" [builtin_func_argument_list] ")"
 //
 //  builtin_func_name:
 //    "__log2"
 //
 //  builtin_func_argument_list:
 //    builtin_func_argument
-//    builtin_func_argument_list "," builtin_func_argument_list
+//    builtin_func_argument_list "," builtin_func_argument
 //
 //  builtin_func_argument:
 //    expression
@@ -1845,25 +1847,31 @@ ExprResult Parser::ParseBuiltinFunction(
 
   std::vector<ExprResult> arguments;
 
-  do {
-    // Eat the comma if this is not the first iteration.
-    if (arguments.size() > 0) {
-      ConsumeToken();
-    }
+  if (token_.is(clang::tok::r_paren)) {
+    // Empty argument list, nothing to do here.
+    ConsumeToken();
+  } else {
+    // Non-empty argument list, parse all the arguments.
+    do {
+      // Eat the comma if this is not the first iteration.
+      if (arguments.size() > 0) {
+        ConsumeToken();
+      }
 
-    // Parse a builtin_func_argument. If failed to parse, bail out early and
-    // don't try parsing the rest of the arguments.
-    auto argument = ParseExpression();
-    if (argument->is_error()) {
-      return std::make_unique<ErrorNode>();
-    }
+      // Parse a builtin_func_argument. If failed to parse, bail out early and
+      // don't try parsing the rest of the arguments.
+      auto argument = ParseExpression();
+      if (argument->is_error()) {
+        return std::make_unique<ErrorNode>();
+      }
 
-    arguments.push_back(std::move(argument));
+      arguments.push_back(std::move(argument));
 
-  } while (token_.is(clang::tok::comma));
+    } while (token_.is(clang::tok::comma));
 
-  Expect(clang::tok::r_paren);
-  ConsumeToken();
+    Expect(clang::tok::r_paren);
+    ConsumeToken();
+  }
 
   // Check we have the correct number of arguments.
   if (arguments.size() != func_def->arguments_.size()) {

@@ -1629,11 +1629,16 @@ TEST_F(EvalTest, TestBuiltinFunction_Log2) {
   //   Attempt to calculate __log2(0).
   //
   EXPECT_THAT(Eval("__log2(0)"), IsEqual("4294967295"));
+  EXPECT_THAT(Eval("__log2(1LL << 32)"), IsEqual("4294967295"));
+  EXPECT_THAT(Eval("__log2(1 / +0.0)"), IsEqual("4294967295"));    // +Inf
+  EXPECT_THAT(Eval("__log2(1 / -0.0)"), IsEqual("4294967295"));    // -Inf
+  EXPECT_THAT(Eval("__log2(0.0 / -0.0)"), IsEqual("4294967295"));  // NaN
 
   EXPECT_THAT(Eval("__log2(1)"), IsEqual("0"));
   EXPECT_THAT(Eval("__log2(8)"), IsEqual("3"));
   EXPECT_THAT(Eval("__log2(12345)"), IsEqual("13"));
   EXPECT_THAT(Eval("__log2(-1)"), IsEqual("31"));
+  EXPECT_THAT(Eval("__log2((1LL << 32)+128)"), IsEqual("7"));
 
   EXPECT_THAT(Eval("__log2(32.3f)"), IsEqual("5"));
   EXPECT_THAT(Eval("__log2(12345.12345)"), IsEqual("13"));
@@ -1649,6 +1654,12 @@ TEST_F(EvalTest, TestBuiltinFunction_Log2) {
               IsError("no known conversion from 'Foo' to 'unsigned int'\n"
                       "__log2(foo)\n"
                       "       ^"));
+
+  EXPECT_THAT(Eval("__log2()"),
+              IsError("no matching function for call to '__log2': requires 1 "
+                      "argument(s), but 0 argument(s) were provided\n"
+                      "__log2()\n"
+                      "^"));
 
   EXPECT_THAT(Eval("1 + __log2(1, 2)"),
               IsError("no matching function for call to '__log2': requires 1 "
