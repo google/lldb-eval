@@ -33,7 +33,9 @@ jobs:
       - name: Mount Bazel cache
         uses: actions/cache@v2
         with:
-          path: ${{ steps.bazel-cache.outputs.bazel-cache-dir }}
+          path: |
+            ${{ steps.bazel-cache.outputs.bazel-cache-dir }}
+            !${{ steps.bazel-cache.outputs.bazel-cache-dir }}/java.log.*
           key: ${{ runner.os }}-bazel-${{ matrix.llvm_version }}
 
       - name: Setup LLVM (Linux)
