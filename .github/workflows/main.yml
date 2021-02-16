@@ -13,10 +13,11 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            tag: 10
+            llvm_version: 10
           - os: ubuntu-latest
-            tag: 11
+            llvm_version: 11
           - os: windows-latest
+            llvm_version: 11
             llvm_archive: llvm-11.0.0-x86_64-windows-msvc-release-md
 
     runs-on: ${{ matrix.os }}
@@ -24,28 +25,25 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Mount Bazel cache (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/cache@v1
-        with:
-          path: ~/.cache/bazel
-          key: ${{ runner.os }}-bazel
+      - name: Get Bazel cache dir
+        id: bazel-cache
+        run: |
+          echo "::set-output name=bazel-cache-dir::$(bazel info output_base)"
 
-      - name: Mount Bazel cache (Windows)
-        if: matrix.os == 'windows-latest'
-        uses: actions/cache@v1
+      - name: Mount Bazel cache
+        uses: actions/cache@v2
         with:
-          path: ~\_bazel_werat
-          key: ${{ runner.os }}-bazel
+          path: ${{ steps.bazel-cache.outputs.bazel-cache-dir }}
+          key: ${{ runner.os }}-bazel-${{ matrix.llvm_version }}
 
       - name: Setup LLVM (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
           wget https://apt.llvm.org/llvm.sh
           chmod +x ./llvm.sh
-          sudo ./llvm.sh ${{ matrix.tag }}
-          sudo apt install -y llvm-${{ matrix.tag }}-dev libclang-${{ matrix.tag }}-dev liblldb-${{ matrix.tag }}-dev
-          echo "LLVM_INSTALL_PATH=/usr/lib/llvm-${{ matrix.tag }}" >> $GITHUB_ENV
+          sudo ./llvm.sh ${{ matrix.llvm_version }}
+          sudo apt install -y llvm-${{ matrix.llvm_version }}-dev libclang-${{ matrix.llvm_version }}-dev liblldb-${{ matrix.llvm_version }}-dev
+          echo "LLVM_INSTALL_PATH=/usr/lib/llvm-${{ matrix.llvm_version }}" >> $GITHUB_ENV
           echo "CC=gcc-10" >> $GITHUB_ENV
           echo "CXX=g++-10" >> $GITHUB_ENV
 
