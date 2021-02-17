@@ -58,6 +58,19 @@ class TypeDeclaration {
       ptr_operators_;
 };
 
+class BuiltinFunctionDef {
+ public:
+  BuiltinFunctionDef(std::string name, lldb::SBType return_type,
+                     std::vector<lldb::SBType> arguments)
+      : name_(std::move(name)),
+        return_type_(std::move(return_type)),
+        arguments_(std::move(arguments)) {}
+
+  std::string name_;
+  lldb::SBType return_type_;
+  std::vector<lldb::SBType> arguments_;
+};
+
 // Pure recursive descent parser for C++ like expressions.
 // EBNF grammar is described here:
 // docs/expr-ebnf.txt
@@ -117,6 +130,10 @@ class Parser {
                                   clang::Token token);
   ExprResult ParseIntegerLiteral(clang::NumericLiteralParser& literal,
                                  clang::Token token);
+
+  ExprResult ParseBuiltinFunction(std::unique_ptr<BuiltinFunctionDef> func_def);
+
+  ExprResult InsertImplicitConversion(ExprResult expr, Type type);
 
   void ConsumeToken();
   void BailOut(ErrorCode error_code, const std::string& error,

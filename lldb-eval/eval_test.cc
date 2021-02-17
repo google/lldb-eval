@@ -1634,3 +1634,52 @@ TEST_F(EvalTest, TestSizeOf) {
                       "sizeof(intt + 1)\n"
                       "       ^"));
 }
+
+TEST_F(EvalTest, TestBuiltinFunction_Log2) {
+  // LLDB doesn't support `__log2` intrinsic function.
+  this->compare_with_lldb_ = false;
+
+  // Note: Visual Studio debugger gives an error in this case:
+  //
+  //   > __log(0)
+  //   Attempt to calculate __log2(0).
+  //
+  EXPECT_THAT(Eval("__log2(0)"), IsEqual("4294967295"));
+  EXPECT_THAT(Eval("__log2(1LL << 32)"), IsEqual("4294967295"));
+  EXPECT_THAT(Eval("__log2(1 / +0.0)"), IsEqual("4294967295"));    // +Inf
+  EXPECT_THAT(Eval("__log2(1 / -0.0)"), IsEqual("4294967295"));    // -Inf
+  EXPECT_THAT(Eval("__log2(0.0 / -0.0)"), IsEqual("4294967295"));  // NaN
+
+  EXPECT_THAT(Eval("__log2(1)"), IsEqual("0"));
+  EXPECT_THAT(Eval("__log2(8)"), IsEqual("3"));
+  EXPECT_THAT(Eval("__log2(12345)"), IsEqual("13"));
+  EXPECT_THAT(Eval("__log2(-1)"), IsEqual("31"));
+  EXPECT_THAT(Eval("__log2((1LL << 32)+128)"), IsEqual("7"));
+
+  EXPECT_THAT(Eval("__log2(32.3f)"), IsEqual("5"));
+  EXPECT_THAT(Eval("__log2(12345.12345)"), IsEqual("13"));
+  EXPECT_THAT(Eval("__log2(-1.0)"), IsEqual("31"));
+  EXPECT_THAT(Eval("__log2(-1.0f)"), IsEqual("31"));
+
+  EXPECT_THAT(Eval("__log2(c_enum)"), IsEqual("7"));
+  EXPECT_THAT(Eval("__log2(cxx_enum)"), IsEqual("7"));
+  EXPECT_THAT(Eval("__log2(CEnum::kFoo)"), IsEqual("7"));
+  EXPECT_THAT(Eval("__log2(CxxEnum::kFoo)"), IsEqual("7"));
+
+  EXPECT_THAT(Eval("__log2(foo)"),
+              IsError("no known conversion from 'Foo' to 'unsigned int'\n"
+                      "__log2(foo)\n"
+                      "       ^"));
+
+  EXPECT_THAT(Eval("__log2()"),
+              IsError("no matching function for call to '__log2': requires 1 "
+                      "argument(s), but 0 argument(s) were provided\n"
+                      "__log2()\n"
+                      "^"));
+
+  EXPECT_THAT(Eval("1 + __log2(1, 2)"),
+              IsError("no matching function for call to '__log2': requires 1 "
+                      "argument(s), but 2 argument(s) were provided\n"
+                      "1 + __log2(1, 2)\n"
+                      "    ^"));
+}

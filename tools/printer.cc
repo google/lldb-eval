@@ -50,6 +50,17 @@ class AstPrinter : Visitor {
     std::cout << "SizeOfNode type=" << node->operand().GetName() << std::endl;
   }
 
+  void Visit(const BuiltinFunctionCallNode* node) override {
+    std::cout << "BuiltinFunctionCallNode name=" << node->name() << std::endl;
+    auto& args = node->arguments();
+    for (size_t i = 0; i < args.size() - 1; ++i) {
+      PrintChild(args[i].get());
+    }
+    if (args.size() > 0) {
+      PrintLastChild(args[args.size() - 1].get());
+    }
+  }
+
   void Visit(const CStyleCastNode* node) override {
     const char* type = node->type().GetName();
     std::cout << "CStyleCastNode type=" << type << std::endl;

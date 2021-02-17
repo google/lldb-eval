@@ -702,6 +702,18 @@ void TestSizeOf() {
   // BREAK(TestSizeOf)
 }
 
+void TestBuiltinFunction_Log2() {
+  struct Foo {
+  } foo;
+
+  enum CEnum { kFoo = 129 } c_enum = kFoo;
+  enum class CxxEnum { kFoo = 129 } cxx_enum = CxxEnum::kFoo;
+
+  // BREAK(TestBuiltinFunction_Log2)
+}
+
+void func(int kek) {}
+
 namespace test_binary {
 
 void main() {
@@ -733,6 +745,7 @@ void main() {
   TestUnscopedEnum();
   TestTernaryOperator();
   TestSizeOf();
+  TestBuiltinFunction_Log2();
 
   // BREAK HERE
 }

@@ -63,16 +63,17 @@ primary_expression = numeric_literal
                    | pointer_literal
                    | id_expression
                    | "this"
-                   | "(" expression ")" ;
+                   | "(" expression ")"
+                   | builtin_func ;
 
-type_id = type_specifier_seq {abstract_declarator} ;
+type_id = type_specifier_seq [abstract_declarator] ;
 
-type_specifier_seq = type_specifier {type_specifier_seq} ;
+type_specifier_seq = type_specifier [type_specifier_seq] ;
 
 type_specifier = simple_type_specifier
                | cv_qualifier ;
 
-simple_type_specifier = {"::"} {nested_name_specifier} type_name
+simple_type_specifier = ["::"] [nested_name_specifier] type_name
                       | "char"
                       | "char16_t"
                       | "char32_t"
@@ -103,7 +104,7 @@ enum_name = identifier ;
 
 typedef_name = identifier ;
 
-simple_template_id = template_name "<" {template_argument_list} ">" ;
+simple_template_id = template_name "<" [template_argument_list] ">" ;
 
 template_name = identifier ;
 
@@ -118,11 +119,11 @@ namespace_name = identifier ;
 
 cv_qualifier = "const" | "volatile" ;
 
-cv_qualifier_seq = cv_qualifier {cv_qualifier_seq} ;
+cv_qualifier_seq = cv_qualifier [cv_qualifier_seq] ;
 
-abstract_declarator = ptr_operator {abstract_declarator} ;
+abstract_declarator = ptr_operator [abstract_declarator] ;
 
-ptr_operator = "*" {cv_qualifier_seq}
+ptr_operator = "*" [cv_qualifier_seq]
              | "&" ;
 
 id_expression = unqualified_id
@@ -130,8 +131,8 @@ id_expression = unqualified_id
 
 unqualified_id = identifier ;
 
-qualified_id = {"::"} {nested_name_specifier} unqualified_id
-             | {"::"} identifier ;
+qualified_id = ["::"] [nested_name_specifier] unqualified_id
+             | ["::"] identifier ;
 
 identifier = ? clang::tok::identifier ? ;
 
@@ -140,3 +141,12 @@ numeric_literal = ? clang::tok::numeric_constant ? ;
 boolean_literal = "true" | "false" ;
 
 pointer_literal = "nullptr" ;
+
+builtin_func = builtin_func_name "(" [builtin_func_argument_list] ")" ;
+
+builtin_func_name = "__log2" ;
+
+builtin_func_argument_list = builtin_func_argument
+                           | builtin_func_argument_list "," builtin_func_argument
+
+builtin_func_argument = expression ;

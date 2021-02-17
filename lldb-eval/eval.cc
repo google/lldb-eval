@@ -226,6 +226,29 @@ void Interpreter::Visit(const SizeOfNode* node) {
       CreateValueFromBytes(target_, &size, lldb::eBasicTypeUnsignedLongLong);
 }
 
+void Interpreter::Visit(const BuiltinFunctionCallNode* node) {
+  if (node->name() == "__log2") {
+    assert(node->arguments().size() == 1 &&
+           "invalid ast: expected exactly one argument to `__log2`");
+    // Get the first (and the only) argument and evaluate it.
+    auto& arg = node->arguments()[0];
+    Value val = EvalNode(arg.get());
+    if (!val) {
+      return;
+    }
+    assert(val.IsInteger() &&
+           "invalid ast: argument to __log2 must be an interger");
+
+    // Use Log2_32 to match the behaviour of Visual Studio debugger.
+    uint32_t ret = llvm::Log2_32(static_cast<uint32_t>(val.GetUInt64()));
+    result_ = CreateValueFromBytes(target_, &ret, lldb::eBasicTypeUnsignedInt);
+    return;
+  }
+
+  assert(false && "invalid ast: unknown builtin function");
+  result_ = Value();
+}
+
 void Interpreter::Visit(const CStyleCastNode* node) {
   // Get the type and the value we need to cast.
   lldb::SBType type = node->type();
