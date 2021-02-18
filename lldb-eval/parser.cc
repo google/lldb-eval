@@ -521,23 +521,16 @@ std::string TypeDeclaration::GetBaseName() const {
 }
 
 static std::unique_ptr<BuiltinFunctionDef> GetBuiltinFunctionDef(
-    lldb::SBTarget target_, clang::Preprocessor* pp, clang::Token token) {
-  if (token.isNot(clang::tok::identifier)) {
-    return nullptr;
-  }
-
-  std::string identifier = pp->getSpelling(token);
-
+    lldb::SBTarget target_, const std::string& identifier) {
   if (identifier == "__log2") {
     lldb::SBType return_type =
         target_.GetBasicType(lldb::eBasicTypeUnsignedInt);
     std::vector<lldb::SBType> arguments = {
         target_.GetBasicType(lldb::eBasicTypeUnsignedInt),
     };
-    return std::make_unique<BuiltinFunctionDef>("__log2", return_type,
+    return std::make_unique<BuiltinFunctionDef>(identifier, return_type,
                                                 std::move(arguments));
   }
-
   // Not a builtin function.
   return nullptr;
 }
@@ -1140,13 +1133,24 @@ ExprResult Parser::ParsePrimaryExpression() {
     return ParseBooleanLiteral();
   } else if (token_.is(clang::tok::kw_nullptr)) {
     return ParsePointerLiteral();
-  } else if (auto func_def =
-                 GetBuiltinFunctionDef(target_, pp_.get(), token_)) {
-    return ParseBuiltinFunction(std::move(func_def));
   } else if (token_.isOneOf(clang::tok::coloncolon, clang::tok::identifier)) {
     // Save the source location for the diagnostics message.
     clang::SourceLocation loc = token_.getLocation();
     auto identifier = ParseIdExpression();
+    // Check if this is a function call.
+    if (token_.is(clang::tok::l_paren)) {
+      auto func_def = GetBuiltinFunctionDef(target_, identifier);
+      if (!func_def) {
+        BailOut(
+            ErrorCode::kNotImplemented,
+            llvm::formatv("function '{0}' is not a supported builtin intrinsic",
+                          identifier),
+            loc);
+        return std::make_unique<ErrorNode>();
+      }
+      return ParseBuiltinFunction(loc, std::move(func_def));
+    }
+    // Otherwise look for an identifier.
     auto value = ctx_->LookupIdentifier(identifier);
     if (!value) {
       BailOut(ErrorCode::kUndeclaredIdentifier,
@@ -1837,11 +1841,7 @@ ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
 //    expression
 //
 ExprResult Parser::ParseBuiltinFunction(
-    std::unique_ptr<BuiltinFunctionDef> func_def) {
-  // Check for builtin debugger intrinsic function.
-  clang::SourceLocation loc = token_.getLocation();
-  ConsumeToken();
-
+    clang::SourceLocation loc, std::unique_ptr<BuiltinFunctionDef> func_def) {
   Expect(clang::tok::l_paren);
   ConsumeToken();
 

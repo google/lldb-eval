@@ -1683,4 +1683,16 @@ TEST_F(EvalTest, TestBuiltinFunction_Log2) {
                       "argument(s), but 2 argument(s) were provided\n"
                       "1 + __log2(1, 2)\n"
                       "    ^"));
+
+  EXPECT_THAT(Eval("dummy(1)"),
+              IsError("function 'dummy' is not a supported builtin intrinsic"));
+  EXPECT_THAT(
+      Eval("::dummy(1)"),
+      IsError("function '::dummy' is not a supported builtin intrinsic"));
+  EXPECT_THAT(
+      Eval("ns::dummy(1)"),
+      IsError("function 'ns::dummy' is not a supported builtin intrinsic"));
+  EXPECT_THAT(
+      Eval("::ns::dummy(1)"),
+      IsError("function '::ns::dummy' is not a supported builtin intrinsic"));
 }
