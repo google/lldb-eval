@@ -1459,6 +1459,7 @@ TEST_F(EvalTest, TestScopedEnum) {
   EXPECT_THAT(Eval("(float)enum_bar"), IsEqual("1"));
   EXPECT_THAT(Eval("(float)enum_foo"), IsEqual("0"));
   EXPECT_THAT(Eval("(double)ScopedEnumUInt8::kBar"), IsEqual("1"));
+  EXPECT_THAT(Eval("(ScopedEnum)ScopedEnum::kBar"), IsEqual("kBar"));
 }
 
 TEST_F(EvalTest, TestScopedEnumArithmetic) {
