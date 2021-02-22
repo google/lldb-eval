@@ -5,8 +5,8 @@ build --enable_platform_specific_config
 build:linux --cxxopt=-std=c++17
 build:linux --copt=-Wall
 build:linux --copt=-Wextra
-build:linux --copt=-Wpedantic
-build:linux --copt=-Werror
+#build:linux --copt=-Wpedantic
+#build:linux --copt=-Werror
 build:linux --cxxopt=-fno-exceptions
 build:linux --cxxopt=-fno-rtti
 
@@ -82,3 +82,18 @@ build:valgrind --copt=-DCONFIG_VALGRIND
 
 # Try loading per-user configuration.
 try-import %workspace%/user.bazelrc
+
+
+# Force the use of Clang for C++ builds.
+build --action_env=CC=clang
+build --action_env=CXX=clang++
+
+# Define the --config=asan-libfuzzer configuration.
+build:asan-libfuzzer --@rules_fuzzing//fuzzing:cc_engine=@rules_fuzzing//fuzzing/engines:libfuzzer
+build:asan-libfuzzer --@rules_fuzzing//fuzzing:cc_engine_instrumentation=libfuzzer
+build:asan-libfuzzer --@rules_fuzzing//fuzzing:cc_engine_sanitizer=asan
+
+
+# Define the --config=libfuzzer configuration.
+build:libfuzzer --@rules_fuzzing//fuzzing:cc_engine=@rules_fuzzing//fuzzing/engines:libfuzzer
+build:libfuzzer --@rules_fuzzing//fuzzing:cc_engine_instrumentation=libfuzzer

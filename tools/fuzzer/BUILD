@@ -19,6 +19,7 @@ cc_library(
         "//lldb-eval:defines",
         "@llvm_project//:lldb-api",
     ],
+    visibility = ["//visibility:public"],
 )
 
 cc_binary(

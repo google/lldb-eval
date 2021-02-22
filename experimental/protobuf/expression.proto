@@ -1,0 +1,147 @@
+syntax = "proto2";
+
+message NumericalLiteral {
+  required int32 int32_value = 1;
+}
+
+message ConditionalExpr {
+  message Extended {
+    required Expr lhs = 1;
+    required Expr rhs = 2;
+  }
+
+  required LogicalOrExpr condition = 1;
+  optional Extended extended = 2;
+}
+
+message LogicalOrExpr {
+  required LogicalAndExpr lhs = 1;
+  // TODO: rhs should be repeated instead of optional
+  optional LogicalAndExpr rhs = 2;
+}
+
+message LogicalAndExpr {
+  required InclusiveOrExpr lhs = 1;
+  // TODO: rhs should be repeated
+  optional InclusiveOrExpr rhs = 2;
+}
+
+message InclusiveOrExpr {
+  required ExclusiveOrExpr lhs = 1;
+  // TODO: rhs should be repeated
+  optional ExclusiveOrExpr rhs = 2;
+}
+
+message ExclusiveOrExpr {
+  required BitwiseAndExpr lhs = 1;
+  // TODO: rhs should be repeated
+  optional BitwiseAndExpr rhs = 2;
+}
+
+message BitwiseAndExpr {
+  required EqualityExpr lhs = 1;
+  // TODO: rhs should be repeated
+  optional EqualityExpr rhs = 2;
+}
+
+message EqualityExpr {
+  enum EqualityOp {
+    EQ = 0;
+    NE = 1;
+  }
+
+  required RelationalExpr lhs = 1;
+  required EqualityOp operation = 2;
+  optional RelationalExpr rhs = 3;
+}
+
+message RelationalExpr {
+  enum RelationalOp {
+    LT = 0;
+    GT = 1;
+    LTE = 2;
+    GTE = 3;
+  }
+
+  required ShiftExpr lhs = 1;
+  required RelationalOp operation = 2;
+  optional ShiftExpr rhs = 3;
+}
+
+message ShiftExpr {
+  enum ShiftOp {
+    LSH = 0;
+    RSH = 1;
+  }
+
+  required AdditiveExpr lhs = 1;
+  required ShiftOp operation = 2;
+  optional AdditiveExpr rhs = 3;
+}
+
+message AdditiveExpr {
+  enum AdditiveOp {
+    PLUS = 0;
+    MINUS = 1;
+  }
+
+  required MultiplicativeExpr lhs = 1;
+  required AdditiveOp operation = 2;
+  optional MultiplicativeExpr rhs = 3;
+}
+
+message MultiplicativeExpr {
+  enum MultiplicativeOp {
+    MUL = 0;
+    DIV = 1;
+    MOD = 2;
+  }
+
+  required CastExpr lhs = 1;
+  required MultiplicativeOp operation = 2;
+  optional CastExpr rhs = 3;
+}
+
+message CastExpr {
+  message Option {
+    required TypeId type_id = 1;
+    required CastExpr expr = 2;
+  }
+
+  required UnaryExpr unary_expr = 1;
+  optional Option cast_expr = 2;
+}
+
+message UnaryExpr {
+  enum UnaryOp {
+    PLUS = 0;
+    MINUS = 1;
+    LOGICAL_NOT = 2;
+    BITWISE_NOT = 3;
+    DEREFERNCE = 4;
+    ADDRESS = 5;
+  }
+
+  message Option {
+    required UnaryOp operation = 1;
+    required CastExpr expr = 2;
+  }
+
+  required PrimaryExpr primary_expr = 1;
+  optional Option unary_expr = 2;
+}
+
+message TypeId {}
+
+message PrimaryExpr {
+  oneof primary_expr_oneof {
+    NumericalLiteral literal = 1;
+    Expr expr = 2;
+  }
+
+  required NumericalLiteral def_literal = 3;
+}
+
+message Expr {
+  required ConditionalExpr conditional_expr = 1;
+}
