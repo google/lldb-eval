@@ -819,8 +819,10 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
     Expr expected = AddressOf(
         ArrayIndex(
             ParenthesizedExpr(
-                CastExpr(CastExpr::Kind::CStyleCast, ScalarType::SignedInt, BooleanConstant(true))),
-            CastExpr(CastExpr::Kind::CStyleCast,
+                CastExpr(CastExpr::Kind::CStyleCast, ScalarType::SignedInt,
+                         BooleanConstant(true))),
+            CastExpr(
+                CastExpr::Kind::CStyleCast,
                 PointerType(QualifiedType(ScalarType::Char)),
                 IntegerConstant(0))));
     // clang-format on

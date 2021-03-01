@@ -394,12 +394,13 @@ std::ostream& operator<<(std::ostream& os, const TernaryExpr& e) {
 }
 
 CastExpr::CastExpr(Kind kind, Type type, Expr expr)
-    : kind_(kind), type_(std::move(type)),
+    : kind_(kind),
+      type_(std::move(type)),
       expr_(std::make_shared<Expr>(std::move(expr))) {}
 CastExpr::Kind CastExpr::kind() const { return kind_; }
 const Type& CastExpr::type() const { return type_; }
 const Expr& CastExpr::expr() const { return *expr_; }
-int CastExpr::precedence() const {return cast_kind_precedence(kind_); }
+int CastExpr::precedence() const { return cast_kind_precedence(kind_); }
 std::ostream& operator<<(std::ostream& os, const CastExpr& e) {
   using Kind = CastExpr::Kind;
   switch (e.kind()) {

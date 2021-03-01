@@ -116,7 +116,6 @@ class ClassWithNestedClass {
   class NestedClass {
    public:
     static const int s1;
-    static int s2;
     int f1 = 10;
   };
 

@@ -94,25 +94,24 @@ SpecificTypes SpecificTypes::cast_to(Type type) {
   if (std::holds_alternative<TaggedType>(type)) {
     return SpecificTypes();
   }
-  
+
   if (std::holds_alternative<PointerType>(type)) {
     return SpecificTypes::make_any_pointer_constraints();
   }
-  
+
   if (std::holds_alternative<NullptrType>(type)) {
     return SpecificTypes(type);
   }
-  
+
   if (std::holds_alternative<EnumType>(type)) {
     // So far, casting other types to both (scoped and unscoped) enum types
     // didn't cause any problems. If it does, change this.
     SpecificTypes retval = INT_TYPES | FLOAT_TYPES;
-    retval = INT_TYPES | FLOAT_TYPES;
     retval.allow_unscoped_enums();
     retval.allow_scoped_enums();
     return retval;
   }
-  
+
   const auto* scalar_type = std::get_if<ScalarType>(&type);
   if (scalar_type != nullptr) {
     SpecificTypes retval = INT_TYPES | FLOAT_TYPES;

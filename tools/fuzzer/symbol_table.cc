@@ -30,14 +30,15 @@
 #include "lldb/API/SBValue.h"
 #include "lldb/API/SBVariablesOptions.h"
 #include "tools/fuzzer/ast.h"
-#include <iostream>
 
 namespace fuzzer {
 namespace {
 
-std::optional<Type> convert_type(lldb::SBType type, bool ignore_qualified_types) {
+std::optional<Type> convert_type(lldb::SBType type,
+                                 bool ignore_qualified_types) {
   type = type.GetCanonicalType();
-  
+
+  // There isn't a convenient way to get type qualifiers of lldb::SBType.
   if (ignore_qualified_types &&
       strcmp(type.GetName(), type.GetUnqualifiedType().GetName()) != 0) {
     return {};
@@ -49,7 +50,8 @@ std::optional<Type> convert_type(lldb::SBType type, bool ignore_qualified_types)
   }
 
   if (type.IsPointerType()) {
-    const auto inner_type = convert_type(type.GetPointeeType(), ignore_qualified_types);
+    const auto inner_type =
+        convert_type(type.GetPointeeType(), ignore_qualified_types);
     if (!inner_type.has_value()) {
       return {};
     }
@@ -110,7 +112,7 @@ std::optional<Type> convert_type(lldb::SBType type, bool ignore_qualified_types)
 }
 
 bool is_valid_address(lldb::addr_t address,
-  lldb::SBMemoryRegionInfoList& regions) {
+                      lldb::SBMemoryRegionInfoList& regions) {
   for (size_t i = 0; i < regions.GetSize(); ++i) {
     lldb::SBMemoryRegionInfo region;
     if (!regions.GetMemoryRegionAtIndex(i, region) || !region.IsReadable()) {
@@ -126,7 +128,7 @@ bool is_valid_address(lldb::addr_t address,
 // Calculates freedom index of the given variable, i.e. a number of times the
 // variable can be dereferenced (it ignores references).
 int calculate_freedom_index(lldb::SBValue value,
-  lldb::SBMemoryRegionInfoList& memory_regions) {
+                            lldb::SBMemoryRegionInfoList& memory_regions) {
   auto type = value.GetType().GetCanonicalType();
   if (type.IsReferenceType()) {
     value = value.Dereference();
@@ -135,7 +137,7 @@ int calculate_freedom_index(lldb::SBValue value,
 
   if (type.IsPointerType()) {
     lldb::addr_t address =
-      static_cast<lldb::addr_t>(value.GetValueAsUnsigned());
+        static_cast<lldb::addr_t>(value.GetValueAsUnsigned());
     if (is_valid_address(address, memory_regions)) {
       return 1 + calculate_freedom_index(value.Dereference(), memory_regions);
     }
@@ -150,8 +152,8 @@ int calculate_freedom_index(lldb::SBValue value,
 // basic type as well as pointers to basic types. Referenced types are
 // dereferenced during the process and type qualifiers (const, volatile)
 // are ignored.
-SymbolTable SymbolTable::create_from_lldb_context(
-  lldb::SBFrame& frame, bool ignore_qualified_types) {
+SymbolTable SymbolTable::create_from_lldb_context(lldb::SBFrame& frame,
+                                                  bool ignore_qualified_types) {
   SymbolTable symtab;
 
   lldb::SBVariablesOptions options;
@@ -161,7 +163,7 @@ SymbolTable SymbolTable::create_from_lldb_context(
   uint32_t variables_size = variables.GetSize();
 
   lldb::SBMemoryRegionInfoList memory_regions =
-    frame.GetThread().GetProcess().GetMemoryRegions();
+      frame.GetThread().GetProcess().GetMemoryRegions();
 
   for (uint32_t i = 0; i < variables_size; ++i) {
     lldb::SBValue value = variables.GetValueAtIndex(i);
