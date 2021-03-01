@@ -116,6 +116,7 @@ class ClassWithNestedClass {
   class NestedClass {
    public:
     static const int s1;
+    static int s2;
     int f1 = 10;
   };
 
@@ -240,7 +241,7 @@ int main() {
   int** q = &p;
   int& ref = x;
   int* const* const& refp = &p;
-  const void* void_ptr = p;
+  void* void_ptr = p;
 
   (void)x, (void)p, (void)q, (void)ref, (void)refp, (void)void_ptr;
 
@@ -257,9 +258,9 @@ int main() {
   VirtualDiamondSubclass virtual_diamond;
   (void)multi, (void)diamond, (void)virtual_diamond;
 
-  const char* null_char_ptr = nullptr;
+  char* null_char_ptr = nullptr;
   const char* test_str = "Hee hee hee";
-  const char** addr_null_char_ptr = &null_char_ptr;
+  char** addr_null_char_ptr = &null_char_ptr;
   (void)null_char_ptr, (void)test_str, (void)addr_null_char_ptr;
 
   NonEmptyDerived empty_base;
