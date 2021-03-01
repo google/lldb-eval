@@ -161,7 +161,7 @@ void run_repl(lldb::SBFrame& frame) {
 fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame,
                                bool cv_qualifiers_enabled) {
   fuzzer::SymbolTable symtab = fuzzer::SymbolTable::create_from_lldb_context(
-      frame, /*ignore_qualified_types=*/ !cv_qualifiers_enabled);
+      frame, /*ignore_qualified_types=*/!cv_qualifiers_enabled);
 
   // A helper lambda to add the same field to multiple class types.
   auto add_field =
