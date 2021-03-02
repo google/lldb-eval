@@ -16,6 +16,7 @@
 
 #include "tools/fuzzer/ast.h"
 
+#include <cassert>
 #include <climits>
 #include <cstdint>
 #include <cstdio>
@@ -392,13 +393,28 @@ std::ostream& operator<<(std::ostream& os, const TernaryExpr& e) {
   return os << e.cond() << " ? " << e.lhs() << " : " << e.rhs();
 }
 
-CastExpr::CastExpr(Type type, Expr expr)
-    : type_(std::move(type)), expr_(std::make_shared<Expr>(std::move(expr))) {}
-
+CastExpr::CastExpr(Kind kind, Type type, Expr expr)
+    : kind_(kind),
+      type_(std::move(type)),
+      expr_(std::make_shared<Expr>(std::move(expr))) {}
+CastExpr::Kind CastExpr::kind() const { return kind_; }
 const Type& CastExpr::type() const { return type_; }
 const Expr& CastExpr::expr() const { return *expr_; }
+int CastExpr::precedence() const { return cast_kind_precedence(kind_); }
 std::ostream& operator<<(std::ostream& os, const CastExpr& e) {
-  return os << "(" << e.type() << ") " << e.expr();
+  using Kind = CastExpr::Kind;
+  switch (e.kind()) {
+    case Kind::CStyleCast:
+      return os << "(" << e.type() << ") " << e.expr();
+    case Kind::StaticCast:
+      return os << "static_cast<" << e.type() << ">(" << e.expr() << ")";
+    case Kind::ReinterpretCast:
+      return os << "reinterpret_cast<" << e.type() << ">(" << e.expr() << ")";
+
+    default:
+      assert(false && "Did you introduce a new cast kind?");
+  }
+  return os;
 }
 
 DereferenceExpr::DereferenceExpr(Expr expr)
@@ -580,6 +596,20 @@ class ExprDumper {
 void dump_expr(const Expr& expr) { std::visit(ExprDumper(), expr); }
 
 int bin_op_precedence(BinOp op) { return BIN_OP_TABLE[(size_t)op].precedence; }
+
+int cast_kind_precedence(CastExpr::Kind kind) {
+  switch (kind) {
+    case CastExpr::Kind::CStyleCast:
+      return 3;
+    case CastExpr::Kind::StaticCast:
+    case CastExpr::Kind::ReinterpretCast:
+      return 2;
+
+    default:
+      assert(false && "Did you introduce a new cast kind?");
+  }
+  return 0;  // all control paths must return a value
+}
 
 }  // namespace fuzzer
 

@@ -16,6 +16,7 @@
 
 #include "tools/fuzzer/symbol_table.h"
 
+#include <cstring>
 #include <optional>
 #include <string>
 
@@ -33,8 +34,15 @@
 namespace fuzzer {
 namespace {
 
-std::optional<Type> convert_type(lldb::SBType type) {
+std::optional<Type> convert_type(lldb::SBType type,
+                                 bool ignore_qualified_types) {
   type = type.GetCanonicalType();
+
+  // There isn't a convenient way to get type qualifiers of lldb::SBType.
+  if (ignore_qualified_types &&
+      strcmp(type.GetName(), type.GetUnqualifiedType().GetName()) != 0) {
+    return {};
+  }
 
   if (type.IsReferenceType()) {
     // Currenty, the fuzzer doesn't support reference types.
@@ -42,7 +50,8 @@ std::optional<Type> convert_type(lldb::SBType type) {
   }
 
   if (type.IsPointerType()) {
-    const auto inner_type = convert_type(type.GetPointeeType());
+    const auto inner_type =
+        convert_type(type.GetPointeeType(), ignore_qualified_types);
     if (!inner_type.has_value()) {
       return {};
     }
@@ -143,7 +152,8 @@ int calculate_freedom_index(lldb::SBValue value,
 // basic type as well as pointers to basic types. Referenced types are
 // dereferenced during the process and type qualifiers (const, volatile)
 // are ignored.
-SymbolTable SymbolTable::create_from_lldb_context(lldb::SBFrame& frame) {
+SymbolTable SymbolTable::create_from_lldb_context(lldb::SBFrame& frame,
+                                                  bool ignore_qualified_types) {
   SymbolTable symtab;
 
   lldb::SBVariablesOptions options;
@@ -157,7 +167,8 @@ SymbolTable SymbolTable::create_from_lldb_context(lldb::SBFrame& frame) {
 
   for (uint32_t i = 0; i < variables_size; ++i) {
     lldb::SBValue value = variables.GetValueAtIndex(i);
-    auto maybe_type = convert_type(value.GetType());
+
+    auto maybe_type = convert_type(value.GetType(), ignore_qualified_types);
     if (maybe_type.has_value()) {
       symtab.add_var(maybe_type.value(), VariableExpr(value.GetName()),
                      calculate_freedom_index(value, memory_regions));

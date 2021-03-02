@@ -158,9 +158,10 @@ void run_repl(lldb::SBFrame& frame) {
   }
 }
 
-fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame) {
-  fuzzer::SymbolTable symtab =
-      fuzzer::SymbolTable::create_from_lldb_context(frame);
+fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame,
+                               bool cv_qualifiers_enabled) {
+  fuzzer::SymbolTable symtab = fuzzer::SymbolTable::create_from_lldb_context(
+      frame, /*ignore_qualified_types=*/!cv_qualifiers_enabled);
 
   // A helper lambda to add the same field to multiple class types.
   auto add_field =
@@ -265,15 +266,18 @@ fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame) {
 
   {
     // Add static members.
-    symtab.add_var(fuzzer::ScalarType::SignedInt,
-                   fuzzer::VariableExpr("StaticMember::s1"));
+    if (cv_qualifiers_enabled) {
+      symtab.add_var(fuzzer::ScalarType::SignedInt,
+                     fuzzer::VariableExpr("StaticMember::s1"));
+      symtab.add_var(fuzzer::ScalarType::SignedInt,
+                     fuzzer::VariableExpr("ns::StaticMember::s1"));
+      symtab.add_var(
+          fuzzer::ScalarType::SignedInt,
+          fuzzer::VariableExpr("ClassWithNestedClass::NestedClass::s1"));
+    }
+
     symtab.add_var(fuzzer::ScalarType::Char,
                    fuzzer::VariableExpr("StaticMember::s2"));
-    symtab.add_var(fuzzer::ScalarType::SignedInt,
-                   fuzzer::VariableExpr("ns::StaticMember::s1"));
-    symtab.add_var(
-        fuzzer::ScalarType::SignedInt,
-        fuzzer::VariableExpr("ClassWithNestedClass::NestedClass::s1"));
 
     // Add global variables.
     symtab.add_var(fuzzer::ScalarType::SignedInt,
@@ -335,7 +339,7 @@ void run_fuzzer(lldb::SBFrame& frame, const unsigned* seed_ptr) {
   cfg.bin_op_mask[fuzzer::BinOp::Shr] = false;
 
   // Symbol table
-  fuzzer::SymbolTable symtab = gen_symtab(frame);
+  fuzzer::SymbolTable symtab = gen_symtab(frame, cfg.cv_qualifiers_enabled);
 
   fuzzer::ExprGenerator gen(std::move(rng), std::move(cfg), std::move(symtab));
   std::vector<std::string> exprs;

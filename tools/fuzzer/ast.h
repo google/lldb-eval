@@ -492,21 +492,31 @@ class TernaryExpr {
 
 class CastExpr {
  public:
-  static constexpr int PRECEDENCE = 3;
+  enum class Kind {
+    EnumFirst,
+    CStyleCast = EnumFirst,
+    StaticCast,
+    ReinterpretCast,
+    EnumLast = ReinterpretCast,
+  };
 
   CastExpr() = default;
-  CastExpr(Type type, Expr expr);
+  CastExpr(Kind kind, Type type, Expr expr);
 
+  Kind kind() const;
   const Type& type() const;
   const Expr& expr() const;
-  int precedence() const { return PRECEDENCE; }
+  int precedence() const;
 
   friend std::ostream& operator<<(std::ostream& os, const CastExpr& expr);
 
  private:
+  Kind kind_;
   Type type_;
   std::shared_ptr<Expr> expr_;
 };
+
+int cast_kind_precedence(CastExpr::Kind kind);
 
 class DereferenceExpr {
  public:

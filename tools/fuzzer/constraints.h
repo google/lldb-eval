@@ -104,6 +104,15 @@ class SpecificTypes {
       SpecificTypes constraints,
       VoidPointerConstraint void_ptr_constraint = VoidPointerConstraint::Deny);
 
+  // Types that can be cast to the `type`, using a C-style cast.
+  static SpecificTypes cast_to(Type type);
+
+  // Types that can be cast to the `type`, using a `static_cast`.
+  static SpecificTypes static_cast_to(Type type);
+
+  // Types that can be cast to the `type`, using a `reinterpret_cast`.
+  static SpecificTypes reinterpret_cast_to(Type type);
+
   // Is there any type that satisfies these constraints?
   bool satisfiable() const {
     return scalar_types_.any() || !tagged_types_.empty() ||

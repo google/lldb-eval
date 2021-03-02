@@ -20,6 +20,15 @@
 
 namespace fuzzer {
 
+static bool is_void_pointer(const Type& type) {
+  const auto* pointer_type = std::get_if<PointerType>(&type);
+  if (pointer_type == nullptr) {
+    return false;
+  }
+  const auto& inner = pointer_type->type().type();
+  return inner == Type(ScalarType::Void);
+}
+
 SpecificTypes::SpecificTypes(const Type& type) {
   const auto* scalar_type = std::get_if<ScalarType>(&type);
   if (scalar_type != nullptr) {
@@ -79,6 +88,99 @@ SpecificTypes SpecificTypes::make_pointer_constraints(
   retval.allows_nullptr_ = false;
 
   return retval;
+}
+
+SpecificTypes SpecificTypes::cast_to(Type type) {
+  if (std::holds_alternative<TaggedType>(type)) {
+    return SpecificTypes();
+  }
+
+  if (std::holds_alternative<PointerType>(type)) {
+    return SpecificTypes::make_any_pointer_constraints();
+  }
+
+  if (std::holds_alternative<NullptrType>(type)) {
+    return SpecificTypes(type);
+  }
+
+  if (std::holds_alternative<EnumType>(type)) {
+    // So far, casting other types to both (scoped and unscoped) enum types
+    // didn't cause any problems. If it does, change this.
+    SpecificTypes retval = INT_TYPES | FLOAT_TYPES;
+    retval.allow_unscoped_enums();
+    retval.allow_scoped_enums();
+    return retval;
+  }
+
+  const auto* scalar_type = std::get_if<ScalarType>(&type);
+  if (scalar_type != nullptr) {
+    SpecificTypes retval = INT_TYPES | FLOAT_TYPES;
+    retval.allow_unscoped_enums();
+    retval.allow_scoped_enums();
+    // Pointers can be casted to 8-bytes integer types.
+    if (*scalar_type == ScalarType::SignedLongLong ||
+        *scalar_type == ScalarType::UnsignedLongLong) {
+      retval.ptr_types_ = AnyType{};
+      retval.allows_void_pointer_ = true;
+      retval.allows_nullptr_ = true;
+    }
+    return retval;
+  }
+
+  assert(false && "Did you introduce a new alternative?");
+  return SpecificTypes();
+}
+
+SpecificTypes SpecificTypes::static_cast_to(Type type) {
+  if (std::holds_alternative<TaggedType>(type)) {
+    return SpecificTypes();
+  }
+
+  if (std::holds_alternative<PointerType>(type)) {
+    if (is_void_pointer(type)) {
+      return SpecificTypes::make_any_pointer_constraints();
+    }
+    SpecificTypes retval = SpecificTypes(type);
+    retval.allows_nullptr_ = true;
+    retval.allows_void_pointer_ = true;
+    return retval;
+  }
+
+  if (std::holds_alternative<NullptrType>(type)) {
+    return SpecificTypes(type);
+  }
+
+  if (std::holds_alternative<EnumType>(type) ||
+      std::holds_alternative<ScalarType>(type)) {
+    SpecificTypes retval = INT_TYPES | FLOAT_TYPES;
+    retval.allow_unscoped_enums();
+    retval.allow_scoped_enums();
+    return retval;
+  }
+
+  assert(false && "Did you introduce a new alternative?");
+  return SpecificTypes();
+}
+
+SpecificTypes SpecificTypes::reinterpret_cast_to(Type type) {
+  if (std::holds_alternative<TaggedType>(type) ||
+      std::holds_alternative<NullptrType>(type) ||
+      std::holds_alternative<ScalarType>(type)) {
+    return SpecificTypes();
+  }
+
+  if (std::holds_alternative<PointerType>(type)) {
+    SpecificTypes retval = SpecificTypes::make_any_pointer_constraints();
+    retval.allows_nullptr_ = false;
+    return retval;
+  }
+
+  if (std::holds_alternative<EnumType>(type)) {
+    return SpecificTypes(type);
+  }
+
+  assert(false && "Did you introduce a new alternative?");
+  return SpecificTypes();
 }
 
 TypeConstraints SpecificTypes::allowed_to_point_to() const {

@@ -541,38 +541,53 @@ std::optional<Expr> ExprGenerator::gen_cast_expr(
   }
   Type type = std::move(maybe_type.value());
 
-  SpecificTypes expr_types;
-  if (std::holds_alternative<TaggedType>(type)) {
-    return {};
-  } else if (std::holds_alternative<PointerType>(type)) {
-    expr_types = SpecificTypes::make_any_pointer_constraints();
-  } else if (std::holds_alternative<NullptrType>(type)) {
-    expr_types = SpecificTypes(type);
-  } else if (std::holds_alternative<EnumType>(type)) {
-    // So far, casting other types to both (scoped and unscoped) enum types
-    // didn't cause any problems. If it does, change this.
-    expr_types = INT_TYPES | FLOAT_TYPES;
-    expr_types.allow_unscoped_enums();
-    expr_types.allow_scoped_enums();
-  } else {
-    expr_types = INT_TYPES | FLOAT_TYPES;
-    expr_types.allow_unscoped_enums();
-    expr_types.allow_scoped_enums();
+  CastKindMask mask = CastKindMask::all_set();
+  if (cfg_.cv_qualifiers_enabled) {
+    // C++ style casts are sensitive to casting away type qualifiers.
+    // The fuzzer doesn't support this constraint currently.
+    mask[CastExpr::Kind::StaticCast] = false;
+    mask[CastExpr::Kind::ReinterpretCast] = false;
   }
 
-  ExprConstraints new_constraints =
-      ExprConstraints(std::move(expr_types), constraints.memory_constraints());
-  auto maybe_expr = gen_with_weights(weights, new_constraints);
-  if (!maybe_expr.has_value()) {
-    return {};
-  }
-  Expr expr = std::move(maybe_expr.value());
+  while (mask.any()) {
+    SpecificTypes expr_types;
+    auto kind = rng_->gen_cast_kind(mask);
+    switch (kind) {
+      case CastExpr::Kind::CStyleCast:
+        expr_types = SpecificTypes::cast_to(type);
+        break;
+      case CastExpr::Kind::StaticCast:
+        expr_types = SpecificTypes::static_cast_to(type);
+        break;
+      case CastExpr::Kind::ReinterpretCast:
+        expr_types = SpecificTypes::reinterpret_cast_to(type);
+        break;
+    }
 
-  if (expr_precedence(expr) > CastExpr::PRECEDENCE) {
-    expr = ParenthesizedExpr(std::move(expr));
+    if (!expr_types.satisfiable()) {
+      mask[kind] = false;
+      continue;
+    }
+
+    ExprConstraints new_constraints = ExprConstraints(
+        std::move(expr_types), constraints.memory_constraints());
+    auto maybe_expr = gen_with_weights(weights, new_constraints);
+
+    if (!maybe_expr.has_value()) {
+      mask[kind] = false;
+      continue;
+    }
+
+    Expr expr = std::move(maybe_expr.value());
+    if (kind == CastExpr::Kind::CStyleCast &&
+        expr_precedence(expr) > cast_kind_precedence(kind)) {
+      expr = ParenthesizedExpr(std::move(expr));
+    }
+
+    return CastExpr(kind, std::move(type), std::move(expr));
   }
 
-  return CastExpr(std::move(type), std::move(expr));
+  return {};
 }
 
 std::optional<Expr> ExprGenerator::gen_address_of_expr(
@@ -961,10 +976,7 @@ std::optional<Type> ExprGenerator::gen_void_pointer_type(
     return {};
   }
 
-  auto cv_qualifiers =
-      rng_->gen_cv_qualifiers(cfg_.const_prob, cfg_.volatile_prob);
-
-  return PointerType(QualifiedType(ScalarType::Void, cv_qualifiers));
+  return PointerType(QualifiedType(ScalarType::Void, gen_cv_qualifiers()));
 }
 
 std::optional<Type> ExprGenerator::gen_tagged_type(
@@ -1010,7 +1022,10 @@ std::optional<Type> ExprGenerator::gen_enum_type(
 }
 
 CvQualifiers ExprGenerator::gen_cv_qualifiers() {
-  return rng_->gen_cv_qualifiers(cfg_.const_prob, cfg_.volatile_prob);
+  if (cfg_.cv_qualifiers_enabled) {
+    return rng_->gen_cv_qualifiers(cfg_.const_prob, cfg_.volatile_prob);
+  }
+  return CvQualifiers();  // empty set
 }
 
 std::optional<Expr> ExprGenerator::generate() {
@@ -1220,6 +1235,10 @@ ExprKind DefaultGeneratorRng::gen_expr_kind(const Weights& weights,
 TypeKind DefaultGeneratorRng::gen_type_kind(const Weights& weights,
                                             const TypeKindMask& mask) {
   return weighted_pick(weights.type_weights(), mask, rng_);
+}
+
+CastExpr::Kind DefaultGeneratorRng::gen_cast_kind(const CastKindMask& mask) {
+  return pick_nth_set_bit(mask, rng_);
 }
 
 ScalarType DefaultGeneratorRng::gen_scalar_type(ScalarMask mask) {

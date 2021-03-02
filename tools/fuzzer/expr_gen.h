@@ -64,6 +64,7 @@ inline constexpr size_t NUM_GEN_TYPE_KINDS = (size_t)TypeKind::EnumLast + 1;
 
 using ExprKindMask = EnumBitset<ExprKind>;
 using TypeKindMask = EnumBitset<TypeKind>;
+using CastKindMask = EnumBitset<CastExpr::Kind>;
 
 class Weights;
 class ExprConstraints;
@@ -116,6 +117,13 @@ struct GenConfig {
   // Probability that pointer or scoped enum types will be compared in a binary
   // expression (the alternative is to compare scalars).
   float binop_gen_ptr_or_enum_prob = 0.5;
+
+  // `const` and `volatile` qualifiers aren't that important for expression
+  // evaluation. In order to simplify cv-qualifiers constraints (e.g. casting
+  // them away), this option is introduced for easier support of the
+  // expression types (e.g. static_cast, reinterpret_cast). Note that these
+  // expression types aren't supported if this option is enabled.
+  bool cv_qualifiers_enabled = false;
 
   // Probabilities that a const/volatile qualifier will be generated
   // respectively.
@@ -171,6 +179,7 @@ class GeneratorRng {
                                  const ExprKindMask& mask) = 0;
   virtual TypeKind gen_type_kind(const Weights& weights,
                                  const TypeKindMask& mask) = 0;
+  virtual CastExpr::Kind gen_cast_kind(const CastKindMask& mask) = 0;
   virtual ScalarType gen_scalar_type(EnumBitset<ScalarType> mask) = 0;
   virtual bool gen_boolean() = 0;
   virtual IntegerConstant gen_integer_constant(uint64_t min, uint64_t max) = 0;
@@ -204,6 +213,7 @@ class DefaultGeneratorRng : public GeneratorRng {
                          const ExprKindMask& mask) override;
   TypeKind gen_type_kind(const Weights& weights,
                          const TypeKindMask& mask) override;
+  CastExpr::Kind gen_cast_kind(const CastKindMask& mask) override;
   ScalarType gen_scalar_type(EnumBitset<ScalarType> mask) override;
   bool gen_boolean() override;
   IntegerConstant gen_integer_constant(uint64_t min, uint64_t max) override;

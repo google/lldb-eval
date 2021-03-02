@@ -34,6 +34,18 @@ namespace fuzzer {
 
 void PrintTo(const Expr& expr, std::ostream* os) { *os << "`" << expr << "`"; }
 
+std::ostream& operator<<(std::ostream& os, CastExpr::Kind cast_kind) {
+  switch (cast_kind) {
+    case CastExpr::Kind::CStyleCast:
+      return os << "CStyleCast";
+    case CastExpr::Kind::StaticCast:
+      return os << "StaticCast";
+    case CastExpr::Kind::ReinterpretCast:
+      return os << "ReinterpretCast";
+  }
+  return os;
+}
+
 }  // namespace fuzzer
 
 class FakeGeneratorRng : public GeneratorRng {
@@ -68,6 +80,14 @@ class FakeGeneratorRng : public GeneratorRng {
     assert(!type_kinds_.empty());
     TypeKind kind = type_kinds_.back();
     type_kinds_.pop_back();
+
+    return kind;
+  }
+
+  CastExpr::Kind gen_cast_kind(const CastKindMask&) override {
+    assert(!cast_kinds_.empty());
+    CastExpr::Kind kind = cast_kinds_.back();
+    cast_kinds_.pop_back();
 
     return kind;
   }
@@ -219,6 +239,7 @@ class FakeGeneratorRng : public GeneratorRng {
     std::reverse(rng.double_constants_.begin(), rng.double_constants_.end());
     std::reverse(rng.bools_.begin(), rng.bools_.end());
     std::reverse(rng.expr_kinds_.begin(), rng.expr_kinds_.end());
+    std::reverse(rng.cast_kinds_.begin(), rng.cast_kinds_.end());
 
     std::reverse(rng.type_kinds_.begin(), rng.type_kinds_.end());
     std::reverse(rng.cv_qualifiers_.begin(), rng.cv_qualifiers_.end());
@@ -331,6 +352,7 @@ class FakeGeneratorRng : public GeneratorRng {
 
   void operator()(const CastExpr& e) {
     expr_kinds_.push_back(ExprKind::CastExpr);
+    cast_kinds_.push_back(e.kind());
     std::visit(*this, e.type());
     std::visit(*this, e.expr());
   }
@@ -377,6 +399,7 @@ class FakeGeneratorRng : public GeneratorRng {
   std::vector<bool> bools_;
   std::vector<EnumConstant> enums_;
   std::vector<ExprKind> expr_kinds_;
+  std::vector<CastExpr::Kind> cast_kinds_;
 
   std::vector<TypeKind> type_kinds_;
   std::vector<CvQualifiers> cv_qualifiers_;
@@ -483,6 +506,9 @@ class AstComparator {
   void operator()(const CastExpr& lhs, const CastExpr& rhs) {
     std::visit(*this, lhs.type(), rhs.type());
     std::visit(*this, lhs.expr(), rhs.expr());
+    if (lhs.kind() != rhs.kind()) {
+      add_mismatch(lhs.kind(), rhs.kind());
+    }
   }
 
   void operator()(const QualifiedType& lhs, const QualifiedType& rhs) {
@@ -684,7 +710,8 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
   {
     // clang-format off
     Expr expected =
-        CastExpr(ScalarType::SignedInt, IntegerConstant(50));
+        CastExpr(CastExpr::Kind::CStyleCast, ScalarType::SignedInt,
+                 IntegerConstant(50));
     // clang-format on
 
     std::string str = "(int) 50";
@@ -693,7 +720,8 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
   {
     // clang-format off
     Expr expected = BinaryExpr(
-        CastExpr(ScalarType::SignedInt, IntegerConstant(50)),
+        CastExpr(CastExpr::Kind::CStyleCast, ScalarType::SignedInt,
+                 IntegerConstant(50)),
         BinOp::Plus,
         IntegerConstant(1));
     // clang-format on
@@ -703,12 +731,35 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
   }
   {
     // clang-format off
-    Expr expected = CastExpr(ScalarType::SignedInt,
+    Expr expected = CastExpr(
+        CastExpr::Kind::CStyleCast, ScalarType::SignedInt,
         ParenthesizedExpr(
             BinaryExpr(IntegerConstant(50), BinOp::Plus, IntegerConstant(1))));
     // clang-format on
 
     std::string str = "(int) (50 + 1)";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    // clang-format off
+    Expr expected = CastExpr(
+        CastExpr::Kind::StaticCast, ScalarType::SignedInt,
+        BinaryExpr(IntegerConstant(50), BinOp::Plus, IntegerConstant(1)));
+    // clang-format on
+
+    std::string str = "static_cast<int>(50 + 1)";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    // clang-format off
+    Expr expected = CastExpr(
+        CastExpr::Kind::CStyleCast, ScalarType::Float,
+        CastExpr(
+            CastExpr::Kind::StaticCast, ScalarType::SignedInt,
+            IntegerConstant(5)));
+    // clang-format on
+
+    std::string str = "(float) static_cast<int>(5)";
     params.emplace_back(std::move(str), std::move(expected));
   }
   {
@@ -768,8 +819,10 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
     Expr expected = AddressOf(
         ArrayIndex(
             ParenthesizedExpr(
-                CastExpr(ScalarType::SignedInt, BooleanConstant(true))),
+                CastExpr(CastExpr::Kind::CStyleCast, ScalarType::SignedInt,
+                         BooleanConstant(true))),
             CastExpr(
+                CastExpr::Kind::CStyleCast,
                 PointerType(QualifiedType(ScalarType::Char)),
                 IntegerConstant(0))));
     // clang-format on
