@@ -764,6 +764,41 @@ std::optional<Expr> ExprGenerator::gen_dereference_expr(
   return DereferenceExpr(std::move(expr));
 }
 
+std::optional<Expr> ExprGenerator::gen_function_call_expr(
+    const Weights& weights, const ExprConstraints& constraints) {
+  if (constraints.must_be_lvalue()) {
+    return {};
+  }
+
+  const auto& type_constraints = constraints.type_constraints();
+
+  std::vector<std::reference_wrapper<const Function>> functions;
+  for (const auto& [k, v] : symtab_.functions()) {
+    if (type_constraints.allows_type(k)) {
+      functions.insert(functions.end(), v.begin(), v.end());
+    }
+  }
+
+  if (functions.empty()) {
+    return {};
+  }
+
+  const auto& function = rng_->pick_function(functions);
+
+  std::vector<std::shared_ptr<Expr>> args;
+  for (const auto& argument_type : function.argument_types()) {
+    TypeConstraints allowed_types =
+        SpecificTypes::implicit_cast_to(argument_type);
+    auto maybe_expr = gen_with_weights(weights, std::move(allowed_types));
+    if (!maybe_expr.has_value()) {
+      return {};
+    }
+    args.emplace_back(std::make_shared<Expr>(std::move(maybe_expr.value())));
+  }
+
+  return FunctionCallExpr(function.name(), std::move(args));
+}
+
 std::optional<Expr> ExprGenerator::gen_with_weights(
     const Weights& weights, const ExprConstraints& constraints) {
   Weights new_weights = weights;
@@ -840,6 +875,10 @@ std::optional<Expr> ExprGenerator::gen_with_weights(
 
       case ExprKind::ArrayIndex:
         maybe_expr = gen_array_index_expr(new_weights, constraints);
+        break;
+
+      case ExprKind::FunctionCallExpr:
+        maybe_expr = gen_function_call_expr(new_weights, constraints);
         break;
 
       default:
@@ -1195,6 +1234,11 @@ EnumType DefaultGeneratorRng::pick_enum_type(
 EnumConstant DefaultGeneratorRng::pick_enum_literal(
     const std::vector<std::reference_wrapper<const EnumConstant>>& enums) {
   return pick_element(enums, rng_);
+}
+
+const Function& DefaultGeneratorRng::pick_function(
+    const std::vector<std::reference_wrapper<const Function>>& functions) {
+  return pick_element(functions, rng_);
 }
 
 bool DefaultGeneratorRng::gen_binop_ptr_expr(float probability) {

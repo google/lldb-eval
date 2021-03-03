@@ -105,13 +105,17 @@ class SpecificTypes {
       VoidPointerConstraint void_ptr_constraint = VoidPointerConstraint::Deny);
 
   // Types that can be cast to the `type`, using a C-style cast.
-  static SpecificTypes cast_to(Type type);
+  static SpecificTypes cast_to(const Type& type);
 
   // Types that can be cast to the `type`, using a `static_cast`.
-  static SpecificTypes static_cast_to(Type type);
+  static SpecificTypes static_cast_to(const Type& type);
 
   // Types that can be cast to the `type`, using a `reinterpret_cast`.
-  static SpecificTypes reinterpret_cast_to(Type type);
+  static SpecificTypes reinterpret_cast_to(const Type& type);
+
+  // Types that can be implicitly cast to the `type`, e.g. when passing
+  // arguments to function calls.
+  static SpecificTypes implicit_cast_to(const Type& type);
 
   // Is there any type that satisfies these constraints?
   bool satisfiable() const {

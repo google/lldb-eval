@@ -53,6 +53,19 @@ class Field {
   std::string name_;
 };
 
+class Function {
+ public:
+  Function(std::string name, std::vector<Type> argument_types)
+      : name_(std::move(name)), argument_types_(std::move(argument_types)) {}
+
+  const std::string& name() const { return name_; }
+  const std::vector<Type>& argument_types() const { return argument_types_; }
+
+ private:
+  std::string name_;
+  std::vector<Type> argument_types_;
+};
+
 class SymbolTable {
  public:
   SymbolTable() = default;
@@ -81,8 +94,18 @@ class SymbolTable {
     enum_map_[enum_type].emplace_back(enum_type, std::move(enum_literal));
   }
 
+  void add_function(Type return_type, std::string name,
+                    std::vector<Type> argument_types) {
+    function_map_[std::move(return_type)].emplace_back(
+        std::move(name), std::move(argument_types));
+  }
+
   const std::unordered_map<Type, std::vector<Field>>& fields_by_type() const {
     return fields_by_type_;
+  }
+
+  const std::unordered_map<Type, std::vector<Function>>& functions() const {
+    return function_map_;
   }
 
   const std::unordered_map<EnumType, std::vector<EnumConstant>>& enums() const {
@@ -95,6 +118,7 @@ class SymbolTable {
 
  private:
   std::unordered_map<Type, std::vector<VariableFreedomPair>> var_map_;
+  std::unordered_map<Type, std::vector<Function>> function_map_;
   std::unordered_map<Type, std::vector<Field>> fields_by_type_;
   std::unordered_map<EnumType, std::vector<EnumConstant>> enum_map_;
   std::unordered_set<TaggedType> tagged_types_;

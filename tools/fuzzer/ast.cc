@@ -424,6 +424,23 @@ std::ostream& operator<<(std::ostream& os, const DereferenceExpr& expr) {
   return os << "*" << expr.expr();
 }
 
+FunctionCallExpr::FunctionCallExpr(std::string name,
+                                   std::vector<std::shared_ptr<Expr>> args)
+    : name_(std::move(name)), args_(std::move(args)) {}
+const std::string& FunctionCallExpr::name() const { return name_; }
+const std::vector<std::shared_ptr<Expr>>& FunctionCallExpr::args() const {
+  return args_;
+}
+std::ostream& operator<<(std::ostream& os, const FunctionCallExpr& expr) {
+  os << expr.name() << "(";
+  const auto& args = expr.args();
+  for (size_t i = 0; i < args.size(); ++i) {
+    if (i > 0) os << ", ";
+    os << *args[i];
+  }
+  return os << ")";
+}
+
 std::ostream& operator<<(std::ostream& os, const BooleanConstant& expr) {
   const char* to_print = expr.value() ? "true" : "false";
   return os << to_print;
@@ -568,6 +585,21 @@ class ExprDumper {
     emit_marked_indentation();
     printf("Dereference:\n");
     indented_visit(e.expr());
+  }
+
+  void operator()(const FunctionCallExpr& e) {
+    emit_marked_indentation();
+    printf("Function call:\n");
+
+    emit_indentation();
+    printf("Name: `%s`\n", e.name().c_str());
+
+    const auto& args = e.args();
+    for (size_t i = 0; i < args.size(); ++i) {
+      emit_indentation();
+      printf("Argument #%zu:", i + 1);
+      indented_visit(*args[i]);
+    }
   }
 
   void operator()(const BooleanConstant& e) {

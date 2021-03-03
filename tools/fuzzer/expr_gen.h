@@ -45,6 +45,7 @@ enum class ExprKind : unsigned char {
   NullptrConstant,
   EnumConstant,
   DereferenceExpr,
+  FunctionCallExpr,
   CastExpr,
   EnumLast = CastExpr,
 };
@@ -154,6 +155,7 @@ struct GenConfig {
       {1.0f, 0.0f},  // ExprKind::NullptrConstant
       {1.0f, 0.0f},  // ExprKind::EnumConstant
       {1.0f, 0.1f},  // ExprKind::DereferenceExpr
+      {1.0f, 0.1f},  // ExprKind::FunctionCallExpr
       {1.0f, 0.4f},  // ExprKind::CastExpr
   }};
 
@@ -201,6 +203,8 @@ class GeneratorRng {
       const std::vector<std::reference_wrapper<const EnumType>>& types) = 0;
   virtual EnumConstant pick_enum_literal(
       const std::vector<std::reference_wrapper<const EnumConstant>>& enums) = 0;
+  virtual const Function& pick_function(
+      const std::vector<std::reference_wrapper<const Function>>& functions) = 0;
 };
 
 class DefaultGeneratorRng : public GeneratorRng {
@@ -238,6 +242,9 @@ class DefaultGeneratorRng : public GeneratorRng {
       override;
   EnumConstant pick_enum_literal(
       const std::vector<std::reference_wrapper<const EnumConstant>>& enums)
+      override;
+  const Function& pick_function(
+      const std::vector<std::reference_wrapper<const Function>>& functions)
       override;
 
  private:
@@ -281,6 +288,8 @@ class ExprGenerator {
       const Weights& weights, const ExprConstraints& constraints);
   std::optional<Expr> gen_array_index_expr(const Weights& weights,
                                            const ExprConstraints& constraints);
+  std::optional<Expr> gen_function_call_expr(
+      const Weights& weights, const ExprConstraints& constraints);
 
   std::optional<Type> gen_type(const Weights& weights,
                                const TypeConstraints& constraints);

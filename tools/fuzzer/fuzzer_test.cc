@@ -156,6 +156,13 @@ class FakeGeneratorRng : public GeneratorRng {
     return fuzzer::Field(std::move(type), std::move(field_name));
   }
 
+  const fuzzer::Function& pick_function(
+      const std::vector<std::reference_wrapper<const fuzzer::Function>>&)
+      override {
+    assert(false && "Not implemented yet!");
+    return fuzzer::Function("dummy", {});
+  }
+
   TaggedType pick_tagged_type(
       const std::vector<std::reference_wrapper<const TaggedType>>&) override {
     assert(!tagged_types_.empty());
@@ -362,6 +369,10 @@ class FakeGeneratorRng : public GeneratorRng {
     std::visit(*this, e.expr());
   }
 
+  void operator()(const FunctionCallExpr& e) {
+    assert(false && "Not implemented yet!");
+  }
+
   void operator()(const QualifiedType& e) {
     cv_qualifiers_.push_back(e.cv_qualifiers());
     std::visit(*this, e.type());
@@ -503,12 +514,33 @@ class AstComparator {
     std::visit(*this, lhs.rhs(), rhs.rhs());
   }
 
+  void operator()(const FunctionCallExpr& lhs, const FunctionCallExpr& rhs) {
+    if (lhs.name() != rhs.name()) {
+      add_mismatch(lhs.name(), rhs.name());
+      return;
+    }
+
+    if (lhs.args().size() != rhs.args().size()) {
+      std::string lhs_message =
+          std::to_string(lhs.args().size()) + " arguments";
+      std::string rhs_message =
+          std::to_string(rhs.args().size()) + " arguments";
+      add_mismatch(lhs_message, rhs_message);
+    }
+
+    for (size_t i = 0; i < lhs.args().size(); ++i) {
+      std::visit(*this, *lhs.args()[i], *rhs.args()[i]);
+    }
+  }
+
   void operator()(const CastExpr& lhs, const CastExpr& rhs) {
-    std::visit(*this, lhs.type(), rhs.type());
-    std::visit(*this, lhs.expr(), rhs.expr());
     if (lhs.kind() != rhs.kind()) {
       add_mismatch(lhs.kind(), rhs.kind());
+      return;
     }
+
+    std::visit(*this, lhs.type(), rhs.type());
+    std::visit(*this, lhs.expr(), rhs.expr());
   }
 
   void operator()(const QualifiedType& lhs, const QualifiedType& rhs) {
