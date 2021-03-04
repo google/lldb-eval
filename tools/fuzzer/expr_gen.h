@@ -203,7 +203,7 @@ class GeneratorRng {
       const std::vector<std::reference_wrapper<const EnumType>>& types) = 0;
   virtual EnumConstant pick_enum_literal(
       const std::vector<std::reference_wrapper<const EnumConstant>>& enums) = 0;
-  virtual const Function& pick_function(
+  virtual Function pick_function(
       const std::vector<std::reference_wrapper<const Function>>& functions) = 0;
 };
 
@@ -243,7 +243,7 @@ class DefaultGeneratorRng : public GeneratorRng {
   EnumConstant pick_enum_literal(
       const std::vector<std::reference_wrapper<const EnumConstant>>& enums)
       override;
-  const Function& pick_function(
+  Function pick_function(
       const std::vector<std::reference_wrapper<const Function>>& functions)
       override;
 

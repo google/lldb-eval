@@ -156,7 +156,7 @@ class FakeGeneratorRng : public GeneratorRng {
     return fuzzer::Field(std::move(type), std::move(field_name));
   }
 
-  const fuzzer::Function& pick_function(
+  fuzzer::Function pick_function(
       const std::vector<std::reference_wrapper<const fuzzer::Function>>&)
       override {
     assert(false && "Not implemented yet!");
@@ -369,7 +369,7 @@ class FakeGeneratorRng : public GeneratorRng {
     std::visit(*this, e.expr());
   }
 
-  void operator()(const FunctionCallExpr& e) {
+  void operator()(const FunctionCallExpr&) {
     assert(false && "Not implemented yet!");
   }
 

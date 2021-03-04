@@ -1236,7 +1236,7 @@ EnumConstant DefaultGeneratorRng::pick_enum_literal(
   return pick_element(enums, rng_);
 }
 
-const Function& DefaultGeneratorRng::pick_function(
+Function DefaultGeneratorRng::pick_function(
     const std::vector<std::reference_wrapper<const Function>>& functions) {
   return pick_element(functions, rng_);
 }
