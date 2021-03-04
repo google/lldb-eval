@@ -435,7 +435,9 @@ std::ostream& operator<<(std::ostream& os, const FunctionCallExpr& expr) {
   os << expr.name() << "(";
   const auto& args = expr.args();
   for (size_t i = 0; i < args.size(); ++i) {
-    if (i > 0) os << ", ";
+    if (i > 0) {
+      os << ", ";
+    }
     os << *args[i];
   }
   return os << ")";
