@@ -74,6 +74,8 @@ class Interpreter : Visitor {
   Value EvaluateUnaryMinus(Value rhs);
   Value EvaluateUnaryNegation(Value rhs);
   Value EvaluateUnaryBitwiseNot(Value rhs);
+  Value EvaluateUnaryPrefixIncrement(Value rhs);
+  Value EvaluateUnaryPrefixDecrement(Value rhs);
 
   Value EvaluateBinaryAddition(Value lhs, Value rhs);
   Value EvaluateBinarySubtraction(Value lhs, Value rhs);

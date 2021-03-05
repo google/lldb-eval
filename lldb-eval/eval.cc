@@ -452,15 +452,15 @@ void Interpreter::Visit(const BinaryOpNode* node) {
 
 void Interpreter::Visit(const UnaryOpNode* node) {
   FlowAnalysis rhs_flow(
-      /* address_of_is_pending */ node->op() == clang::tok::amp);
+      /* address_of_is_pending */ node->kind() == UnaryOpKind::AddrOf);
 
   auto rhs = EvalNode(node->rhs(), &rhs_flow);
   if (!rhs) {
     return;
   }
 
-  switch (node->op()) {
-    case clang::tok::star:
+  switch (node->kind()) {
+    case UnaryOpKind::Deref:
       assert(rhs.type().IsPointerType() && "invalid ast: should be a pointer");
       // If we're in the address-of context, skip the dereference and cancel the
       // pending address-of operation as well.
@@ -471,7 +471,7 @@ void Interpreter::Visit(const UnaryOpNode* node) {
         result_ = rhs.Dereference();
       }
       return;
-    case clang::tok::amp:
+    case UnaryOpKind::AddrOf:
       // If the address-of operation wasn't cancelled during the evaluation of
       // RHS (e.g. because of the address-of-a-dereference elision), apply it
       // here.
@@ -481,17 +481,33 @@ void Interpreter::Visit(const UnaryOpNode* node) {
         result_ = rhs;
       }
       return;
-    case clang::tok::plus:
+    case UnaryOpKind::Plus:
       result_ = rhs;
       return;
-    case clang::tok::minus:
+    case UnaryOpKind::Minus:
       result_ = EvaluateUnaryMinus(rhs);
       return;
-    case clang::tok::exclaim:
+    case UnaryOpKind::LNot:
       result_ = EvaluateUnaryNegation(rhs);
       return;
-    case clang::tok::tilde:
+    case UnaryOpKind::Not:
       result_ = EvaluateUnaryBitwiseNot(rhs);
+      return;
+    case UnaryOpKind::PreInc:
+      result_ = EvaluateUnaryPrefixIncrement(rhs);
+      return;
+    case UnaryOpKind::PreDec:
+      result_ = EvaluateUnaryPrefixDecrement(rhs);
+      return;
+    case UnaryOpKind::PostInc:
+      // In postfix inc/dec the result is the original value.
+      result_ = rhs.Clone();
+      EvaluateUnaryPrefixIncrement(rhs);
+      return;
+    case UnaryOpKind::PostDec:
+      // In postfix inc/dec the result is the original value.
+      result_ = rhs.Clone();
+      EvaluateUnaryPrefixDecrement(rhs);
       return;
 
     default:
@@ -575,6 +591,52 @@ Value Interpreter::EvaluateUnaryBitwiseNot(Value rhs) {
   llvm::APSInt v = rhs.GetInteger();
   v.flipAllBits();
   return CreateValueFromAPInt(target_, v, rhs.type());
+}
+
+Value Interpreter::EvaluateUnaryPrefixIncrement(Value rhs) {
+  assert((rhs.IsInteger() || rhs.IsFloat()) &&
+         "invalid ast: must be an arithmetic type");
+
+  if (rhs.IsInteger()) {
+    llvm::APSInt v = rhs.GetInteger();
+    ++v;  // Do the increment.
+
+    rhs.Update(v);
+    return rhs;
+  }
+  if (rhs.IsFloat()) {
+    llvm::APFloat v = rhs.GetFloat();
+    // Do the increment.
+    v = v + llvm::APFloat(v.getSemantics(), 1ULL);
+
+    rhs.Update(v.bitcastToAPInt());
+    return rhs;
+  }
+
+  return Value();
+}
+
+Value Interpreter::EvaluateUnaryPrefixDecrement(Value rhs) {
+  assert((rhs.IsInteger() || rhs.IsFloat()) &&
+         "invalid ast: must be an arithmetic type");
+
+  if (rhs.IsInteger()) {
+    llvm::APSInt v = rhs.GetInteger();
+    --v;  // Do the decrement.
+
+    rhs.Update(v);
+    return rhs;
+  }
+  if (rhs.IsFloat()) {
+    llvm::APFloat v = rhs.GetFloat();
+    // Do the decrement.
+    v = v - llvm::APFloat(v.getSemantics(), 1ULL);
+
+    rhs.Update(v.bitcastToAPInt());
+    return rhs;
+  }
+
+  return Value();
 }
 
 Value Interpreter::EvaluateBinaryAddition(Value lhs, Value rhs) {

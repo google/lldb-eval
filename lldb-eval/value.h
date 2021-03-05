@@ -88,6 +88,9 @@ class Value {
   llvm::APSInt GetInteger();
   llvm::APFloat GetFloat();
 
+  Value Clone();
+  void Update(const llvm::APInt& v);
+
  private:
   lldb::SBValue value_;
   Type type_;

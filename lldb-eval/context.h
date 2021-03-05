@@ -78,6 +78,7 @@ class Context {
  public:
   lldb::SBType ResolveTypeByName(const std::string& name) const;
   lldb::SBValue LookupIdentifier(const std::string& name) const;
+  bool IsContextVar(const std::string& name) const;
 
  private:
   Context(std::string expr, lldb::SBExecutionContext ctx, lldb::SBValue scope,

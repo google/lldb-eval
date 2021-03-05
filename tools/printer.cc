@@ -81,14 +81,15 @@ class AstPrinter : Visitor {
   }
 
   void Visit(const BinaryOpNode* node) override {
-    std::cout << "BinaryOpNode op=" << node->op_name() << std::endl;
+    std::cout << "BinaryOpNode op=" << clang::tok::getTokenName(node->op())
+              << std::endl;
 
     PrintChild(node->lhs());
     PrintLastChild(node->rhs());
   }
 
   void Visit(const UnaryOpNode* node) override {
-    std::cout << "UnaryOpNode op=" << node->op_name() << std::endl;
+    std::cout << "UnaryOpNode op=" << to_string(node->kind()) << std::endl;
     PrintLastChild(node->rhs());
   }
 
