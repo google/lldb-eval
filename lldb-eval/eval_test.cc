@@ -822,6 +822,23 @@ TEST_F(EvalTest, TestMemberOfInheritance) {
   EXPECT_THAT(Eval("parent->z"), IsEqual("3"));
 }
 
+TEST_F(EvalTest, TestGlobalVariableLookup) {
+  EXPECT_THAT(Eval("globalVar"), IsEqual("-559038737"));  // 0xDEADBEEF
+  EXPECT_THAT(Eval("globalPtr"), IsOk());
+  EXPECT_THAT(Eval("globalRef"), IsEqual("-559038737"));
+  EXPECT_THAT(Eval("::globalPtr"), IsOk());
+  EXPECT_THAT(Eval("::globalRef"), IsEqual("-559038737"));
+
+  EXPECT_THAT(Eval("externGlobalVar"), IsEqual("12648430"));  // 0x00CC0FFEE
+  EXPECT_THAT(Eval("::externGlobalVar"), IsEqual("12648430"));
+
+  EXPECT_THAT(Eval("ns::globalVar"), IsEqual("13"));
+  EXPECT_THAT(Eval("ns::globalPtr"), IsOk());
+  EXPECT_THAT(Eval("ns::globalRef"), IsEqual("13"));
+  EXPECT_THAT(Eval("::ns::globalVar"), IsEqual("13"));
+  EXPECT_THAT(Eval("::ns::globalPtr"), IsOk());
+}
+
 TEST_F(EvalTest, TestInstanceVariables) {
   EXPECT_THAT(Eval("this->field_"), IsEqual("1"));
   EXPECT_THAT(Eval("this.field_"),

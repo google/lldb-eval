@@ -183,7 +183,9 @@ lldb::SBValue Context::LookupIdentifier(const std::string& name) const {
 
       if (val_name == name_ref ||
           val_name == llvm::formatv("::{0}", name_ref).str() ||
-          val_name.endswith(llvm::formatv(" {0}", name_ref).str())) {
+          val_name.endswith(llvm::formatv(" {0}", name_ref).str()) ||
+          val_name.endswith(llvm::formatv("*{0}", name_ref).str()) ||
+          val_name.endswith(llvm::formatv("&{0}", name_ref).str())) {
         value = val;
         break;
       }
