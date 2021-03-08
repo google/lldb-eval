@@ -90,7 +90,7 @@ SpecificTypes SpecificTypes::make_pointer_constraints(
   return retval;
 }
 
-SpecificTypes SpecificTypes::cast_to(Type type) {
+SpecificTypes SpecificTypes::cast_to(const Type& type) {
   if (std::holds_alternative<TaggedType>(type)) {
     return SpecificTypes();
   }
@@ -131,7 +131,7 @@ SpecificTypes SpecificTypes::cast_to(Type type) {
   return SpecificTypes();
 }
 
-SpecificTypes SpecificTypes::static_cast_to(Type type) {
+SpecificTypes SpecificTypes::static_cast_to(const Type& type) {
   if (std::holds_alternative<TaggedType>(type)) {
     return SpecificTypes();
   }
@@ -162,7 +162,7 @@ SpecificTypes SpecificTypes::static_cast_to(Type type) {
   return SpecificTypes();
 }
 
-SpecificTypes SpecificTypes::reinterpret_cast_to(Type type) {
+SpecificTypes SpecificTypes::reinterpret_cast_to(const Type& type) {
   if (std::holds_alternative<TaggedType>(type) ||
       std::holds_alternative<NullptrType>(type) ||
       std::holds_alternative<ScalarType>(type)) {
@@ -177,6 +177,29 @@ SpecificTypes SpecificTypes::reinterpret_cast_to(Type type) {
 
   if (std::holds_alternative<EnumType>(type)) {
     return SpecificTypes(type);
+  }
+
+  assert(false && "Did you introduce a new alternative?");
+  return SpecificTypes();
+}
+
+SpecificTypes SpecificTypes::implicit_cast_to(const Type& type) {
+  if (std::holds_alternative<TaggedType>(type) ||
+      std::holds_alternative<PointerType>(type) ||
+      std::holds_alternative<NullptrType>(type) ||
+      std::holds_alternative<EnumType>(type)) {
+    return SpecificTypes(type);
+  }
+
+  const auto* scalar_type = std::get_if<ScalarType>(&type);
+  if (scalar_type != nullptr) {
+    if (*scalar_type == ScalarType::Void) {
+      return SpecificTypes(type);
+    }
+
+    SpecificTypes retval = INT_TYPES | FLOAT_TYPES;
+    retval.allow_unscoped_enums();
+    return retval;
   }
 
   assert(false && "Did you introduce a new alternative?");

@@ -24,6 +24,7 @@
 #include <string>
 #include <typeindex>  // forward references `std::hash`
 #include <variant>
+#include <vector>
 
 #include "tools/fuzzer/enum_bitset.h"
 
@@ -169,6 +170,7 @@ class ArrayIndex;
 class TernaryExpr;
 class CastExpr;
 class DereferenceExpr;
+class FunctionCallExpr;
 class BooleanConstant;
 class NullptrConstant;
 class EnumConstant;
@@ -216,11 +218,11 @@ enum class BinOp : unsigned char {
 inline constexpr size_t NUM_BIN_OPS = (size_t)BinOp::EnumLast + 1;
 int bin_op_precedence(BinOp op);
 
-using Expr =
-    std::variant<IntegerConstant, DoubleConstant, VariableExpr, UnaryExpr,
-                 BinaryExpr, AddressOf, MemberOf, MemberOfPtr, ArrayIndex,
-                 TernaryExpr, CastExpr, DereferenceExpr, BooleanConstant,
-                 NullptrConstant, EnumConstant, ParenthesizedExpr>;
+using Expr = std::variant<IntegerConstant, DoubleConstant, VariableExpr,
+                          UnaryExpr, BinaryExpr, AddressOf, MemberOf,
+                          MemberOfPtr, ArrayIndex, TernaryExpr, CastExpr,
+                          DereferenceExpr, FunctionCallExpr, BooleanConstant,
+                          NullptrConstant, EnumConstant, ParenthesizedExpr>;
 inline constexpr size_t NUM_EXPR_KINDS = std::variant_size_v<Expr>;
 void dump_expr(const Expr& expr);
 std::ostream& operator<<(std::ostream& os, const Expr& expr);
@@ -533,6 +535,25 @@ class DereferenceExpr {
 
  private:
   std::shared_ptr<Expr> expr_;
+};
+
+class FunctionCallExpr {
+ public:
+  static constexpr int PRECEDENCE = 2;
+
+  FunctionCallExpr() = default;
+  FunctionCallExpr(std::string name, std::vector<std::shared_ptr<Expr>> args);
+
+  friend std::ostream& operator<<(std::ostream& os,
+                                  const FunctionCallExpr& expr);
+
+  const std::string& name() const;
+  const std::vector<std::shared_ptr<Expr>>& args() const;
+  int precedence() const { return PRECEDENCE; }
+
+ private:
+  std::string name_;
+  std::vector<std::shared_ptr<Expr>> args_;
 };
 
 class BooleanConstant {
