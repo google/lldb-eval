@@ -16,8 +16,6 @@
 
 #include "tools/fuzzer/symbol_table.h"
 
-#include <algorithm>
-
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "lldb-eval/runner.h"

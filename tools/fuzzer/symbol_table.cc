@@ -17,7 +17,6 @@
 #include "tools/fuzzer/symbol_table.h"
 
 #include <cstring>
-#include <iostream>
 #include <optional>
 #include <string>
 
@@ -83,8 +82,7 @@ std::optional<Type> convert_type(lldb::SBType type,
                                      guess_cv_qualifiers(pointee_type)));
   }
 
-  if (type.GetTypeClass() == lldb::eTypeClassClass ||
-      type.GetTypeClass() == lldb::eTypeClassStruct) {
+  if (type.GetTypeClass() == lldb::eTypeClassStruct) {
     return TaggedType(type.GetName());
   }
 
@@ -217,9 +215,8 @@ SymbolTable SymbolTable::create_from_lldb_context(lldb::SBFrame& frame,
     }
   }
 
-  // Populate class and struct fields.
-  lldb::SBTypeList types = frame.GetModule().GetTypes(lldb::eTypeClassClass |
-                                                      lldb::eTypeClassStruct);
+  // Populate struct fields.
+  lldb::SBTypeList types = frame.GetModule().GetTypes(lldb::eTypeClassStruct);
   uint32_t types_size = types.GetSize();
 
   for (uint32_t i = 0; i < types_size; ++i) {
