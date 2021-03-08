@@ -17,6 +17,7 @@
 #include "tools/fuzzer/symbol_table.h"
 
 #include <cstring>
+#include <iostream>
 #include <optional>
 #include <string>
 
@@ -24,6 +25,7 @@
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBMemoryRegionInfo.h"
 #include "lldb/API/SBMemoryRegionInfoList.h"
+#include "lldb/API/SBModule.h"
 #include "lldb/API/SBProcess.h"
 #include "lldb/API/SBThread.h"
 #include "lldb/API/SBType.h"
@@ -33,6 +35,28 @@
 
 namespace fuzzer {
 namespace {
+
+// Guesses type qualifiers depending on difference of name length of type and
+// unqualified version of type (unfortunately, there isn't a convenient way to
+// get type qualifiers in LLDB API).
+CvQualifiers guess_cv_qualifiers(lldb::SBType& type) {
+  const size_t len_diff =
+      strlen(type.GetName()) - strlen(type.GetUnqualifiedType().GetName());
+
+  if (len_diff == 5 || len_diff == 6) {
+    return CvQualifier::Const;
+  }
+
+  if (len_diff == 8 || len_diff == 9) {
+    return CvQualifier::Volatile;
+  }
+
+  if (len_diff == 14 || len_diff == 15) {
+    return CvQualifiers::all_set();
+  }
+
+  return CvQualifiers();
+}
 
 std::optional<Type> convert_type(lldb::SBType type,
                                  bool ignore_qualified_types) {
@@ -50,12 +74,18 @@ std::optional<Type> convert_type(lldb::SBType type,
   }
 
   if (type.IsPointerType()) {
-    const auto inner_type =
-        convert_type(type.GetPointeeType(), ignore_qualified_types);
+    auto pointee_type = type.GetPointeeType();
+    const auto inner_type = convert_type(pointee_type, ignore_qualified_types);
     if (!inner_type.has_value()) {
       return {};
     }
-    return PointerType(QualifiedType(std::move(inner_type.value())));
+    return PointerType(QualifiedType(std::move(inner_type.value()),
+                                     guess_cv_qualifiers(pointee_type)));
+  }
+
+  if (type.GetTypeClass() == lldb::eTypeClassClass ||
+      type.GetTypeClass() == lldb::eTypeClassStruct) {
+    return TaggedType(type.GetName());
   }
 
   const lldb::BasicType basic_type = type.GetBasicType();
@@ -146,18 +176,30 @@ int calculate_freedom_index(lldb::SBValue value,
   return 0;
 }
 
+// Fix variable/field names returned by LLDB API. E.g. name is sometimes in
+// the form of "type name", so it ignores everything in front of the last
+// occurrence of ' ' (space).
+const char* fix_name(const char* name) {
+  const char* last_space = strrchr(name, ' ');
+  if (last_space != nullptr) {
+    return last_space + 1;
+  }
+  return name;
+}
+
 }  // namespace
 
-// Creates a symbol table from the lldb context. It populates most of the
-// basic type as well as pointers to basic types. Referenced types are
-// dereferenced during the process and type qualifiers (const, volatile)
-// are ignored.
+// Creates a symbol table from the lldb context. It populates local and global
+// (static) variables of the following types: basic types, structs and pointers.
+// Reference variables are imported, but treated as non-references.
 SymbolTable SymbolTable::create_from_lldb_context(lldb::SBFrame& frame,
                                                   bool ignore_qualified_types) {
   SymbolTable symtab;
 
+  // Populate variables.
   lldb::SBVariablesOptions options;
   options.SetIncludeLocals(true);
+  options.SetIncludeStatics(true);
 
   lldb::SBValueList variables = frame.GetVariables(options);
   uint32_t variables_size = variables.GetSize();
@@ -167,11 +209,30 @@ SymbolTable SymbolTable::create_from_lldb_context(lldb::SBFrame& frame,
 
   for (uint32_t i = 0; i < variables_size; ++i) {
     lldb::SBValue value = variables.GetValueAtIndex(i);
-
     auto maybe_type = convert_type(value.GetType(), ignore_qualified_types);
     if (maybe_type.has_value()) {
-      symtab.add_var(maybe_type.value(), VariableExpr(value.GetName()),
+      symtab.add_var(std::move(maybe_type.value()),
+                     VariableExpr(fix_name(value.GetName())),
                      calculate_freedom_index(value, memory_regions));
+    }
+  }
+
+  // Populate class and struct fields.
+  lldb::SBTypeList types = frame.GetModule().GetTypes(lldb::eTypeClassClass |
+                                                      lldb::eTypeClassStruct);
+  uint32_t types_size = types.GetSize();
+
+  for (uint32_t i = 0; i < types_size; ++i) {
+    lldb::SBType type = types.GetTypeAtIndex(i);
+    const auto tagged_type = TaggedType(fix_name(type.GetName()));
+    for (uint32_t i = 0; i < type.GetNumberOfFields(); ++i) {
+      lldb::SBTypeMember field = type.GetFieldAtIndex(i);
+      auto maybe_field_type =
+          convert_type(field.GetType(), ignore_qualified_types);
+      if (maybe_field_type.has_value()) {
+        symtab.add_field(tagged_type, fix_name(field.GetName()),
+                         std::move(maybe_field_type.value()));
+      }
     }
   }
 

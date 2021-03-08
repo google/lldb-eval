@@ -173,24 +173,6 @@ fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame,
       };
 
   {
-    fuzzer::TaggedType type("TestStruct");
-    fuzzer::TaggedType ns_type("ns::nested_ns::TestStruct");
-
-    add_field("int_field", fuzzer::ScalarType::SignedInt, {type, ns_type});
-    add_field("flt_field", fuzzer::ScalarType::Float, {type, ns_type});
-    add_field("ch_field", fuzzer::ScalarType::Char, {type, ns_type});
-    symtab.add_field(type, "ull_field", fuzzer::ScalarType::UnsignedLongLong);
-
-    symtab.add_var(type, fuzzer::VariableExpr("ts"));
-    symtab.add_var(ns_type, fuzzer::VariableExpr("ns_ts"));
-
-    // Also add global variables.
-    symtab.add_var(type, fuzzer::VariableExpr("global_ts"));
-    symtab.add_var(type, fuzzer::VariableExpr("ns::global_ts"));
-    symtab.add_var(ns_type, fuzzer::VariableExpr("ns::nested_ns::global_ts"));
-  }
-
-  {
     fuzzer::TaggedType base1("MultiInheritBase1");
     fuzzer::TaggedType base2("MultiInheritBase2");
     fuzzer::TaggedType derived("MultiInheritDerived");
@@ -249,43 +231,6 @@ fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame,
     symtab.add_var(with_nested, fuzzer::VariableExpr("with_nested"));
     symtab.add_field(with_nested, "nested", nested);
     symtab.add_field(nested, "f1", fuzzer::ScalarType::SignedInt);
-  }
-
-  {
-    fuzzer::TaggedType type("LocalStruct");
-    fuzzer::PointerType ptr_int_type{
-        fuzzer::QualifiedType(fuzzer::ScalarType::SignedInt)};
-
-    symtab.add_var(type, fuzzer::VariableExpr("ls"));
-    symtab.add_field(type, "int_field", fuzzer::ScalarType::SignedInt);
-    symtab.add_field(type, "ref_field", fuzzer::ScalarType::SignedInt);
-    symtab.add_field(type, "ptr_field", ptr_int_type);
-    symtab.add_field(type, "ptr_ref_field", ptr_int_type);
-    symtab.add_field(type, "dbl_field", fuzzer::ScalarType::Double);
-  }
-
-  {
-    // Add static members.
-    if (cv_qualifiers_enabled) {
-      symtab.add_var(fuzzer::ScalarType::SignedInt,
-                     fuzzer::VariableExpr("StaticMember::s1"));
-      symtab.add_var(fuzzer::ScalarType::SignedInt,
-                     fuzzer::VariableExpr("ns::StaticMember::s1"));
-      symtab.add_var(
-          fuzzer::ScalarType::SignedInt,
-          fuzzer::VariableExpr("ClassWithNestedClass::NestedClass::s1"));
-    }
-
-    symtab.add_var(fuzzer::ScalarType::Char,
-                   fuzzer::VariableExpr("StaticMember::s2"));
-
-    // Add global variables.
-    symtab.add_var(fuzzer::ScalarType::SignedInt,
-                   fuzzer::VariableExpr("global_int"));
-    symtab.add_var(fuzzer::ScalarType::SignedInt,
-                   fuzzer::VariableExpr("ns::global_int"));
-    symtab.add_var(fuzzer::ScalarType::SignedInt,
-                   fuzzer::VariableExpr("ns::nested_ns::global_int"));
   }
 
   {
