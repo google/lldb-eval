@@ -322,6 +322,10 @@ fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame,
     symtab.add_var(type, fuzzer::VariableExpr("ns_enum_class"));
   }
 
+  // Add functions.
+  symtab.add_function(fuzzer::ScalarType::UnsignedInt, "__log2",
+                      {fuzzer::ScalarType::UnsignedInt});
+
   return symtab;
 }
 
