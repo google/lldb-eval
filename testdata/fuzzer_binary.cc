@@ -19,6 +19,20 @@
 // This file _must not_ access the file system, since the current directory
 // is specified in the fuzzer as just `./`.
 
+// Returns the floor log base 2. This function is supported in lldb-eval and is
+// defined here so it can be used via LLDB.
+unsigned int __log2(unsigned int value) {
+  unsigned int leading_zeros = 0;
+  for (int bit = 31; bit >= 0; --bit) {
+    if (value & (1U << bit)) {
+      break;
+    } else {
+      leading_zeros++;
+    }
+  }
+  return 31 - leading_zeros;
+}
+
 class MultiInheritBase1 {
  public:
   int f1 = 10;
