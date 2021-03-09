@@ -235,6 +235,19 @@ class C {
 int globalVar = 0xDEADBEEF;
 extern int externGlobalVar;
 
+int* globalPtr = &globalVar;
+int& globalRef = globalVar;
+
+namespace ns {
+int globalVar = 13;
+int* globalPtr = &globalVar;
+int& globalRef = globalVar;
+}  // namespace ns
+
+void TestGlobalVariableLookup() {
+  // BREAK(TestGlobalVariableLookup)
+}
+
 class TestMethods {
  public:
   void TestInstanceVariables() {
@@ -728,6 +741,7 @@ void main() {
   TestLocalVariables();
   TestMemberOf();
   TestMemberOfInheritance();
+  TestGlobalVariableLookup();
   tm.TestInstanceVariables();
   TestIndirection();
   tm.TestAddressOf(42);
