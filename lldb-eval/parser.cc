@@ -2178,8 +2178,7 @@ ExprResult Parser::BuildIncrementDecrement(UnaryOpKind kind, ExprResult rhs,
                                            clang::SourceLocation location) {
   assert((kind == UnaryOpKind::PreInc || kind == UnaryOpKind::PreDec ||
           kind == UnaryOpKind::PostInc || kind == UnaryOpKind::PostDec) &&
-         "illegal unary op kind, "
-         "expected inc/dec");
+         "illegal unary op kind, expected inc/dec");
 
   Type rhs_type = rhs->result_type_deref();
 
@@ -2187,12 +2186,14 @@ ExprResult Parser::BuildIncrementDecrement(UnaryOpKind kind, ExprResult rhs,
   // in the debugger context side-effects are not allowed and the only case
   // where increment/decrement are permitted is when modifying the "context
   // variable".
+  // Technically, `++(++$var)` could be allowed too, since both increments
+  // modify the context variable. However, MSVC debugger doesn't allow it, so we
+  // don't implement it too.
   if (rhs->is_rvalue()) {
     BailOut(ErrorCode::kInvalidOperandType,
             llvm::formatv("expression is not assignable"), location);
     return std::make_unique<ErrorNode>();
   }
-  // if (false) {
   if (!rhs->is_context_var()) {
     BailOut(ErrorCode::kInvalidOperandType,
             llvm::formatv("side effects are not supported in this context: "
