@@ -829,7 +829,7 @@ TEST_F(EvalTest, TestGlobalVariableLookup) {
   EXPECT_THAT(Eval("::globalPtr"), IsOk());
   EXPECT_THAT(Eval("::globalRef"), IsEqual("-559038737"));
 
-  EXPECT_THAT(Eval("externGlobalVar"), IsEqual("12648430"));  // 0x00CC0FFEE
+  EXPECT_THAT(Eval("externGlobalVar"), IsEqual("12648430"));  // 0x00C0FFEE
   EXPECT_THAT(Eval("::externGlobalVar"), IsEqual("12648430"));
 
   EXPECT_THAT(Eval("ns::globalVar"), IsEqual("13"));
