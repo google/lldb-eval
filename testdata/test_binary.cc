@@ -725,7 +725,13 @@ void TestBuiltinFunction_Log2() {
   // BREAK(TestBuiltinFunction_Log2)
 }
 
-void func(int kek) {}
+void TestPrefixIncDec() {
+  auto enum_foo = ScopedEnum::kFoo;
+  int i = 1;
+
+  // BREAK(TestPrefixIncDec)
+  // BREAK(TestPostfixIncDec)
+}
 
 namespace test_binary {
 
@@ -755,6 +761,7 @@ void main() {
   TestValueScope();
   TestBitField();
   TestContextVariables();
+  TestPrefixIncDec();
   TestScopedEnum();
   TestUnscopedEnum();
   TestTernaryOperator();

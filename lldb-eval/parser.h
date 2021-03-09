@@ -156,11 +156,13 @@ class Parser {
   ExprResult BuildCxxDynamicCast(Type type, ExprResult rhs,
                                  clang::SourceLocation location);
 
-  ExprResult BuildUnaryOp(clang::tok::TokenKind kind, ExprResult rhs,
+  ExprResult BuildUnaryOp(clang::tok::TokenKind token_kind, ExprResult rhs,
                           clang::SourceLocation location);
+  ExprResult BuildIncrementDecrement(UnaryOpKind kind, ExprResult rhs,
+                                     clang::SourceLocation location);
+
   ExprResult BuildBinaryOp(clang::tok::TokenKind kind, ExprResult lhs,
                            ExprResult rhs, clang::SourceLocation location);
-
   ExprResult BuildBinaryAddition(ExprResult lhs, ExprResult rhs,
                                  clang::SourceLocation location);
   ExprResult BuildBinarySubtraction(ExprResult lhs, ExprResult rhs,

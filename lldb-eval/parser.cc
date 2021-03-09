@@ -1089,13 +1089,15 @@ ExprResult Parser::ParsePostfixExpression() {
                             token.getLocation());
         break;
       }
-      case clang::tok::plusplus:
+      case clang::tok::plusplus: {
+        ConsumeToken();
+        return BuildIncrementDecrement(UnaryOpKind::PostInc, std::move(lhs),
+                                       token.getLocation());
+      }
       case clang::tok::minusminus: {
-        BailOut(ErrorCode::kNotImplemented,
-                llvm::formatv("We don't support postfix inc/dec yet: {0}",
-                              TokenDescription(token)),
-                token.getLocation());
-        return std::make_unique<ErrorNode>();
+        ConsumeToken();
+        return BuildIncrementDecrement(UnaryOpKind::PostDec, std::move(lhs),
+                                       token.getLocation());
       }
       case clang::tok::l_square: {
         ConsumeToken();
@@ -1159,7 +1161,8 @@ ExprResult Parser::ParsePrimaryExpression() {
       return std::make_unique<ErrorNode>();
     }
     return std::make_unique<IdentifierNode>(loc, identifier, Value(value),
-                                            /*is_rvalue*/ false);
+                                            /*is_rvalue*/ false,
+                                            ctx_->IsContextVar(identifier));
   } else if (token_.is(clang::tok::kw_this)) {
     // Save the source location for the diagnostics message.
     clang::SourceLocation loc = token_.getLocation();
@@ -1173,7 +1176,8 @@ ExprResult Parser::ParsePrimaryExpression() {
     }
     // Special case for "this" pointer. As per C++ standard, it's a prvalue.
     return std::make_unique<IdentifierNode>(loc, "this", Value(value),
-                                            /*is_rvalue*/ true);
+                                            /*is_rvalue*/ true,
+                                            /*is_context_var*/ false);
   } else if (token_.is(clang::tok::l_paren)) {
     ConsumeToken();
     auto expr = ParseExpression();
@@ -2078,16 +2082,16 @@ ExprResult Parser::BuildCxxDynamicCast(Type type, ExprResult rhs,
   return std::make_unique<ErrorNode>();
 }
 
-ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind kind, ExprResult rhs,
+ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind token_kind,
+                                ExprResult rhs,
                                 clang::SourceLocation location) {
   lldb::SBType result_type;
+  UnaryOpKind kind;
   Type rhs_type = rhs->result_type_deref();
 
-  switch (kind) {
+  switch (token_kind) {
     case clang::tok::star: {
-      if (rhs_type.IsPointerType()) {
-        result_type = rhs_type.GetPointeeType();
-      } else {
+      if (!rhs_type.IsPointerType()) {
         BailOut(ErrorCode::kInvalidOperandType,
                 llvm::formatv(
                     "indirection requires pointer operand ('{0}' invalid)",
@@ -2095,6 +2099,8 @@ ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind kind, ExprResult rhs,
                 location);
         return std::make_unique<ErrorNode>();
       }
+      result_type = rhs_type.GetPointeeType();
+      kind = UnaryOpKind::Deref;
       break;
     }
     case clang::tok::amp: {
@@ -2112,6 +2118,7 @@ ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind kind, ExprResult rhs,
         return std::make_unique<ErrorNode>();
       }
       result_type = rhs_type.GetPointerType();
+      kind = UnaryOpKind::AddrOf;
       break;
     }
     case clang::tok::plus:
@@ -2120,8 +2127,10 @@ ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind kind, ExprResult rhs,
       rhs_type = rhs->result_type_deref();
       if (rhs_type.IsScalar() || rhs_type.IsUnscopedEnum() ||
           // Unary plus is allowed for pointers.
-          (kind == clang::tok::plus && rhs_type.IsPointerType())) {
+          (token_kind == clang::tok::plus && rhs_type.IsPointerType())) {
         result_type = rhs->result_type();
+        kind = (token_kind == clang::tok::plus) ? UnaryOpKind::Plus
+                                                : UnaryOpKind::Minus;
       }
       break;
     }
@@ -2130,15 +2139,24 @@ ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind kind, ExprResult rhs,
       rhs_type = rhs->result_type_deref();
       if (rhs_type.IsInteger() || rhs_type.IsUnscopedEnum()) {
         result_type = rhs->result_type();
+        kind = UnaryOpKind::Not;
       }
       break;
     }
     case clang::tok::exclaim: {
       if (rhs_type.IsContextuallyConvertibleToBool()) {
         result_type = target_.GetBasicType(lldb::eBasicTypeBool);
+        kind = UnaryOpKind::LNot;
       }
       break;
     }
+    case clang::tok::plusplus: {
+      return BuildIncrementDecrement(UnaryOpKind::PreInc, std::move(rhs),
+                                     location);
+    }
+    case clang::tok::minusminus:
+      return BuildIncrementDecrement(UnaryOpKind::PreDec, std::move(rhs),
+                                     location);
 
     default:
       break;
@@ -2153,6 +2171,56 @@ ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind kind, ExprResult rhs,
   }
 
   return std::make_unique<UnaryOpNode>(location, result_type, kind,
+                                       std::move(rhs));
+}
+
+ExprResult Parser::BuildIncrementDecrement(UnaryOpKind kind, ExprResult rhs,
+                                           clang::SourceLocation location) {
+  assert((kind == UnaryOpKind::PreInc || kind == UnaryOpKind::PreDec ||
+          kind == UnaryOpKind::PostInc || kind == UnaryOpKind::PostDec) &&
+         "illegal unary op kind, expected inc/dec");
+
+  Type rhs_type = rhs->result_type_deref();
+
+  // In C++ the requirement here is that the expression is "assignable". However
+  // in the debugger context side-effects are not allowed and the only case
+  // where increment/decrement are permitted is when modifying the "context
+  // variable".
+  // Technically, `++(++$var)` could be allowed too, since both increments
+  // modify the context variable. However, MSVC debugger doesn't allow it, so we
+  // don't implement it too.
+  if (rhs->is_rvalue()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv("expression is not assignable"), location);
+    return std::make_unique<ErrorNode>();
+  }
+  if (!rhs->is_context_var()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv("side effects are not supported in this context: "
+                          "trying to modify data at the target process"),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+  llvm::StringRef op_name =
+      (kind == UnaryOpKind::PreInc || kind == UnaryOpKind::PostInc)
+          ? "increment"
+          : "decrement";
+  if (rhs_type.IsEnum()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv("cannot {0} expression of enum type '{1}'", op_name,
+                          rhs_type.GetName()),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+  if (!rhs_type.IsScalar()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv("cannot {0} expression of type '{1}'", op_name,
+                          rhs_type.GetName()),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  return std::make_unique<UnaryOpNode>(location, rhs->result_type(), kind,
                                        std::move(rhs));
 }
 

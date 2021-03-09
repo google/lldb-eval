@@ -14,7 +14,35 @@
 
 #include "lldb-eval/ast.h"
 
+#include "lldb-eval/defines.h"
+
 namespace lldb_eval {
+
+std::string to_string(UnaryOpKind kind) {
+  switch (kind) {
+    case UnaryOpKind::PostInc:
+      return "postfix '++'";
+    case UnaryOpKind::PostDec:
+      return "postfix '--'";
+    case UnaryOpKind::PreInc:
+      return "prefix '++'";
+    case UnaryOpKind::PreDec:
+      return "prefix '--'";
+    case UnaryOpKind::AddrOf:
+      return "prefix '&'";
+    case UnaryOpKind::Deref:
+      return "prefix '*'";
+    case UnaryOpKind::Plus:
+      return "prefix '+'";
+    case UnaryOpKind::Minus:
+      return "prefix '-'";
+    case UnaryOpKind::Not:
+      return "prefix '~'";
+    case UnaryOpKind::LNot:
+      return "prefix '!'";
+  }
+  lldb_eval_unreachable("did you add an element to UnaryOpKind?");
+}
 
 lldb::SBType AstNode::result_type_deref() {
   lldb::SBType type = result_type();

@@ -42,6 +42,7 @@ class AstNode {
   virtual bool is_error() const { return false; };
   virtual bool is_rvalue() const = 0;
   virtual bool is_bitfield() const { return false; };
+  virtual bool is_context_var() const { return false; };
   virtual lldb::SBType result_type() const = 0;
 
   clang::SourceLocation location() const { return location_; }
@@ -84,14 +85,16 @@ class LiteralNode : public AstNode {
 class IdentifierNode : public AstNode {
  public:
   IdentifierNode(clang::SourceLocation location, std::string name, Value value,
-                 bool is_rvalue)
+                 bool is_rvalue, bool is_context_var)
       : AstNode(location),
         is_rvalue_(is_rvalue),
+        is_context_var_(is_context_var),
         name_(std::move(name)),
         value_(std::move(value)) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return is_rvalue_; }
+  bool is_context_var() const override { return is_context_var_; };
   lldb::SBType result_type() const override { return value_.type(); }
 
   std::string name() const { return name_; }
@@ -99,6 +102,7 @@ class IdentifierNode : public AstNode {
 
  private:
   bool is_rvalue_;
+  bool is_context_var_;
   std::string name_;
   Value value_;
 };
@@ -242,7 +246,6 @@ class BinaryOpNode : public AstNode {
   lldb::SBType result_type() const override { return result_type_; }
 
   clang::tok::TokenKind op() const { return op_; }
-  std::string op_name() const { return clang::tok::getTokenName(op_); }
   AstNode* lhs() const { return lhs_.get(); }
   AstNode* rhs() const { return rhs_.get(); }
 
@@ -254,27 +257,40 @@ class BinaryOpNode : public AstNode {
   ExprResult rhs_;
 };
 
+enum class UnaryOpKind {
+  PostInc,
+  PostDec,
+  PreInc,
+  PreDec,
+  AddrOf,
+  Deref,
+  Plus,
+  Minus,
+  Not,
+  LNot,
+};
+
+std::string to_string(UnaryOpKind kind);
+
 class UnaryOpNode : public AstNode {
  public:
   UnaryOpNode(clang::SourceLocation location, lldb::SBType result_type,
-              clang::tok::TokenKind op, ExprResult rhs)
+              UnaryOpKind kind, ExprResult rhs)
       : AstNode(location),
         result_type_(result_type),
-        op_(op),
+        kind_(kind),
         rhs_(std::move(rhs)) {}
 
   void Accept(Visitor* v) const override;
-  bool is_rvalue() const override { return op_ != clang::tok::star; }
+  bool is_rvalue() const override { return kind_ != UnaryOpKind::Deref; }
   lldb::SBType result_type() const override { return result_type_; }
 
-  clang::tok::TokenKind op() const { return op_; }
-  std::string op_name() const { return clang::tok::getTokenName(op_); }
+  UnaryOpKind kind() const { return kind_; }
   AstNode* rhs() const { return rhs_.get(); }
 
  private:
   lldb::SBType result_type_;
-  // TODO(werat): Use custom enum with unary operators.
-  clang::tok::TokenKind op_;
+  UnaryOpKind kind_;
   ExprResult rhs_;
 };
 

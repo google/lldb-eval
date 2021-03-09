@@ -213,6 +213,10 @@ lldb::SBValue Context::LookupIdentifier(const std::string& name) const {
   return value.GetStaticValue();
 }
 
+bool Context::IsContextVar(const std::string& name) const {
+  return context_vars_.find(name) != context_vars_.end();
+}
+
 std::shared_ptr<Context> Context::Create(
     std::string expr, lldb::SBFrame frame,
     std::unordered_map<std::string, lldb::SBValue> context_vars) {

@@ -243,6 +243,24 @@ llvm::APFloat Value::GetFloat() {
   }
 }
 
+Value Value::Clone() {
+  lldb::SBData data = value_.GetData();
+  lldb::SBError ignore;
+  auto raw_data = std::make_unique<uint8_t[]>(data.GetByteSize());
+  data.ReadRawData(ignore, 0, raw_data.get(), data.GetByteSize());
+  return CreateValueFromBytes(value_.GetTarget(), raw_data.get(), type_);
+}
+
+void Value::Update(const llvm::APInt& v) {
+  lldb::SBData data;
+  lldb::SBError ignore;
+  lldb::SBTarget target = value_.GetTarget();
+  data.SetData(ignore, v.getRawData(), type_.GetByteSize(),
+               target.GetByteOrder(),
+               static_cast<uint8_t>(target.GetAddressByteSize()));
+  value_.SetData(data, ignore);
+}
+
 Value CastScalarToBasicType(lldb::SBTarget target, Value val,
                             lldb::SBType type) {
   Value ret;

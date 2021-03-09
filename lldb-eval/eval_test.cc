@@ -1713,3 +1713,61 @@ TEST_F(EvalTest, TestBuiltinFunction_Log2) {
       Eval("::ns::dummy(1)"),
       IsError("function '::ns::dummy' is not a supported builtin intrinsic"));
 }
+
+TEST_F(EvalTest, TestPrefixIncDec) {
+  EXPECT_THAT(Eval("++1"), IsError("expression is not assignable"));
+  EXPECT_THAT(Eval("--i"),
+              IsError("side effects are not supported in this context"));
+
+  ASSERT_TRUE(CreateContextVariable("$enum_foo", "ScopedEnum::kFoo"));
+  EXPECT_THAT(EvalWithContext("++$enum_foo", vars_),
+              IsError("cannot increment expression of enum type 'ScopedEnum'"));
+
+  ASSERT_TRUE(CreateContextVariable("$i", "1"));
+  EXPECT_THAT(EvalWithContext("++$i", vars_), IsEqual("2"));
+  EXPECT_THAT(EvalWithContext("++$i + 1", vars_), IsEqual("4"));
+  EXPECT_THAT(EvalWithContext("--$i", vars_), IsEqual("2"));
+  EXPECT_THAT(EvalWithContext("--$i - 1", vars_), IsEqual("0"));
+
+  ASSERT_TRUE(CreateContextVariable("$f", "1.5f"));
+  EXPECT_THAT(EvalWithContext("++$f", vars_), IsEqual("2.5"));
+  EXPECT_THAT(EvalWithContext("++$f + 1", vars_), IsEqual("4.5"));
+  EXPECT_THAT(EvalWithContext("--$f", vars_), IsEqual("2.5"));
+  EXPECT_THAT(EvalWithContext("--$f - 1", vars_), IsEqual("0.5"));
+
+  ASSERT_TRUE(CreateContextVariable("$d", "1.5"));
+  EXPECT_THAT(EvalWithContext("++$d", vars_), IsEqual("2.5"));
+  EXPECT_THAT(EvalWithContext("++$d + 1", vars_), IsEqual("4.5"));
+  EXPECT_THAT(EvalWithContext("--$d", vars_), IsEqual("2.5"));
+  EXPECT_THAT(EvalWithContext("--$d - 1", vars_), IsEqual("0.5"));
+}
+
+TEST_F(EvalTest, TestPostfixIncDec) {
+  EXPECT_THAT(Eval("1++"), IsError("expression is not assignable"));
+  EXPECT_THAT(Eval("i--"),
+              IsError("side effects are not supported in this context"));
+
+  ASSERT_TRUE(CreateContextVariable("$enum_foo", "ScopedEnum::kFoo"));
+  EXPECT_THAT(EvalWithContext("$enum_foo++", vars_),
+              IsError("cannot increment expression of enum type 'ScopedEnum'"));
+
+  ASSERT_TRUE(CreateContextVariable("$i", "1"));
+  EXPECT_THAT(EvalWithContext("$i++", vars_), IsEqual("1"));
+  EXPECT_THAT(EvalWithContext("$i", vars_), IsEqual("2"));
+  EXPECT_THAT(EvalWithContext("$i++ + 1", vars_), IsEqual("3"));
+  EXPECT_THAT(EvalWithContext("$i--", vars_), IsEqual("3"));
+  EXPECT_THAT(EvalWithContext("$i-- - 1", vars_), IsEqual("1"));
+
+  ASSERT_TRUE(CreateContextVariable("$f", "1.5f"));
+  EXPECT_THAT(EvalWithContext("$f++", vars_), IsEqual("1.5"));
+  EXPECT_THAT(EvalWithContext("$f", vars_), IsEqual("2.5"));
+  EXPECT_THAT(EvalWithContext("$f++ + 1", vars_), IsEqual("3.5"));
+  EXPECT_THAT(EvalWithContext("$f--", vars_), IsEqual("3.5"));
+  EXPECT_THAT(EvalWithContext("$f-- - 1", vars_), IsEqual("1.5"));
+
+  ASSERT_TRUE(CreateContextVariable("$d", "1.5"));
+  EXPECT_THAT(EvalWithContext("$d++", vars_), IsEqual("1.5"));
+  EXPECT_THAT(EvalWithContext("$d++ + 1", vars_), IsEqual("3.5"));
+  EXPECT_THAT(EvalWithContext("$d--", vars_), IsEqual("3.5"));
+  EXPECT_THAT(EvalWithContext("$d-- - 1", vars_), IsEqual("1.5"));
+}
