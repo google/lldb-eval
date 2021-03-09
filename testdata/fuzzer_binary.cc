@@ -142,6 +142,8 @@ enum class EnumClass { ZERO, ONE, TWO, THREE };
 
 // Global variables
 int global_int = 55;
+int* global_ptr = &global_int;
+int& global_ref = global_int;
 TestStruct global_ts;
 
 namespace ns {
@@ -157,6 +159,8 @@ enum class EnumClass { ZERO, ONE, TWO, THREE };
 
 // Global variables:
 int global_int = 65;
+int* global_ptr = &global_int;
+int& global_ref = global_int;
 TestStruct global_ts;
 
 namespace nested_ns {
