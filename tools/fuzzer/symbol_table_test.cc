@@ -29,6 +29,15 @@ using namespace fuzzer;
 using namespace testing;
 using bazel::tools::cpp::runfiles::Runfiles;
 
+// Removes leading "::" from the identifier name.
+static std::string remove_leading_colons(const std::string& name) {
+  if (name.rfind("::", 0) == 0) {
+    // `name` starts with "::"
+    return name.substr(2);
+  }
+  return name;
+}
+
 class PopulateSymbolTableTest : public Test {
  protected:
   static void SetUpTestSuite() {
@@ -53,8 +62,6 @@ class PopulateSymbolTableTest : public Test {
   }
 
  protected:
-  lldb::SBFrame frame_;
-
   static Runfiles* runfiles_;
   static lldb::SBProcess process_;
   static SymbolTable symtab_;
@@ -73,7 +80,7 @@ TEST_F(PopulateSymbolTableTest, Variables) {
     ASSERT_NE(var_it, symtab_.vars().end());
     std::set<std::string> names_from_symtab;
     for (const auto& var : var_it->second) {
-      names_from_symtab.insert(var.expr.name());
+      names_from_symtab.insert(remove_leading_colons(var.expr.name()));
     }
     EXPECT_EQ(names, names_from_symtab);
     count_checked_types++;
@@ -90,8 +97,8 @@ TEST_F(PopulateSymbolTableTest, Variables) {
       ScalarType::SignedInt,
       {"int_min", "int_max", "x", "ref" /* references aren't supported yet */,
        "global_int", "ns::global_int", "ns::nested_ns::global_int",
-       "StaticMember::s1", "ns::StaticMember::s1",
-       "ClassWithNestedClass::NestedClass::s1"});
+       "global_ref", "ns::global_ref", "StaticMember::s1",
+       "ns::StaticMember::s1", "ClassWithNestedClass::NestedClass::s1"});
   expect_vars(ScalarType::UnsignedLong, {"ulong_min", "ulong_max"});
   expect_vars(ScalarType::SignedLong, {"long_min", "long_max"});
   expect_vars(ScalarType::UnsignedLongLong, {"ullong_min", "ullong_max"});
@@ -101,7 +108,7 @@ TEST_F(PopulateSymbolTableTest, Variables) {
   expect_vars(ScalarType::LongDouble,
               {"ldnan", "ldinf", "ldsnan", "ldmax", "lddenorm"});
   Type int_ptr = PointerType(QualifiedType(ScalarType::SignedInt));
-  expect_vars(int_ptr, {"p"});
+  expect_vars(int_ptr, {"p", "global_ptr", "ns::global_ptr"});
   expect_vars(PointerType(QualifiedType(int_ptr)), {"q"});
   expect_vars(PointerType(QualifiedType(int_ptr, CvQualifier::Const)),
               {"refp"});
@@ -131,12 +138,15 @@ TEST_F(PopulateSymbolTableTest, FreedomIndices) {
   freedom_indices["addr_null_ptr"] = 1;
   freedom_indices["test_str"] = 1;
   freedom_indices["addr_null_char_ptr"] = 1;
+  freedom_indices["global_ptr"] = 1;
+  freedom_indices["ns::global_ptr"] = 1;
 
   size_t variable_count = 0;
   for (const auto& [type, vars] : symtab_.vars()) {
     for (const auto& var : vars) {
       variable_count++;
-      EXPECT_EQ(var.freedom_index, freedom_indices[var.expr.name()]);
+      EXPECT_EQ(var.freedom_index,
+                freedom_indices[remove_leading_colons(var.expr.name())]);
     }
   }
 

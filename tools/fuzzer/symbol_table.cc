@@ -175,12 +175,18 @@ int calculate_freedom_index(lldb::SBValue value,
 }
 
 // Fix variable/field names returned by LLDB API. E.g. name is sometimes in
-// the form of "type name", so it ignores everything in front of the last
-// occurrence of ' ' (space).
+// the form of "type name" or "type *name", so it ignores everything in front of
+// the last occurrence of ' ' (space), '*' or '&'.
 const char* fix_name(const char* name) {
-  const char* last_space = strrchr(name, ' ');
-  if (last_space != nullptr) {
-    return last_space + 1;
+  // Find the last occurrence of ' ', '*' or '&' in the `name`.
+  const char* last_occurrence = nullptr;
+  for (const char* c = name; *c != '\0'; ++c) {
+    if (*c == ' ' || *c == '*' || *c == '&') {
+      last_occurrence = c;
+    }
+  }
+  if (last_occurrence != nullptr) {
+    return last_occurrence + 1;
   }
   return name;
 }
