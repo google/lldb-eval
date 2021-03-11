@@ -67,6 +67,9 @@ BinaryOpKind clang_token_kind_to_binary_op_kind(
     case clang::tok::ampamp:         return BinaryOpKind::LAnd;
     case clang::tok::pipepipe:       return BinaryOpKind::LOr;
       // clang-format on
+
+    default:
+      break;
   }
   lldb_eval_unreachable("did you add an element to BinaryOpKind?");
 }
