@@ -69,7 +69,7 @@ class Interpreter : Visitor {
 
   Value EvalNode(const AstNode* node, FlowAnalysis* flow = nullptr);
 
-  Value EvaluateComparison(clang::tok::TokenKind op, Value lhs, Value rhs);
+  Value EvaluateComparison(BinaryOpKind kind, Value lhs, Value rhs);
 
   Value EvaluateUnaryMinus(Value rhs);
   Value EvaluateUnaryNegation(Value rhs);
@@ -82,7 +82,7 @@ class Interpreter : Visitor {
   Value EvaluateBinaryMultiplication(Value lhs, Value rhs);
   Value EvaluateBinaryDivision(Value lhs, Value rhs);
   Value EvaluateBinaryRemainder(Value lhs, Value rhs);
-  Value EvaluateBinaryBitwise(clang::tok::TokenKind kind, Value lhs, Value rhs);
+  Value EvaluateBinaryBitwise(BinaryOpKind kind, Value lhs, Value rhs);
 
   Value PointerAdd(Value lhs, int64_t offset);
 

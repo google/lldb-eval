@@ -231,13 +231,38 @@ class ArraySubscriptNode : public AstNode {
   bool is_pointer_base_;
 };
 
+enum class BinaryOpKind {
+  Mul,   // "*"
+  Div,   // "/"
+  Rem,   // "%"
+  Add,   // "+"
+  Sub,   // "-"
+  Shl,   // "<<"
+  Shr,   // ">>"
+  LT,    // "<"
+  GT,    // ">"
+  LE,    // "<="
+  GE,    // ">="
+  EQ,    // "=="
+  NE,    // "!="
+  And,   // "&"
+  Xor,   // "^"
+  Or,    // "|"
+  LAnd,  // "&&"
+  LOr,   // "||"
+};
+
+std::string to_string(BinaryOpKind kind);
+BinaryOpKind clang_token_kind_to_binary_op_kind(
+    clang::tok::TokenKind token_kind);
+
 class BinaryOpNode : public AstNode {
  public:
   BinaryOpNode(clang::SourceLocation location, lldb::SBType result_type,
-               clang::tok::TokenKind op, ExprResult lhs, ExprResult rhs)
+               BinaryOpKind kind, ExprResult lhs, ExprResult rhs)
       : AstNode(location),
         result_type_(result_type),
-        op_(op),
+        kind_(kind),
         lhs_(std::move(lhs)),
         rhs_(std::move(rhs)) {}
 
@@ -245,29 +270,28 @@ class BinaryOpNode : public AstNode {
   bool is_rvalue() const override { return true; }
   lldb::SBType result_type() const override { return result_type_; }
 
-  clang::tok::TokenKind op() const { return op_; }
+  BinaryOpKind kind() const { return kind_; }
   AstNode* lhs() const { return lhs_.get(); }
   AstNode* rhs() const { return rhs_.get(); }
 
  private:
   lldb::SBType result_type_;
-  // TODO(werat): Use custom enum with binary operators.
-  clang::tok::TokenKind op_;
+  BinaryOpKind kind_;
   ExprResult lhs_;
   ExprResult rhs_;
 };
 
 enum class UnaryOpKind {
-  PostInc,
-  PostDec,
-  PreInc,
-  PreDec,
-  AddrOf,
-  Deref,
-  Plus,
-  Minus,
-  Not,
-  LNot,
+  PostInc,  // "++"
+  PostDec,  // "--"
+  PreInc,   // "++"
+  PreDec,   // "--"
+  AddrOf,   // "&"
+  Deref,    // "*"
+  Plus,     // "+"
+  Minus,    // "-"
+  Not,      // "~"
+  LNot,     // "!"
 };
 
 std::string to_string(UnaryOpKind kind);

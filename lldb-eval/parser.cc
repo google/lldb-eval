@@ -687,7 +687,7 @@ ExprResult Parser::ParseLogicalOrExpression() {
     clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseLogicalAndExpression();
-    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
+    lhs = BuildBinaryOp(BinaryOpKind::LOr, std::move(lhs), std::move(rhs),
                         token.getLocation());
   }
 
@@ -706,7 +706,7 @@ ExprResult Parser::ParseLogicalAndExpression() {
     clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseInclusiveOrExpression();
-    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
+    lhs = BuildBinaryOp(BinaryOpKind::LAnd, std::move(lhs), std::move(rhs),
                         token.getLocation());
   }
 
@@ -725,7 +725,7 @@ ExprResult Parser::ParseInclusiveOrExpression() {
     clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseExclusiveOrExpression();
-    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
+    lhs = BuildBinaryOp(BinaryOpKind::Or, std::move(lhs), std::move(rhs),
                         token.getLocation());
   }
 
@@ -744,7 +744,7 @@ ExprResult Parser::ParseExclusiveOrExpression() {
     clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseAndExpression();
-    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
+    lhs = BuildBinaryOp(BinaryOpKind::Xor, std::move(lhs), std::move(rhs),
                         token.getLocation());
   }
 
@@ -763,7 +763,7 @@ ExprResult Parser::ParseAndExpression() {
     clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseEqualityExpression();
-    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
+    lhs = BuildBinaryOp(BinaryOpKind::And, std::move(lhs), std::move(rhs),
                         token.getLocation());
   }
 
@@ -783,8 +783,8 @@ ExprResult Parser::ParseEqualityExpression() {
     clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseRelationalExpression();
-    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
-                        token.getLocation());
+    lhs = BuildBinaryOp(clang_token_kind_to_binary_op_kind(token.getKind()),
+                        std::move(lhs), std::move(rhs), token.getLocation());
   }
 
   return lhs;
@@ -806,8 +806,8 @@ ExprResult Parser::ParseRelationalExpression() {
     clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseShiftExpression();
-    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
-                        token.getLocation());
+    lhs = BuildBinaryOp(clang_token_kind_to_binary_op_kind(token.getKind()),
+                        std::move(lhs), std::move(rhs), token.getLocation());
   }
 
   return lhs;
@@ -826,8 +826,8 @@ ExprResult Parser::ParseShiftExpression() {
     clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseAdditiveExpression();
-    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
-                        token.getLocation());
+    lhs = BuildBinaryOp(clang_token_kind_to_binary_op_kind(token.getKind()),
+                        std::move(lhs), std::move(rhs), token.getLocation());
   }
 
   return lhs;
@@ -846,8 +846,8 @@ ExprResult Parser::ParseAdditiveExpression() {
     clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseMultiplicativeExpression();
-    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
-                        token.getLocation());
+    lhs = BuildBinaryOp(clang_token_kind_to_binary_op_kind(token.getKind()),
+                        std::move(lhs), std::move(rhs), token.getLocation());
   }
 
   return lhs;
@@ -868,8 +868,8 @@ ExprResult Parser::ParseMultiplicativeExpression() {
     clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseCastExpression();
-    lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
-                        token.getLocation());
+    lhs = BuildBinaryOp(clang_token_kind_to_binary_op_kind(token.getKind()),
+                        std::move(lhs), std::move(rhs), token.getLocation());
   }
 
   return lhs;
@@ -1104,8 +1104,8 @@ ExprResult Parser::ParsePostfixExpression() {
         auto rhs = ParseExpression();
         Expect(clang::tok::r_square);
         ConsumeToken();
-        lhs = BuildBinaryOp(token.getKind(), std::move(lhs), std::move(rhs),
-                            token.getLocation());
+        lhs = BuildBinarySubscript(std::move(lhs), std::move(rhs),
+                                   token.getLocation());
         break;
       }
 
@@ -2224,46 +2224,42 @@ ExprResult Parser::BuildIncrementDecrement(UnaryOpKind kind, ExprResult rhs,
                                        std::move(rhs));
 }
 
-ExprResult Parser::BuildBinaryOp(clang::tok::TokenKind kind, ExprResult lhs,
+ExprResult Parser::BuildBinaryOp(BinaryOpKind kind, ExprResult lhs,
                                  ExprResult rhs,
                                  clang::SourceLocation location) {
   switch (kind) {
-    case clang::tok::plus:
+    case BinaryOpKind::Add:
       return BuildBinaryAddition(std::move(lhs), std::move(rhs), location);
 
-    case clang::tok::minus:
+    case BinaryOpKind::Sub:
       return BuildBinarySubtraction(std::move(lhs), std::move(rhs), location);
 
-    case clang::tok::star:
-    case clang::tok::slash:
+    case BinaryOpKind::Mul:
+    case BinaryOpKind::Div:
       return BuildBinaryMulDiv(kind, std::move(lhs), std::move(rhs), location);
 
-    case clang::tok::percent:
+    case BinaryOpKind::Rem:
       return BuildBinaryRemainder(std::move(lhs), std::move(rhs), location);
 
-    case clang::tok::amp:
-    case clang::tok::pipe:
-    case clang::tok::caret:
-    case clang::tok::lessless:
-    case clang::tok::greatergreater:
+    case BinaryOpKind::And:
+    case BinaryOpKind::Or:
+    case BinaryOpKind::Xor:
+    case BinaryOpKind::Shl:
+    case BinaryOpKind::Shr:
       return BuildBinaryBitwise(kind, std::move(lhs), std::move(rhs), location);
 
-    case clang::tok::equalequal:
-    case clang::tok::exclaimequal:
-    case clang::tok::less:
-    case clang::tok::lessequal:
-    case clang::tok::greater:
-    case clang::tok::greaterequal:
+    case BinaryOpKind::EQ:
+    case BinaryOpKind::NE:
+    case BinaryOpKind::LT:
+    case BinaryOpKind::LE:
+    case BinaryOpKind::GT:
+    case BinaryOpKind::GE:
       return BuildBinaryComparison(kind, std::move(lhs), std::move(rhs),
                                    location);
 
-    case clang::tok::ampamp:
-    case clang::tok::pipepipe:
+    case BinaryOpKind::LAnd:
+    case BinaryOpKind::LOr:
       return BuildBinaryLogical(kind, std::move(lhs), std::move(rhs), location);
-
-    // "l_square" is a subscript operator -- array[index].
-    case clang::tok::l_square:
-      return BuildBinarySubscript(std::move(lhs), std::move(rhs), location);
 
     default:
       break;
@@ -2294,7 +2290,7 @@ ExprResult Parser::BuildBinaryAddition(ExprResult lhs, ExprResult rhs,
 
   if (result_type.IsScalar()) {
     return std::make_unique<BinaryOpNode>(location, result_type,
-                                          clang::tok::plus, std::move(lhs),
+                                          BinaryOpKind::Add, std::move(lhs),
                                           std::move(rhs));
   }
 
@@ -2326,7 +2322,7 @@ ExprResult Parser::BuildBinaryAddition(ExprResult lhs, ExprResult rhs,
     return std::make_unique<ErrorNode>();
   }
 
-  return std::make_unique<BinaryOpNode>(location, ptr_type, clang::tok::plus,
+  return std::make_unique<BinaryOpNode>(location, ptr_type, BinaryOpKind::Add,
                                         std::move(lhs), std::move(rhs));
 }
 
@@ -2345,7 +2341,7 @@ ExprResult Parser::BuildBinarySubtraction(ExprResult lhs, ExprResult rhs,
 
   if (result_type.IsScalar()) {
     return std::make_unique<BinaryOpNode>(location, result_type,
-                                          clang::tok::minus, std::move(lhs),
+                                          BinaryOpKind::Sub, std::move(lhs),
                                           std::move(rhs));
   }
 
@@ -2359,7 +2355,7 @@ ExprResult Parser::BuildBinarySubtraction(ExprResult lhs, ExprResult rhs,
       return std::make_unique<ErrorNode>();
     }
 
-    return std::make_unique<BinaryOpNode>(location, lhs_type, clang::tok::minus,
+    return std::make_unique<BinaryOpNode>(location, lhs_type, BinaryOpKind::Sub,
                                           std::move(lhs), std::move(rhs));
   }
 
@@ -2388,7 +2384,7 @@ ExprResult Parser::BuildBinarySubtraction(ExprResult lhs, ExprResult rhs,
     // that it is signed.
     lldb::SBType ptrdiff_ty = target_.GetBasicType(lldb::eBasicTypeLongLong);
     return std::make_unique<BinaryOpNode>(location, ptrdiff_ty,
-                                          clang::tok::minus, std::move(lhs),
+                                          BinaryOpKind::Sub, std::move(lhs),
                                           std::move(rhs));
   }
 
@@ -2399,7 +2395,7 @@ ExprResult Parser::BuildBinarySubtraction(ExprResult lhs, ExprResult rhs,
   return std::make_unique<ErrorNode>();
 }
 
-ExprResult Parser::BuildBinaryMulDiv(clang::tok::TokenKind kind, ExprResult lhs,
+ExprResult Parser::BuildBinaryMulDiv(BinaryOpKind kind, ExprResult lhs,
                                      ExprResult rhs,
                                      clang::SourceLocation location) {
   // Operations {'*', '/'} work for:
@@ -2436,7 +2432,7 @@ ExprResult Parser::BuildBinaryRemainder(ExprResult lhs, ExprResult rhs,
   // TODO(werat): Check for arithmetic zero division.
   if (result_type.IsInteger()) {
     return std::make_unique<BinaryOpNode>(location, result_type,
-                                          clang::tok::percent, std::move(lhs),
+                                          BinaryOpKind::Rem, std::move(lhs),
                                           std::move(rhs));
   }
 
@@ -2447,8 +2443,8 @@ ExprResult Parser::BuildBinaryRemainder(ExprResult lhs, ExprResult rhs,
   return std::make_unique<ErrorNode>();
 }
 
-ExprResult Parser::BuildBinaryBitwise(clang::tok::TokenKind kind,
-                                      ExprResult lhs, ExprResult rhs,
+ExprResult Parser::BuildBinaryBitwise(BinaryOpKind kind, ExprResult lhs,
+                                      ExprResult rhs,
                                       clang::SourceLocation location) {
   // Operations {'&', '|', '^', '>>', '<<'} work for:
   //
@@ -2471,8 +2467,8 @@ ExprResult Parser::BuildBinaryBitwise(clang::tok::TokenKind kind,
   return std::make_unique<ErrorNode>();
 }
 
-ExprResult Parser::BuildBinaryComparison(clang::tok::TokenKind kind,
-                                         ExprResult lhs, ExprResult rhs,
+ExprResult Parser::BuildBinaryComparison(BinaryOpKind kind, ExprResult lhs,
+                                         ExprResult rhs,
                                          clang::SourceLocation location) {
   // Comparison works for:
   //
@@ -2517,9 +2513,8 @@ ExprResult Parser::BuildBinaryComparison(clang::tok::TokenKind kind,
     return std::make_unique<ErrorNode>();
   }
 
-  bool is_ordered =
-      (kind == clang::tok::less || kind == clang::tok::lessequal ||
-       kind == clang::tok::greater || kind == clang::tok::greaterequal);
+  bool is_ordered = (kind == BinaryOpKind::LT || kind == BinaryOpKind::LE ||
+                     kind == BinaryOpKind::GT || kind == BinaryOpKind::GE);
 
   // Check if the value can be compared to a pointer. We allow all pointers,
   // integers, unscoped enumerations and a nullptr literal if it's an
@@ -2580,8 +2575,8 @@ ExprResult Parser::BuildBinaryComparison(clang::tok::TokenKind kind,
   return std::make_unique<ErrorNode>();
 }
 
-ExprResult Parser::BuildBinaryLogical(clang::tok::TokenKind kind,
-                                      ExprResult lhs, ExprResult rhs,
+ExprResult Parser::BuildBinaryLogical(BinaryOpKind kind, ExprResult lhs,
+                                      ExprResult rhs,
                                       clang::SourceLocation location) {
   Type lhs_type = lhs->result_type_deref();
   Type rhs_type = rhs->result_type_deref();
