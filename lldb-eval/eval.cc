@@ -25,22 +25,22 @@
 #include "lldb/API/SBValue.h"
 #include "lldb/lldb-enumerations.h"
 
-namespace {
+namespace lldb_eval {
 
 template <typename T>
-bool Compare(clang::tok::TokenKind op, const T& l, const T& r) {
-  switch (op) {
-    case clang::tok::equalequal:
+bool Compare(BinaryOpKind kind, const T& l, const T& r) {
+  switch (kind) {
+    case BinaryOpKind::EQ:
       return l == r;
-    case clang::tok::exclaimequal:
+    case BinaryOpKind::NE:
       return l != r;
-    case clang::tok::less:
+    case BinaryOpKind::LT:
       return l < r;
-    case clang::tok::lessequal:
+    case BinaryOpKind::LE:
       return l <= r;
-    case clang::tok::greater:
+    case BinaryOpKind::GT:
       return l > r;
-    case clang::tok::greaterequal:
+    case BinaryOpKind::GE:
       return l >= r;
 
     default:
@@ -53,24 +53,24 @@ bool Compare(clang::tok::TokenKind op, const T& l, const T& r) {
 #if LLVM_VERSION_MAJOR < 11
 
 template <>
-bool Compare(clang::tok::TokenKind op, const llvm::APFloat& l,
+bool Compare(BinaryOpKind kind, const llvm::APFloat& l,
              const llvm::APFloat& r) {
-  switch (op) {
-    case clang::tok::equalequal:
+  switch (kind) {
+    case BinaryOpKind::EQ:
       return l.compare(r) == llvm::APFloat::cmpEqual;
-    case clang::tok::exclaimequal:
+    case BinaryOpKind::NE:
       return l.compare(r) != llvm::APFloat::cmpEqual;
-    case clang::tok::less:
+    case BinaryOpKind::LT:
       return l.compare(r) == llvm::APFloat::cmpLessThan;
-    case clang::tok::greater:
+    case BinaryOpKind::GT:
       return l.compare(r) == llvm::APFloat::cmpGreaterThan;
 
-    case clang::tok::lessequal: {
+    case BinaryOpKind::LE: {
       llvm::APFloat::cmpResult result = l.compare(r);
       return result == llvm::APFloat::cmpLessThan ||
              result == llvm::APFloat::cmpEqual;
     }
-    case clang::tok::greaterequal: {
+    case BinaryOpKind::GE: {
       llvm::APFloat::cmpResult result = l.compare(r);
       return result == llvm::APFloat::cmpGreaterThan ||
              result == llvm::APFloat::cmpEqual;
@@ -84,12 +84,8 @@ bool Compare(clang::tok::TokenKind op, const llvm::APFloat& l,
 
 #endif
 
-}  // namespace
-
-namespace lldb_eval {
-
 static Value EvaluateArithmeticOpInteger(lldb::SBTarget target,
-                                         clang::tok::TokenKind kind, Value lhs,
+                                         BinaryOpKind kind, Value lhs,
                                          Value rhs, lldb::SBType rtype) {
   assert((lhs.IsInteger() && CompareTypes(lhs.type(), rhs.type())) &&
          "invalid ast: operands must be integers and have the same type");
@@ -102,25 +98,25 @@ static Value EvaluateArithmeticOpInteger(lldb::SBTarget target,
   auto r = rhs.GetInteger();
 
   switch (kind) {
-    case clang::tok::plus:
+    case BinaryOpKind::Add:
       return wrap(l + r);
-    case clang::tok::minus:
+    case BinaryOpKind::Sub:
       return wrap(l - r);
-    case clang::tok::slash:
+    case BinaryOpKind::Div:
       return wrap(l / r);
-    case clang::tok::star:
+    case BinaryOpKind::Mul:
       return wrap(l * r);
-    case clang::tok::percent:
+    case BinaryOpKind::Rem:
       return wrap(l % r);
-    case clang::tok::amp:
+    case BinaryOpKind::And:
       return wrap(l & r);
-    case clang::tok::pipe:
+    case BinaryOpKind::Or:
       return wrap(l | r);
-    case clang::tok::caret:
+    case BinaryOpKind::Xor:
       return wrap(l ^ r);
-    case clang::tok::lessless:
+    case BinaryOpKind::Shl:
       return wrap(l.shl(r));
-    case clang::tok::greatergreater:
+    case BinaryOpKind::Shr:
       return wrap(l.lshr(r));
 
     default:
@@ -129,9 +125,9 @@ static Value EvaluateArithmeticOpInteger(lldb::SBTarget target,
   }
 }
 
-static Value EvaluateArithmeticOpFloat(lldb::SBTarget target,
-                                       clang::tok::TokenKind kind, Value lhs,
-                                       Value rhs, lldb::SBType rtype) {
+static Value EvaluateArithmeticOpFloat(lldb::SBTarget target, BinaryOpKind kind,
+                                       Value lhs, Value rhs,
+                                       lldb::SBType rtype) {
   assert((lhs.IsFloat() && CompareTypes(lhs.type(), rhs.type())) &&
          "invalid ast: operands must be floats and have the same type");
 
@@ -143,13 +139,13 @@ static Value EvaluateArithmeticOpFloat(lldb::SBTarget target,
   auto r = rhs.GetFloat();
 
   switch (kind) {
-    case clang::tok::plus:
+    case BinaryOpKind::Add:
       return wrap(l + r);
-    case clang::tok::minus:
+    case BinaryOpKind::Sub:
       return wrap(l - r);
-    case clang::tok::slash:
+    case BinaryOpKind::Div:
       return wrap(l / r);
-    case clang::tok::star:
+    case BinaryOpKind::Mul:
       return wrap(l * r);
 
     default:
@@ -158,9 +154,8 @@ static Value EvaluateArithmeticOpFloat(lldb::SBTarget target,
   }
 }
 
-static Value EvaluateArithmeticOp(lldb::SBTarget target,
-                                  clang::tok::TokenKind kind, Value lhs,
-                                  Value rhs, Type rtype) {
+static Value EvaluateArithmeticOp(lldb::SBTarget target, BinaryOpKind kind,
+                                  Value lhs, Value rhs, Type rtype) {
   assert((rtype.IsInteger() || rtype.IsFloat()) &&
          "invalid ast: result type must either integer or floating point");
 
@@ -368,7 +363,7 @@ void Interpreter::Visit(const ArraySubscriptNode* node) {
 
 void Interpreter::Visit(const BinaryOpNode* node) {
   // Short-circuit logical operators.
-  if (node->op() == clang::tok::ampamp || node->op() == clang::tok::pipepipe) {
+  if (node->kind() == BinaryOpKind::LAnd || node->kind() == BinaryOpKind::LOr) {
     auto lhs = EvalNode(node->lhs());
     if (!lhs) {
       return;
@@ -378,7 +373,8 @@ void Interpreter::Visit(const BinaryOpNode* node) {
 
     // For "&&" break if LHS is "false", for "||" if LHS is "true".
     bool lhs_val = lhs.GetBool();
-    bool break_early = (node->op() == clang::tok::ampamp) ? !lhs_val : lhs_val;
+    bool break_early =
+        (node->kind() == BinaryOpKind::LAnd) ? !lhs_val : lhs_val;
 
     if (break_early) {
       result_ = CreateValueFromBool(target_, lhs_val);
@@ -407,38 +403,38 @@ void Interpreter::Visit(const BinaryOpNode* node) {
     return;
   }
 
-  switch (node->op()) {
-    case clang::tok::plus:
+  switch (node->kind()) {
+    case BinaryOpKind::Add:
       result_ = EvaluateBinaryAddition(lhs, rhs);
       return;
-    case clang::tok::minus:
+    case BinaryOpKind::Sub:
       result_ = EvaluateBinarySubtraction(lhs, rhs);
       return;
-    case clang::tok::star:
+    case BinaryOpKind::Mul:
       result_ = EvaluateBinaryMultiplication(lhs, rhs);
       return;
-    case clang::tok::slash:
+    case BinaryOpKind::Div:
       result_ = EvaluateBinaryDivision(lhs, rhs);
       return;
-    case clang::tok::percent:
+    case BinaryOpKind::Rem:
       result_ = EvaluateBinaryRemainder(lhs, rhs);
       return;
-    case clang::tok::amp:
-    case clang::tok::pipe:
-    case clang::tok::caret:
-    case clang::tok::lessless:
-    case clang::tok::greatergreater:
-      result_ = EvaluateBinaryBitwise(node->op(), lhs, rhs);
+    case BinaryOpKind::And:
+    case BinaryOpKind::Or:
+    case BinaryOpKind::Xor:
+    case BinaryOpKind::Shl:
+    case BinaryOpKind::Shr:
+      result_ = EvaluateBinaryBitwise(node->kind(), lhs, rhs);
       return;
 
     // Comparison operations.
-    case clang::tok::equalequal:
-    case clang::tok::exclaimequal:
-    case clang::tok::less:
-    case clang::tok::lessequal:
-    case clang::tok::greater:
-    case clang::tok::greaterequal:
-      result_ = EvaluateComparison(node->op(), lhs, rhs);
+    case BinaryOpKind::EQ:
+    case BinaryOpKind::NE:
+    case BinaryOpKind::LT:
+    case BinaryOpKind::LE:
+    case BinaryOpKind::GT:
+    case BinaryOpKind::GE:
+      result_ = EvaluateComparison(node->kind(), lhs, rhs);
       return;
 
     default:
@@ -537,28 +533,27 @@ void Interpreter::Visit(const TernaryOpNode* node) {
   }
 }
 
-Value Interpreter::EvaluateComparison(clang::tok::TokenKind op, Value lhs,
-                                      Value rhs) {
+Value Interpreter::EvaluateComparison(BinaryOpKind kind, Value lhs, Value rhs) {
   // Evaluate arithmetic operation for two integral values.
   if (lhs.IsInteger() && rhs.IsInteger()) {
-    bool ret = Compare(op, lhs.GetInteger(), rhs.GetInteger());
+    bool ret = Compare(kind, lhs.GetInteger(), rhs.GetInteger());
     return CreateValueFromBool(target_, ret);
   }
 
   // Evaluate arithmetic operation for two floating point values.
   if (lhs.IsFloat() && rhs.IsFloat()) {
-    bool ret = Compare(op, lhs.GetFloat(), rhs.GetFloat());
+    bool ret = Compare(kind, lhs.GetFloat(), rhs.GetFloat());
     return CreateValueFromBool(target_, ret);
   }
 
   // Evaluate arithmetic operation for two scoped enum values.
   if (lhs.IsScopedEnum() && rhs.IsScopedEnum()) {
-    bool ret = Compare(op, lhs.GetUInt64(), rhs.GetUInt64());
+    bool ret = Compare(kind, lhs.GetUInt64(), rhs.GetUInt64());
     return CreateValueFromBool(target_, ret);
   }
 
   // Must be pointer/integer and/or nullptr comparison.
-  bool ret = Compare(op, lhs.GetUInt64(), rhs.GetUInt64());
+  bool ret = Compare(kind, lhs.GetUInt64(), rhs.GetUInt64());
   return CreateValueFromBool(target_, ret);
 }
 
@@ -644,7 +639,7 @@ Value Interpreter::EvaluateBinaryAddition(Value lhs, Value rhs) {
   if (lhs.IsScalar() && rhs.IsScalar()) {
     assert(CompareTypes(lhs.type(), rhs.type()) &&
            "invalid ast: operand must have the same type");
-    return EvaluateArithmeticOp(target_, clang::tok::plus, lhs, rhs,
+    return EvaluateArithmeticOp(target_, BinaryOpKind::Add, lhs, rhs,
                                 lhs.type());
   }
 
@@ -666,7 +661,7 @@ Value Interpreter::EvaluateBinarySubtraction(Value lhs, Value rhs) {
   if (lhs.IsScalar() && rhs.IsScalar()) {
     assert(CompareTypes(lhs.type(), rhs.type()) &&
            "invalid ast: operand must have the same type");
-    return EvaluateArithmeticOp(target_, clang::tok::minus, lhs, rhs,
+    return EvaluateArithmeticOp(target_, BinaryOpKind::Sub, lhs, rhs,
                                 lhs.type());
   }
   assert(lhs.IsPointer() && "invalid ast: lhs must be a pointer");
@@ -697,7 +692,7 @@ Value Interpreter::EvaluateBinaryMultiplication(Value lhs, Value rhs) {
   assert((lhs.IsScalar() && CompareTypes(lhs.type(), rhs.type())) &&
          "invalid ast: operands must be arithmetic and have the same type");
 
-  return EvaluateArithmeticOp(target_, clang::tok::star, lhs, rhs, lhs.type());
+  return EvaluateArithmeticOp(target_, BinaryOpKind::Mul, lhs, rhs, lhs.type());
 }
 
 Value Interpreter::EvaluateBinaryDivision(Value lhs, Value rhs) {
@@ -713,7 +708,7 @@ Value Interpreter::EvaluateBinaryDivision(Value lhs, Value rhs) {
     return rhs;
   }
 
-  return EvaluateArithmeticOp(target_, clang::tok::slash, lhs, rhs, lhs.type());
+  return EvaluateArithmeticOp(target_, BinaryOpKind::Div, lhs, rhs, lhs.type());
 }
 
 Value Interpreter::EvaluateBinaryRemainder(Value lhs, Value rhs) {
@@ -728,11 +723,11 @@ Value Interpreter::EvaluateBinaryRemainder(Value lhs, Value rhs) {
     return rhs;
   }
 
-  return EvaluateArithmeticOpInteger(target_, clang::tok::percent, lhs, rhs,
+  return EvaluateArithmeticOpInteger(target_, BinaryOpKind::Rem, lhs, rhs,
                                      lhs.type());
 }
 
-Value Interpreter::EvaluateBinaryBitwise(clang::tok::TokenKind kind, Value lhs,
+Value Interpreter::EvaluateBinaryBitwise(BinaryOpKind kind, Value lhs,
                                          Value rhs) {
   assert((lhs.IsInteger() && CompareTypes(lhs.type(), rhs.type())) &&
          "invalid ast: operands must be integers and have the same type");

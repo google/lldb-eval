@@ -161,22 +161,22 @@ class Parser {
   ExprResult BuildIncrementDecrement(UnaryOpKind kind, ExprResult rhs,
                                      clang::SourceLocation location);
 
-  ExprResult BuildBinaryOp(clang::tok::TokenKind kind, ExprResult lhs,
-                           ExprResult rhs, clang::SourceLocation location);
+  ExprResult BuildBinaryOp(BinaryOpKind kind, ExprResult lhs, ExprResult rhs,
+                           clang::SourceLocation location);
   ExprResult BuildBinaryAddition(ExprResult lhs, ExprResult rhs,
                                  clang::SourceLocation location);
   ExprResult BuildBinarySubtraction(ExprResult lhs, ExprResult rhs,
                                     clang::SourceLocation location);
-  ExprResult BuildBinaryMulDiv(clang::tok::TokenKind kind, ExprResult lhs,
+  ExprResult BuildBinaryMulDiv(BinaryOpKind kind, ExprResult lhs,
                                ExprResult rhs, clang::SourceLocation location);
   ExprResult BuildBinaryRemainder(ExprResult lhs, ExprResult rhs,
                                   clang::SourceLocation location);
-  ExprResult BuildBinaryBitwise(clang::tok::TokenKind kind, ExprResult lhs,
+  ExprResult BuildBinaryBitwise(BinaryOpKind kind, ExprResult lhs,
                                 ExprResult rhs, clang::SourceLocation location);
-  ExprResult BuildBinaryComparison(clang::tok::TokenKind kind, ExprResult lhs,
+  ExprResult BuildBinaryComparison(BinaryOpKind kind, ExprResult lhs,
                                    ExprResult rhs,
                                    clang::SourceLocation location);
-  ExprResult BuildBinaryLogical(clang::tok::TokenKind kind, ExprResult lhs,
+  ExprResult BuildBinaryLogical(BinaryOpKind kind, ExprResult lhs,
                                 ExprResult rhs, clang::SourceLocation location);
   ExprResult BuildBinarySubscript(ExprResult lhs, ExprResult rhs,
                                   clang::SourceLocation location);
