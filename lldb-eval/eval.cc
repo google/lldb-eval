@@ -457,15 +457,7 @@ void Interpreter::Visit(const UnaryOpNode* node) {
 
   switch (node->kind()) {
     case UnaryOpKind::Deref:
-      assert(rhs.type().IsPointerType() && "invalid ast: should be a pointer");
-      // If we're in the address-of context, skip the dereference and cancel the
-      // pending address-of operation as well.
-      if (flow_analysis() && flow_analysis()->AddressOfIsPending()) {
-        flow_analysis()->DiscardAddressOf();
-        result_ = rhs;
-      } else {
-        result_ = rhs.Dereference();
-      }
+      result_ = EvaluateDereference(rhs);
       return;
     case UnaryOpKind::AddrOf:
       // If the address-of operation wasn't cancelled during the evaluation of
@@ -555,6 +547,34 @@ Value Interpreter::EvaluateComparison(BinaryOpKind kind, Value lhs, Value rhs) {
   // Must be pointer/integer and/or nullptr comparison.
   bool ret = Compare(kind, lhs.GetUInt64(), rhs.GetUInt64());
   return CreateValueFromBool(target_, ret);
+}
+
+Value Interpreter::EvaluateDereference(Value rhs) {
+  assert((rhs.type().IsPointerType() || rhs.type().IsArrayType()) &&
+         "invalid ast: must be a pointer or an array type");
+
+  lldb::SBType pointer_type;
+  lldb::addr_t base_addr;
+
+  if (rhs.type().IsPointerType()) {
+    pointer_type = rhs.type();
+    base_addr = rhs.GetUInt64();
+  } else {
+    // Convert array type to pointer type, e.g. `int [n][m]` to `int (*)[m]`.
+    pointer_type = rhs.type().GetArrayElementType().GetPointerType();
+    base_addr = rhs.AddressOf().GetUInt64();
+  }
+
+  Value value = CreateValueFromPointer(target_, base_addr, pointer_type);
+
+  // If we're in the address-of context, skip the dereference and cancel the
+  // pending address-of operation as well.
+  if (flow_analysis() && flow_analysis()->AddressOfIsPending()) {
+    flow_analysis()->DiscardAddressOf();
+    return value;
+  }
+
+  return value.Dereference();
 }
 
 Value Interpreter::EvaluateUnaryMinus(Value rhs) {

@@ -318,6 +318,13 @@ static void TestSubscript() {
   // BREAK(TestSubscript)
 }
 
+static void TestArrayDereference() {
+  int arr_1d[2] = {1, 2};
+  int arr_2d[2][3] = {{1, 2, 3}, {4, 5, 6}};
+
+  // BREAK(TestArrayDereference)
+}
+
 // Referenced by TestCStyleCast
 namespace ns {
 
@@ -767,6 +774,7 @@ void main() {
   TestTernaryOperator();
   TestSizeOf();
   TestBuiltinFunction_Log2();
+  TestArrayDereference();
 
   // BREAK HERE
 }

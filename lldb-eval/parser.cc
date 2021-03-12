@@ -2091,7 +2091,11 @@ ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind token_kind,
 
   switch (token_kind) {
     case clang::tok::star: {
-      if (!rhs_type.IsPointerType()) {
+      if (rhs_type.IsPointerType()) {
+        result_type = rhs_type.GetPointeeType();
+      } else if (rhs_type.IsArrayType()) {
+        result_type = rhs_type.GetArrayElementType();
+      } else {
         BailOut(ErrorCode::kInvalidOperandType,
                 llvm::formatv(
                     "indirection requires pointer operand ('{0}' invalid)",
@@ -2099,7 +2103,6 @@ ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind token_kind,
                 location);
         return std::make_unique<ErrorNode>();
       }
-      result_type = rhs_type.GetPointeeType();
       kind = UnaryOpKind::Deref;
       break;
     }

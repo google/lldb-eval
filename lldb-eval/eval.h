@@ -71,6 +71,8 @@ class Interpreter : Visitor {
 
   Value EvaluateComparison(BinaryOpKind kind, Value lhs, Value rhs);
 
+  Value EvaluateDereference(Value rhs);
+
   Value EvaluateUnaryMinus(Value rhs);
   Value EvaluateUnaryNegation(Value rhs);
   Value EvaluateUnaryBitwiseNot(Value rhs);
