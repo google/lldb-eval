@@ -102,6 +102,8 @@ static void TestLogicalOperators() {
   const char* p_ptr = "🦊";
   const char* p_nullptr = nullptr;
 
+  int array[2] = {1, 2};
+
   struct S {
   } s;
 
@@ -705,6 +707,7 @@ void TestTernaryOperator() {
   int i = 1;
   int* pi = &i;
   char c = 2;
+  int array[2] = {1, 2};
   struct T {
   } t;
   // BREAK(TestTernaryOperator)

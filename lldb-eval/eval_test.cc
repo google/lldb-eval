@@ -736,6 +736,13 @@ TEST_F(EvalTest, TestLogicalOperators) {
   EXPECT_THAT(Eval("p_nullptr || true"), IsEqual("true"));
   EXPECT_THAT(Eval("p_nullptr || false"), IsEqual("false"));
 
+  EXPECT_THAT(Eval("!array"), IsEqual("false"));
+  EXPECT_THAT(Eval("!!array"), IsEqual("true"));
+  EXPECT_THAT(Eval("array || true"), IsEqual("true"));
+  EXPECT_THAT(Eval("false || array"), IsEqual("true"));
+  EXPECT_THAT(Eval("array && true"), IsEqual("true"));
+  EXPECT_THAT(Eval("array && false"), IsEqual("false"));
+
   EXPECT_THAT(Eval("false || !s"),
               IsError("invalid argument type 'S' to unary expression\n"
                       "false || !s\n"
@@ -1634,6 +1641,11 @@ TEST_F(EvalTest, TestTernaryOperator) {
   EXPECT_THAT(Eval("true ? pi : nullptr"), IsOk());
   EXPECT_THAT(Eval("false ? nullptr : pi"), IsOk());
   EXPECT_THAT(Eval("false ? pi : nullptr"), IsEqual("0x0000000000000000"));
+
+  // Use pointers and arrays in bool context.
+  EXPECT_THAT(Eval("pi ? 1 : 2"), IsEqual("1"));
+  EXPECT_THAT(Eval("nullptr ? 1 : 2"), IsEqual("2"));
+  EXPECT_THAT(Eval("array ? 1 : 2"), IsEqual("1"));
 }
 
 TEST_F(EvalTest, TestSizeOf) {
