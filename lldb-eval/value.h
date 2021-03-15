@@ -73,7 +73,6 @@ class Value {
   bool IsInteger();
   bool IsFloat();
   bool IsPointer();
-  bool IsArray();
   bool IsNullPtrType();
   bool IsSigned();
   bool IsEnum();

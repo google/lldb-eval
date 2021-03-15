@@ -189,8 +189,6 @@ bool Value::IsFloat() { return type_.IsFloat(); }
 
 bool Value::IsPointer() { return type_.IsPointerType(); }
 
-bool Value::IsArray() { return type_.IsArrayType(); }
-
 bool Value::IsNullPtrType() { return type_.IsNullPtrType(); }
 
 bool Value::IsSigned() { return type_.GetTypeFlags() & lldb::eTypeIsSigned; }
@@ -208,7 +206,7 @@ bool Value::GetBool() {
   if (IsFloat()) {
     return GetFloat().isNonZero();
   }
-  if (IsArray()) {
+  if (type_.IsArrayType()) {
     return AddressOf().GetUInt64() != 0;
   }
   // Either invalid value, or some complex SbValue (e.g. struct or class).
