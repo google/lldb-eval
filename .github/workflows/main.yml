@@ -41,9 +41,6 @@ jobs:
           C:\msys64\usr\bin\wget.exe -q "https://github.com/google/lldb-eval/releases/download/llvm-11/${{ matrix.llvm_archive }}.7z"
           7z x -y "${{ matrix.llvm_archive }}.7z"
           echo "LLVM_INSTALL_PATH=$pwd/${{ matrix.llvm_archive }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
-          
-          C:\msys64\usr\bin\wget.exe -q "https://github.com/microsoft/STL/files/5453503/GH-1300.diff.txt"
-          git apply --unsafe-paths -p6 --directory="C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.28.29333\include" "GH-1300.diff.txt" 
 
       - name: Build
         run: bazel build ...:all
