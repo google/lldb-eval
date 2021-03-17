@@ -157,7 +157,7 @@ ArrayType::ArrayType(Type type, size_t size)
 const Type& ArrayType::type() const { return *type_; }
 size_t ArrayType::size() const { return size_; }
 std::ostream& operator<<(std::ostream& os, const ArrayType& type) {
-  // TODO: Fix formatting of types combined by arrays and pointers.
+  // TODO: Fix formatting of types consisting of arrays and pointers.
   // E.g. the correct formatting of pointer to array of ints is `int (*)[N]`,
   // while the current formatting outputs `int[N]*`. Right now, this isn't
   // critical since casting to array types isn't supported yet.

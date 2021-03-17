@@ -266,7 +266,7 @@ int main() {
   int array23[2][3] = {{1, 2, 3}, {4, 5, 6}};
   int array32[3][2] = {{1, 2}, {3, 4}, {5, 6}};
   float flt_array23[2][3] = {{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}};
-  (void)array33, (void)array23, (void)array32;
+  (void)array33, (void)array23, (void)array32, (void)flt_array23;
 
   int(*ptr_to_arr3)[3] = array33;
   (void)ptr_to_arr3;
@@ -292,8 +292,10 @@ int main() {
   TestStruct ts;
   TestUnion tu;
   tu.uint_field = 65;
-
   (void)ts, (void)tu;
+
+  TestStruct ts_array[2];
+  ts_array[0].int_field = -10;
 
   ns::nested_ns::TestStruct ns_ts;
   (void)ns_ts;

@@ -249,32 +249,28 @@ TypeConstraints SpecificTypes::allowed_to_point_to() const {
   return **specific_types_ptr;
 }
 
-TypeConstraints SpecificTypes::allowed_array_element_types() const {
-  if (std::holds_alternative<NoType>(array_types_)) {
-    return NoType();
-  }
-
-  if (std::holds_alternative<AnyType>(array_types_)) {
-    return AnyType();
-  }
-
-  const auto* specific_types_ptr =
-      std::get_if<std::shared_ptr<SpecificTypes>>(&array_types_);
-  assert(specific_types_ptr != nullptr &&
-         "Should never be null, did you introduce a new alternative?");
-
-  assert(
-      *specific_types_ptr != nullptr &&
-      "Should never be null, did you accidentally create a null shared_ptr?");
-
-  return **specific_types_ptr;
-}
-
 bool SpecificTypes::allows_array_type(const ArrayType& array_type) const {
   if (array_size_.has_value() && array_size_.value() != array_type.size()) {
     return false;
   }
-  return allowed_array_element_types().allows_type(array_type.type());
+
+  if (std::holds_alternative<NoType>(array_types_)) {
+    return false;
+  }
+
+  if (std::holds_alternative<AnyType>(array_types_)) {
+    return true;
+  }
+
+  const auto* array_element_types =
+      std::get_if<std::shared_ptr<SpecificTypes>>(&array_types_);
+  assert(array_element_types != nullptr &&
+         "Should never be null, did you introduce a new alternative?");
+  assert(
+      *array_element_types != nullptr &&
+      "Should never be null, did you accidentally create a null shared_ptr?");
+
+  return TypeConstraints(**array_element_types).allows_type(array_type.type());
 }
 
 TypeConstraints TypeConstraints::allowed_to_point_to() const {
@@ -291,22 +287,6 @@ TypeConstraints TypeConstraints::allowed_to_point_to() const {
          "Should never be null, did you introduce a new alternative?");
 
   return specific_types->allowed_to_point_to();
-}
-
-TypeConstraints TypeConstraints::allowed_array_element_types() const {
-  if (!satisfiable()) {
-    return NoType();
-  }
-
-  if (allows_any()) {
-    return AnyType();
-  }
-
-  const auto* specific_types = as_specific_types();
-  assert(specific_types != nullptr &&
-         "Should never be null, did you introduce a new alternative?");
-
-  return specific_types->allowed_array_element_types();
 }
 
 TypeConstraints TypeConstraints::make_pointer_constraints() const {

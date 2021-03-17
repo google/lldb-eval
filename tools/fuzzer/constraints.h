@@ -188,8 +188,7 @@ class SpecificTypes {
   // What kind of types do these constraints allow a pointer to?
   TypeConstraints allowed_to_point_to() const;
 
-  TypeConstraints allowed_array_element_types() const;
-
+  // Do these constraints allow the `array_type`?
   bool allows_array_type(const ArrayType& array_type) const;
 
  private:
@@ -315,9 +314,6 @@ class TypeConstraints {
 
   // What kind of types do these constraints allow a pointer to?
   TypeConstraints allowed_to_point_to() const;
-
-  // What kind of array element types do these constraints allow?
-  TypeConstraints allowed_array_element_types() const;
 
   // Make a new set of pointer constraints. If the original constraints permit
   // type T, the new constraints will allow types `T*`, `const T*`, `volatile

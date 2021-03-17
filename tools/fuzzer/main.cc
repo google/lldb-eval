@@ -274,11 +274,16 @@ fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame,
     fuzzer::ArrayType array32(
         fuzzer::ArrayType(fuzzer::ScalarType::SignedInt, 2), 3);
     fuzzer::PointerType ptr_to_arr{fuzzer::QualifiedType(array3)};
+    fuzzer::ArrayType flt_array23(
+        fuzzer::ArrayType(fuzzer::ScalarType::Float, 3), 2);
+    fuzzer::ArrayType ts_array(fuzzer::TaggedType("TestStruct"), 2);
 
     symtab.add_var(array33, fuzzer::VariableExpr("array33"), 2);
     symtab.add_var(array23, fuzzer::VariableExpr("array23"), 2);
     symtab.add_var(array32, fuzzer::VariableExpr("array32"), 2);
     symtab.add_var(ptr_to_arr, fuzzer::VariableExpr("ptr_to_arr3"), 2);
+    symtab.add_var(flt_array23, fuzzer::VariableExpr("flt_array23"), 2);
+    symtab.add_var(ts_array, fuzzer::VariableExpr("ts_array"), 1);
   }
 
   // Add functions.
