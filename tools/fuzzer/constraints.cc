@@ -29,7 +29,7 @@ static bool is_void_pointer(const Type& type) {
   return inner == Type(ScalarType::Void);
 }
 
-SpecificTypes::SpecificTypes(const Type& type) {
+SpecificTypes::SpecificTypes(const Type& type, bool allow_arrays_if_ptr) {
   const auto* scalar_type = std::get_if<ScalarType>(&type);
   if (scalar_type != nullptr) {
     if (*scalar_type != ScalarType::Void) {
@@ -51,7 +51,21 @@ SpecificTypes::SpecificTypes(const Type& type) {
       allows_void_pointer_ = true;
     }
 
-    ptr_types_ = std::make_shared<SpecificTypes>(inner);
+    ptr_types_ =
+        std::make_shared<SpecificTypes>(inner, /*allow_arrays_if_ptr*/ false);
+
+    if (allow_arrays_if_ptr) {
+      array_types_ = ptr_types_;
+    }
+    return;
+  }
+
+  const auto* array_type = std::get_if<ArrayType>(&type);
+  if (array_type != nullptr) {
+    const auto& inner = array_type->type();
+    array_types_ =
+        std::make_shared<SpecificTypes>(inner, /*allow_arrays_if_ptr*/ false);
+    array_size_ = array_type->size();
     return;
   }
 
@@ -69,6 +83,8 @@ SpecificTypes::SpecificTypes(const Type& type) {
     allows_nullptr_ = true;
     return;
   }
+
+  assert(false && "Did you introduce a new alternative?");
 }
 
 SpecificTypes SpecificTypes::make_pointer_constraints(
@@ -80,7 +96,10 @@ SpecificTypes SpecificTypes::make_pointer_constraints(
   }
 
   if (constraints.satisfiable()) {
-    retval.ptr_types_ = std::make_shared<SpecificTypes>(std::move(constraints));
+    auto specific_types =
+        std::make_shared<SpecificTypes>(std::move(constraints));
+    retval.ptr_types_ = specific_types;
+    retval.array_types_ = specific_types;
   }
   retval.allows_void_pointer_ = (bool)void_ptr_constraint;
 
@@ -91,12 +110,13 @@ SpecificTypes SpecificTypes::make_pointer_constraints(
 }
 
 SpecificTypes SpecificTypes::cast_to(const Type& type) {
-  if (std::holds_alternative<TaggedType>(type)) {
+  if (std::holds_alternative<TaggedType>(type) ||
+      std::holds_alternative<ArrayType>(type)) {
     return SpecificTypes();
   }
 
   if (std::holds_alternative<PointerType>(type)) {
-    return SpecificTypes::make_any_pointer_constraints();
+    return SpecificTypes::all_in_pointer_ctx();
   }
 
   if (std::holds_alternative<NullptrType>(type)) {
@@ -132,13 +152,14 @@ SpecificTypes SpecificTypes::cast_to(const Type& type) {
 }
 
 SpecificTypes SpecificTypes::static_cast_to(const Type& type) {
-  if (std::holds_alternative<TaggedType>(type)) {
+  if (std::holds_alternative<TaggedType>(type) ||
+      std::holds_alternative<ArrayType>(type)) {
     return SpecificTypes();
   }
 
   if (std::holds_alternative<PointerType>(type)) {
     if (is_void_pointer(type)) {
-      return SpecificTypes::make_any_pointer_constraints();
+      return SpecificTypes::all_in_pointer_ctx();
     }
     SpecificTypes retval = SpecificTypes(type);
     retval.allows_nullptr_ = true;
@@ -165,12 +186,13 @@ SpecificTypes SpecificTypes::static_cast_to(const Type& type) {
 SpecificTypes SpecificTypes::reinterpret_cast_to(const Type& type) {
   if (std::holds_alternative<TaggedType>(type) ||
       std::holds_alternative<NullptrType>(type) ||
-      std::holds_alternative<ScalarType>(type)) {
+      std::holds_alternative<ScalarType>(type) ||
+      std::holds_alternative<ArrayType>(type)) {
     return SpecificTypes();
   }
 
   if (std::holds_alternative<PointerType>(type)) {
-    SpecificTypes retval = SpecificTypes::make_any_pointer_constraints();
+    SpecificTypes retval = SpecificTypes::all_in_pointer_ctx();
     retval.allows_nullptr_ = false;
     return retval;
   }
@@ -227,6 +249,34 @@ TypeConstraints SpecificTypes::allowed_to_point_to() const {
   return **specific_types_ptr;
 }
 
+TypeConstraints SpecificTypes::allowed_array_element_types() const {
+  if (std::holds_alternative<NoType>(array_types_)) {
+    return NoType();
+  }
+
+  if (std::holds_alternative<AnyType>(array_types_)) {
+    return AnyType();
+  }
+
+  const auto* specific_types_ptr =
+      std::get_if<std::shared_ptr<SpecificTypes>>(&array_types_);
+  assert(specific_types_ptr != nullptr &&
+         "Should never be null, did you introduce a new alternative?");
+
+  assert(
+      *specific_types_ptr != nullptr &&
+      "Should never be null, did you accidentally create a null shared_ptr?");
+
+  return **specific_types_ptr;
+}
+
+bool SpecificTypes::allows_array_type(const ArrayType& array_type) const {
+  if (array_size_.has_value() && array_size_.value() != array_type.size()) {
+    return false;
+  }
+  return allowed_array_element_types().allows_type(array_type.type());
+}
+
 TypeConstraints TypeConstraints::allowed_to_point_to() const {
   if (!satisfiable()) {
     return NoType();
@@ -243,13 +293,29 @@ TypeConstraints TypeConstraints::allowed_to_point_to() const {
   return specific_types->allowed_to_point_to();
 }
 
+TypeConstraints TypeConstraints::allowed_array_element_types() const {
+  if (!satisfiable()) {
+    return NoType();
+  }
+
+  if (allows_any()) {
+    return AnyType();
+  }
+
+  const auto* specific_types = as_specific_types();
+  assert(specific_types != nullptr &&
+         "Should never be null, did you introduce a new alternative?");
+
+  return specific_types->allowed_array_element_types();
+}
+
 TypeConstraints TypeConstraints::make_pointer_constraints() const {
   if (!satisfiable()) {
     return NoType();
   }
 
   if (allows_any()) {
-    return SpecificTypes::make_any_non_void_pointer_constraints();
+    return SpecificTypes::all_in_non_void_pointer_ctx();
   }
 
   const auto* specific_types = as_specific_types();
@@ -291,6 +357,9 @@ bool TypeConstraints::allows_type(const Type& type) const {
     return true;
   }
 
+  const auto* specific_types = as_specific_types();
+  assert(specific_types != nullptr && "Did you introduce a new alternative?");
+
   const auto* as_scalar = std::get_if<ScalarType>(&type);
   if (as_scalar != nullptr) {
     auto scalar_types = allowed_scalar_types();
@@ -325,10 +394,12 @@ bool TypeConstraints::allows_type(const Type& type) const {
 
   const auto* as_enum = std::get_if<EnumType>(&type);
   if (as_enum != nullptr) {
-    const auto* specific_types = as_specific_types();
-    assert(specific_types != nullptr && "Did you introduce a new alternative?");
-
     return allows_enum_type(*specific_types, *as_enum);
+  }
+
+  const auto* as_array = std::get_if<ArrayType>(&type);
+  if (as_array != nullptr) {
+    return specific_types->allows_array_type(*as_array);
   }
 
   if (std::holds_alternative<NullptrType>(type)) {

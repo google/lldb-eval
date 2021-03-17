@@ -59,7 +59,8 @@ enum class TypeKind : unsigned char {
   VoidPointerType,
   NullptrType,
   EnumType,
-  EnumLast = EnumType,
+  ArrayType,
+  EnumLast = ArrayType,
 };
 inline constexpr size_t NUM_GEN_TYPE_KINDS = (size_t)TypeKind::EnumLast + 1;
 
@@ -93,7 +94,7 @@ struct GenConfig {
   int num_exprs_to_generate = 100;
 
   // Maximum recursion depth
-  int max_depth = 8;
+  int max_depth = 6;
 
   // Min/max integer constant value
   uint64_t int_const_min = 0;
@@ -108,7 +109,7 @@ struct GenConfig {
 
   // Probability that an binary pointer arithmetic generation of the form
   // `ptr + idx` or `ptr - idx`.
-  float binop_gen_ptr_expr_prob = 0.2f;
+  float binop_gen_ptr_expr_prob = 0.9f;
   // Probability that a pointer difference expression (`ptr1 - ptr2`) will
   // be generated.
   float binop_gen_ptrdiff_expr_prob = 0.1f;
@@ -142,9 +143,9 @@ struct GenConfig {
   // any non-terminal expression has a dampening factor in the range `(0, 1)`.
   std::array<ExprKindWeightInfo, NUM_GEN_EXPR_KINDS> expr_kind_weights = {{
       {1.0f, 0.0f},  // ExprKind::IntegerConstant
-      {2.0f, 0.0f},  // ExprKind::DoubleConstant
+      {1.0f, 0.0f},  // ExprKind::DoubleConstant
       {1.0f, 0.0f},  // ExprKind::VariableExpr
-      {3.0f, 0.4f},  // ExprKind::UnaryExpr
+      {1.0f, 0.4f},  // ExprKind::UnaryExpr
       {3.0f, 0.4f},  // ExprKind::BinaryExpr
       {2.0f, 0.1f},  // ExprKind::AddressOf
       {1.0f, 0.1f},  // ExprKind::MemberOf
@@ -166,8 +167,9 @@ struct GenConfig {
       {1.0f, 0.0f},  // TypeKind::TaggedType
       {1.0f, 0.1f},  // TypeKind::PointerType
       {1.0f, 0.1f},  // TypeKind::VoidPointerType
-      {0.2f, 0.2f},  // TypeKind::NullptrType
+      {0.2f, 0.0f},  // TypeKind::NullptrType
       {1.0f, 0.0f},  // TypeKind::EnumType
+      {1.0f, 0.1f},  // TypeKind::ArrayType
   }};
 };
 
@@ -205,6 +207,8 @@ class GeneratorRng {
       const std::vector<std::reference_wrapper<const EnumConstant>>& enums) = 0;
   virtual Function pick_function(
       const std::vector<std::reference_wrapper<const Function>>& functions) = 0;
+  virtual ArrayType pick_array_type(
+      const std::vector<std::reference_wrapper<const ArrayType>>& types) = 0;
 };
 
 class DefaultGeneratorRng : public GeneratorRng {
@@ -245,6 +249,9 @@ class DefaultGeneratorRng : public GeneratorRng {
       override;
   Function pick_function(
       const std::vector<std::reference_wrapper<const Function>>& functions)
+      override;
+  ArrayType pick_array_type(
+      const std::vector<std::reference_wrapper<const ArrayType>>& types)
       override;
 
  private:
@@ -292,15 +299,19 @@ class ExprGenerator {
       const Weights& weights, const ExprConstraints& constraints);
 
   std::optional<Type> gen_type(const Weights& weights,
-                               const TypeConstraints& constraints);
+                               const TypeConstraints& constraints,
+                               bool allow_array_types = false);
   std::optional<QualifiedType> gen_qualified_type(
-      const Weights& weights, const TypeConstraints& constraints);
+      const Weights& weights, const TypeConstraints& constraints,
+      bool allow_array_types = false);
   std::optional<Type> gen_pointer_type(const Weights& weights,
-                                       const TypeConstraints& constraints);
+                                       const TypeConstraints& constraints,
+                                       bool allow_array_types = false);
   std::optional<Type> gen_void_pointer_type(const TypeConstraints& constraints);
   std::optional<Type> gen_tagged_type(const TypeConstraints& constraints);
   std::optional<Type> gen_scalar_type(const TypeConstraints& constraints);
   std::optional<Type> gen_enum_type(const TypeConstraints& constraints);
+  std::optional<Type> gen_array_type(const TypeConstraints& constraints);
   CvQualifiers gen_cv_qualifiers();
 
   std::optional<Expr> gen_with_weights(const Weights& weights,

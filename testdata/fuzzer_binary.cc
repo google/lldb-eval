@@ -262,8 +262,14 @@ int main() {
 
   (void)x, (void)p, (void)q, (void)ref, (void)refp, (void)void_ptr;
 
-  int array2d[3][3] = {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}};
-  (void)array2d;
+  int array33[3][3] = {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}};
+  int array23[2][3] = {{1, 2, 3}, {4, 5, 6}};
+  int array32[3][2] = {{1, 2}, {3, 4}, {5, 6}};
+  float flt_array23[2][3] = {{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}};
+  (void)array33, (void)array23, (void)array32;
+
+  int(*ptr_to_arr3)[3] = array33;
+  (void)ptr_to_arr3;
 
   std::nullptr_t null_ptr = nullptr;
   std::nullptr_t* addr_null_ptr = &null_ptr;

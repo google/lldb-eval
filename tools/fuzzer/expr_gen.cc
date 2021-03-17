@@ -72,6 +72,41 @@ int expr_precedence(const Expr& e) {
   return std::visit([](const auto& e) { return e.precedence(); }, e);
 }
 
+// A helper function that constructs a binary expression and wraps operands
+// in parenthesis if necessary.
+static Expr make_binary_expr(Expr lhs, BinOp op, Expr rhs) {
+  // Rules for parenthesising the left hand side:
+  // 1. If the left hand side has a strictly lower precedence than ours,
+  //    then we will have to emit parens.
+  //    Example: We emit `(3 + 4) * 5` instead of `3 + 4 * 5`.
+  // 2. If the left hand side has the same precedence as we do, then we
+  //    don't have to emit any parens. This is because all lldb-eval
+  //    binary operators have left-to-right associativity.
+  //    Example: We do not have to emit `(3 - 4) + 5`, `3 - 4 + 5` will
+  //    also do.
+  if (expr_precedence(lhs) > bin_op_precedence(op)) {
+    lhs = ParenthesizedExpr(std::move(lhs));
+  }
+
+  // Rules for parenthesising the right hand side:
+  // 1. If the right hand side has a strictly lower precedence than
+  // ours,
+  //    then we will have to emit parens.
+  //    Example: We emit `5 * (3 + 4)` instead of `5 * 3 + 4`.
+  // 2. If the right hand side has the same precedence as we do, then we
+  //    should emit parens for good measure. This is because all
+  //    lldb-eval binary operators have left-to-right associativity and
+  //    we do not want to violate this with respect to the generated
+  //    AST. Example: We emit `3 - (4 + 5)` instead of `3 - 4 + 5`. We
+  //    also emit `3 + (4 + 5)` instead of `3 + 4 + 5`, even though both
+  //    expressions are equivalent.
+  if (expr_precedence(rhs) >= bin_op_precedence(op)) {
+    rhs = ParenthesizedExpr(std::move(rhs));
+  }
+
+  return BinaryExpr(std::move(lhs), op, std::move(rhs));
+}
+
 std::optional<Expr> ExprGenerator::gen_boolean_constant(
     const ExprConstraints& constraints) {
   const auto& type_constraints = constraints.type_constraints();
@@ -249,9 +284,10 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
         bool gen_ptr_or_enum =
             rng_->gen_binop_ptr_or_enum(cfg_.binop_gen_ptr_or_enum_prob);
         if (gen_ptr_or_enum) {
-          SpecificTypes types = SpecificTypes::make_any_pointer_constraints();
+          SpecificTypes types = SpecificTypes::all_in_pointer_ctx();
           types.allow_scoped_enums();
-          auto maybe_type = gen_type(weights, types);
+          auto maybe_type =
+              gen_type(weights, types, /*allow_array_types*/ true);
           if (maybe_type.has_value()) {
             const auto& type = maybe_type.value();
             lhs_types = SpecificTypes(type);
@@ -372,36 +408,7 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
     }
     Expr rhs = std::move(maybe_rhs.value());
 
-    // Rules for parenthesising the left hand side:
-    // 1. If the left hand side has a strictly lower precedence than ours,
-    //    then we will have to emit parens.
-    //    Example: We emit `(3 + 4) * 5` instead of `3 + 4 * 5`.
-    // 2. If the left hand side has the same precedence as we do, then we
-    //    don't have to emit any parens. This is because all lldb-eval
-    //    binary operators have left-to-right associativity.
-    //    Example: We do not have to emit `(3 - 4) + 5`, `3 - 4 + 5` will
-    //    also do.
-    if (expr_precedence(lhs) > bin_op_precedence(op)) {
-      lhs = ParenthesizedExpr(std::move(lhs));
-    }
-
-    // Rules for parenthesising the right hand side:
-    // 1. If the right hand side has a strictly lower precedence than
-    // ours,
-    //    then we will have to emit parens.
-    //    Example: We emit `5 * (3 + 4)` instead of `5 * 3 + 4`.
-    // 2. If the right hand side has the same precedence as we do, then we
-    //    should emit parens for good measure. This is because all
-    //    lldb-eval binary operators have left-to-right associativity and
-    //    we do not want to violate this with respect to the generated
-    //    AST. Example: We emit `3 - (4 + 5)` instead of `3 - 4 + 5`. We
-    //    also emit `3 + (4 + 5)` instead of `3 + 4 + 5`, even though both
-    //    expressions are equivalent.
-    if (expr_precedence(rhs) >= bin_op_precedence(op)) {
-      rhs = ParenthesizedExpr(std::move(rhs));
-    }
-
-    return BinaryExpr(std::move(lhs), op, std::move(rhs));
+    return make_binary_expr(std::move(lhs), op, std::move(rhs));
   }
 
   return {};
@@ -706,36 +713,82 @@ std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
 
 std::optional<Expr> ExprGenerator::gen_array_index_expr(
     const Weights& weights, const ExprConstraints& constraints) {
-  // In order to reduce the "invalid memory access" noise produced by the
-  // fuzzer, we limit the generation of array access only to expressions that
-  // are never going to be dereferenced. That means only expressions of form
-  // `&(ptr_expr)[int_expr]` (and its flipped alternative) are considered valid.
-  // TODO: Try to extend this constraint by allowing a small integer offset
-  // along with valid pointers.
+  const auto& type_constraints = constraints.type_constraints();
+
+  Expr lhs;
+  Expr rhs;
   if (constraints.memory_constraints().must_be_valid() ||
       !constraints.must_be_lvalue()) {
-    return {};
-  }
+    // If the expression that is being constructed is going to read from memory,
+    // we are going to construct an expression in the form of
+    // `array_type[int_expr % array_size]` (or its flipped alternative).
+    // The reason for this special case is to reduce the "invalid memory access"
+    // noise produced by the fuzzer in a general case (see the `else`
+    // statement).
 
-  TypeConstraints lhs_constraints =
-      constraints.type_constraints().make_pointer_constraints();
-  TypeConstraints rhs_constraints = SpecificTypes(INT_TYPES);
+    auto maybe_type =
+        gen_array_type(type_constraints.make_pointer_constraints());
+    if (!maybe_type.has_value()) {
+      return {};
+    }
 
-  if (rng_->gen_binop_flip_operands(cfg_.binop_flip_operands_prob)) {
-    std::swap(lhs_constraints, rhs_constraints);
-  }
+    const auto* array_type = std::get_if<ArrayType>(&maybe_type.value());
+    assert(array_type != nullptr &&
+           "Non-array type received by the gen_array_type!");
 
-  auto maybe_lhs = gen_with_weights(weights, lhs_constraints);
-  if (!maybe_lhs.has_value()) {
-    return {};
-  }
-  Expr lhs = std::move(maybe_lhs.value());
+    auto array_size = IntegerConstant(
+        array_type->size(), IntegerConstant::Base::Dec,
+        IntegerConstant::Length::Int, IntegerConstant::Signedness::Unsigned);
 
-  auto maybe_rhs = gen_with_weights(weights, rhs_constraints);
-  if (!maybe_rhs.has_value()) {
-    return {};
+    TypeConstraints lhs_constraints =
+        SpecificTypes(std::move(maybe_type.value()));
+    TypeConstraints rhs_constraints = SpecificTypes(INT_TYPES);
+
+    bool flip_operands =
+        rng_->gen_binop_flip_operands(cfg_.binop_flip_operands_prob);
+    if (flip_operands) {
+      std::swap(lhs_constraints, rhs_constraints);
+    }
+
+    auto maybe_lhs = gen_with_weights(weights, lhs_constraints);
+    if (!maybe_lhs.has_value()) {
+      return {};
+    }
+    lhs = std::move(maybe_lhs.value());
+
+    auto maybe_rhs = gen_with_weights(weights, rhs_constraints);
+    if (!maybe_rhs.has_value()) {
+      return {};
+    }
+    rhs = std::move(maybe_rhs.value());
+
+    Expr& index_expr = flip_operands ? lhs : rhs;
+    index_expr = make_binary_expr(std::move(index_expr), BinOp::Mod,
+                                  std::move(array_size));
+  } else {
+    // If we aren't going to read from memory (i.e. the parent is address-of),
+    // any kind of array access expression is allowed.
+
+    TypeConstraints lhs_constraints =
+        constraints.type_constraints().make_pointer_constraints();
+    TypeConstraints rhs_constraints = SpecificTypes(INT_TYPES);
+
+    if (rng_->gen_binop_flip_operands(cfg_.binop_flip_operands_prob)) {
+      std::swap(lhs_constraints, rhs_constraints);
+    }
+
+    auto maybe_lhs = gen_with_weights(weights, lhs_constraints);
+    if (!maybe_lhs.has_value()) {
+      return {};
+    }
+    lhs = std::move(maybe_lhs.value());
+
+    auto maybe_rhs = gen_with_weights(weights, rhs_constraints);
+    if (!maybe_rhs.has_value()) {
+      return {};
+    }
+    rhs = std::move(maybe_rhs.value());
   }
-  Expr rhs = std::move(maybe_rhs.value());
 
   if (expr_precedence(lhs) > ArrayIndex::PRECEDENCE) {
     lhs = ParenthesizedExpr(std::move(lhs));
@@ -907,7 +960,8 @@ Expr ExprGenerator::maybe_parenthesized(Expr expr) {
 }
 
 std::optional<Type> ExprGenerator::gen_type(
-    const Weights& weights, const TypeConstraints& type_constraints) {
+    const Weights& weights, const TypeConstraints& type_constraints,
+    bool allow_array_types) {
   if (!type_constraints.satisfiable()) {
     return {};
   }
@@ -935,6 +989,9 @@ std::optional<Type> ExprGenerator::gen_type(
   if (!type_constraints.allows_nullptr()) {
     mask[TypeKind::NullptrType] = false;
   }
+  if (!allow_array_types || !type_constraints.allows_array_types()) {
+    mask[TypeKind::ArrayType] = false;
+  }
 
   while (mask.any()) {
     auto choice = rng_->gen_type_kind(new_weights, mask);
@@ -955,7 +1012,8 @@ std::optional<Type> ExprGenerator::gen_type(
         break;
 
       case TypeKind::PointerType:
-        maybe_type = gen_pointer_type(new_weights, type_constraints);
+        maybe_type =
+            gen_pointer_type(new_weights, type_constraints, allow_array_types);
         break;
 
       case TypeKind::VoidPointerType:
@@ -968,6 +1026,10 @@ std::optional<Type> ExprGenerator::gen_type(
 
       case TypeKind::EnumType:
         maybe_type = gen_enum_type(type_constraints);
+        break;
+
+      case TypeKind::ArrayType:
+        maybe_type = gen_array_type(type_constraints);
         break;
     }
 
@@ -983,8 +1045,9 @@ std::optional<Type> ExprGenerator::gen_type(
 }
 
 std::optional<QualifiedType> ExprGenerator::gen_qualified_type(
-    const Weights& weights, const TypeConstraints& constraints) {
-  auto maybe_type = gen_type(weights, constraints);
+    const Weights& weights, const TypeConstraints& constraints,
+    bool allow_array_types) {
+  auto maybe_type = gen_type(weights, constraints, allow_array_types);
   if (!maybe_type.has_value()) {
     return {};
   }
@@ -995,13 +1058,14 @@ std::optional<QualifiedType> ExprGenerator::gen_qualified_type(
 }
 
 std::optional<Type> ExprGenerator::gen_pointer_type(
-    const Weights& weights, const TypeConstraints& constraints) {
+    const Weights& weights, const TypeConstraints& constraints,
+    bool allow_array_types) {
   if (!constraints.allows_pointer() && !constraints.allows_void_pointer()) {
     return {};
   }
 
-  auto maybe_type =
-      gen_qualified_type(weights, constraints.allowed_to_point_to());
+  auto maybe_type = gen_qualified_type(
+      weights, constraints.allowed_to_point_to(), allow_array_types);
   if (!maybe_type.has_value()) {
     return {};
   }
@@ -1058,6 +1122,25 @@ std::optional<Type> ExprGenerator::gen_enum_type(
   }
 
   return rng_->pick_enum_type(enum_types);
+}
+
+std::optional<Type> ExprGenerator::gen_array_type(
+    const TypeConstraints& constraints) {
+  // Instead of constructing a random array type, we rely on set of
+  // array types from symbol table. This will increase chances to match
+  // variables of array types.
+  std::vector<std::reference_wrapper<const ArrayType>> array_types;
+  for (const auto& type : symtab_.array_types()) {
+    if (constraints.allows_type(type)) {
+      array_types.emplace_back(type);
+    }
+  }
+
+  if (array_types.empty()) {
+    return {};
+  }
+
+  return rng_->pick_array_type(array_types);
 }
 
 CvQualifiers ExprGenerator::gen_cv_qualifiers() {
@@ -1239,6 +1322,11 @@ EnumConstant DefaultGeneratorRng::pick_enum_literal(
 Function DefaultGeneratorRng::pick_function(
     const std::vector<std::reference_wrapper<const Function>>& functions) {
   return pick_element(functions, rng_);
+}
+
+ArrayType DefaultGeneratorRng::pick_array_type(
+    const std::vector<std::reference_wrapper<const ArrayType>>& types) {
+  return pick_element(types, rng_);
 }
 
 bool DefaultGeneratorRng::gen_binop_ptr_expr(float probability) {

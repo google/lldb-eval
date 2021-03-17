@@ -35,9 +35,10 @@ class TaggedType;
 class PointerType;
 class NullptrType;
 class EnumType;
+class ArrayType;
 
-using Type =
-    std::variant<ScalarType, TaggedType, PointerType, NullptrType, EnumType>;
+using Type = std::variant<ScalarType, TaggedType, PointerType, NullptrType,
+                          EnumType, ArrayType>;
 std::ostream& operator<<(std::ostream& os, const Type& type);
 
 enum class CvQualifier : unsigned char {
@@ -155,6 +156,23 @@ class EnumType {
  private:
   std::string name_;
   bool scoped_;
+};
+
+class ArrayType {
+ public:
+  ArrayType() = default;
+  ArrayType(Type type, size_t size);
+
+  const Type& type() const;
+  size_t size() const;
+
+  friend std::ostream& operator<<(std::ostream& os, const ArrayType& type);
+  bool operator==(const ArrayType& type) const;
+  bool operator!=(const ArrayType& type) const;
+
+ private:
+  std::shared_ptr<Type> type_;
+  size_t size_;
 };
 
 class BinaryExpr;
@@ -632,6 +650,11 @@ struct hash<fuzzer::NullptrType> {
 template <>
 struct hash<fuzzer::EnumType> {
   size_t operator()(const fuzzer::EnumType& type) const;
+};
+
+template <>
+struct hash<fuzzer::ArrayType> {
+  size_t operator()(const fuzzer::ArrayType& type) const;
 };
 
 }  // namespace std

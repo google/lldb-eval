@@ -267,6 +267,20 @@ fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame,
     symtab.add_var(type, fuzzer::VariableExpr("ns_enum_class"));
   }
 
+  {
+    fuzzer::ArrayType array3(fuzzer::ScalarType::SignedInt, 3);
+    fuzzer::ArrayType array33(array3, 3);
+    fuzzer::ArrayType array23(array3, 2);
+    fuzzer::ArrayType array32(
+        fuzzer::ArrayType(fuzzer::ScalarType::SignedInt, 2), 3);
+    fuzzer::PointerType ptr_to_arr{fuzzer::QualifiedType(array3)};
+
+    symtab.add_var(array33, fuzzer::VariableExpr("array33"), 2);
+    symtab.add_var(array23, fuzzer::VariableExpr("array23"), 2);
+    symtab.add_var(array32, fuzzer::VariableExpr("array32"), 2);
+    symtab.add_var(ptr_to_arr, fuzzer::VariableExpr("ptr_to_arr3"), 2);
+  }
+
   // Add functions.
   symtab.add_function(fuzzer::ScalarType::UnsignedInt, "__log2",
                       {fuzzer::ScalarType::UnsignedInt});

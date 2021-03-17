@@ -57,7 +57,12 @@ class SpecificTypes {
       : tagged_types_(std::move(tagged_types)) {}
 
   // Constraints that only allow type `type`.
-  explicit SpecificTypes(const Type& type);
+  // The only exception is if the `type` is a pointer type `T*` and
+  // `allow_arrays_if_ptr` is set. In that case the array type `T[]` will also
+  // be allowed. Note, however, that this apply only on the surface level and
+  // won't be propagated further, i.e. if the `type` is of form `T**`, then
+  // type `T*[]` will be allowed, but type `T[][]` will not be allowed.
+  explicit SpecificTypes(const Type& type, bool allow_arrays_if_ptr = true);
 
   // Constraints corresponding to all types that can be used in a boolean
   // context, i.e. ternary expression condition, logical operators (`&&`, `||`,
@@ -66,10 +71,12 @@ class SpecificTypes {
   // - Floats
   // - Void/non-void pointers or the null pointer constant `0`
   // - Unscoped enums
+  // - Array types
   static SpecificTypes all_in_bool_ctx() {
     SpecificTypes retval;
     retval.scalar_types_ = ~ScalarMask(ScalarType::Void);
     retval.ptr_types_ = AnyType{};
+    retval.array_types_ = AnyType{};
     retval.unscoped_enum_types_ = AnyType{};
     retval.scoped_enum_types_ = NoType{};
     retval.allows_void_pointer_ = true;
@@ -79,27 +86,30 @@ class SpecificTypes {
   }
 
   // Return a set of constraints that allow any pointer type, including void
-  // pointers.
-  static SpecificTypes make_any_pointer_constraints() {
+  // pointers, null pointers and array types.
+  static SpecificTypes all_in_pointer_ctx() {
     SpecificTypes retval;
     retval.ptr_types_ = AnyType{};
+    retval.array_types_ = AnyType{};
     retval.allows_void_pointer_ = true;
     retval.allows_nullptr_ = true;
 
     return retval;
   }
 
-  // Return a set of constraints that allow any non-void pointer type.
-  static SpecificTypes make_any_non_void_pointer_constraints() {
+  // Return a set of constraints that allow any non-void pointer type,
+  // including array types.
+  static SpecificTypes all_in_non_void_pointer_ctx() {
     SpecificTypes retval;
     retval.ptr_types_ = AnyType{};
+    retval.array_types_ = AnyType{};
 
     return retval;
   }
 
   // Make a new set of pointer constraints. If the original constraints permit
   // type T, the new constraints will allow types `T*`, `const T*`, `volatile
-  // T*`, and `const volatile T*`.
+  // T*`, `const volatile T*` and the array type `T[]`.
   static SpecificTypes make_pointer_constraints(
       SpecificTypes constraints,
       VoidPointerConstraint void_ptr_constraint = VoidPointerConstraint::Deny);
@@ -121,6 +131,7 @@ class SpecificTypes {
   bool satisfiable() const {
     return scalar_types_.any() || !tagged_types_.empty() ||
            !std::holds_alternative<NoType>(ptr_types_) ||
+           !std::holds_alternative<NoType>(array_types_) ||
            !std::holds_alternative<NoType>(unscoped_enum_types_) ||
            !std::holds_alternative<NoType>(scoped_enum_types_) ||
            allows_void_pointer_ || allows_nullptr_;
@@ -154,6 +165,11 @@ class SpecificTypes {
     return !std::holds_alternative<NoType>(ptr_types_);
   }
 
+  // Do these constraints allow any kind of array types?
+  bool allows_array_types() const {
+    return !std::holds_alternative<NoType>(array_types_);
+  }
+
   // Do these constraints allow void pointers or the null pointer constant `0`?
   bool allows_void_pointer() const { return allows_void_pointer_; }
 
@@ -172,14 +188,20 @@ class SpecificTypes {
   // What kind of types do these constraints allow a pointer to?
   TypeConstraints allowed_to_point_to() const;
 
+  TypeConstraints allowed_array_element_types() const;
+
+  bool allows_array_type(const ArrayType& array_type) const;
+
  private:
   ScalarMask scalar_types_;
   std::unordered_set<TaggedType> tagged_types_;
   std::variant<NoType, AnyType, std::shared_ptr<SpecificTypes>> ptr_types_;
+  std::variant<NoType, AnyType, std::shared_ptr<SpecificTypes>> array_types_;
   std::variant<NoType, AnyType, EnumType> unscoped_enum_types_;
   std::variant<NoType, AnyType, EnumType> scoped_enum_types_;
   bool allows_void_pointer_ = false;
   bool allows_nullptr_ = false;
+  std::optional<size_t> array_size_ = std::nullopt;
 };
 
 // The type constraints an expression can have. This class represents the fact
@@ -294,6 +316,9 @@ class TypeConstraints {
   // What kind of types do these constraints allow a pointer to?
   TypeConstraints allowed_to_point_to() const;
 
+  // What kind of array element types do these constraints allow?
+  TypeConstraints allowed_array_element_types() const;
+
   // Make a new set of pointer constraints. If the original constraints permit
   // type T, the new constraints will allow types `T*`, `const T*`, `volatile
   // T*`, and `const volatile T*`.
@@ -345,6 +370,22 @@ class TypeConstraints {
     assert(specific_types != nullptr && "Did you introduce a new alternative?");
 
     return specific_types->allows_non_void_pointer();
+  }
+
+  // Do these constraints allow array types?
+  bool allows_array_types() const {
+    if (!satisfiable()) {
+      return false;
+    }
+
+    if (allows_any()) {
+      return true;
+    }
+
+    const auto* specific_types = as_specific_types();
+    assert(specific_types != nullptr && "Did you introduce a new alternative?");
+
+    return specific_types->allows_array_types();
   }
 
   bool allows_type(const Type& type) const;

@@ -105,6 +105,7 @@ TEST(Constraints, PointerTypes) {
   SpecificTypes void_ptr = SpecificTypes::make_pointer_constraints(
       SpecificTypes(), VoidPointerConstraint::Allow);
   SpecificTypes null_ptr = SpecificTypes(NullptrType{});
+  // SpecificTypes array = SpecificTypes(ArrayType(ScalarTypes::SignedInt));
 
   EXPECT_THAT(int_ptr.allows_any_of(ScalarMask::all_set()), IsFalse());
   EXPECT_THAT(int_ptr.allowed_tagged_types(), IsEmpty());
@@ -205,6 +206,51 @@ TEST(Constraints, EnumTypes) {
   EXPECT_THAT(only_specific.allows_type(scoped_enum), IsFalse());
   EXPECT_THAT(only_specific.allows_type(unscoped_enum), IsFalse());
   EXPECT_THAT(only_specific.allows_type(specific_enum), IsTrue());
+}
+
+TEST(Constraints, ArrayTypes) {
+  ArrayType array_of_three = ArrayType(ScalarType::SignedInt, 3);
+  ArrayType array_of_four = ArrayType(ScalarType::SignedInt, 4);
+  ArrayType array2d = ArrayType(ArrayType(ScalarType::SignedInt, 4), 3);
+  PointerType int_ptr = PointerType(QualifiedType(ScalarType::SignedInt));
+  ArrayType array_of_ptrs = ArrayType(int_ptr, 3);
+  PointerType ptr_to_array = PointerType(QualifiedType(array_of_three));
+
+  TypeConstraints any = AnyType();
+  EXPECT_THAT(any.allows_type(array_of_three), IsTrue());
+  EXPECT_THAT(any.allows_type(array_of_four), IsTrue());
+  EXPECT_THAT(any.allows_type(array2d), IsTrue());
+
+  TypeConstraints none;
+  EXPECT_THAT(none.allows_type(array_of_three), IsFalse());
+  EXPECT_THAT(none.allows_type(array2d), IsFalse());
+
+  TypeConstraints bool_ctx = TypeConstraints::all_in_bool_ctx();
+  EXPECT_THAT(bool_ctx.allows_type(array_of_four), IsTrue());
+  EXPECT_THAT(bool_ctx.allows_type(array2d), IsTrue());
+
+  TypeConstraints any_ptr = SpecificTypes::all_in_pointer_ctx();
+  EXPECT_THAT(any_ptr.allows_type(array_of_three), IsTrue());
+  EXPECT_THAT(any_ptr.allows_type(array2d), IsTrue());
+
+  TypeConstraints constraints_three = SpecificTypes(array_of_three);
+  EXPECT_THAT(constraints_three.allows_type(array_of_three), IsTrue());
+  EXPECT_THAT(constraints_three.allows_type(array_of_four), IsFalse());
+  EXPECT_THAT(constraints_three.allows_type(array2d), IsFalse());
+  EXPECT_THAT(constraints_three.allows_type(int_ptr), IsFalse());
+  EXPECT_THAT(constraints_three.allows_type(array_of_ptrs), IsFalse());
+
+  TypeConstraints double_ptr =
+      SpecificTypes(PointerType(QualifiedType(int_ptr)));
+  EXPECT_THAT(double_ptr.allows_type(array_of_ptrs), IsTrue());
+  EXPECT_THAT(double_ptr.allows_type(ptr_to_array), IsFalse());
+  EXPECT_THAT(double_ptr.allows_type(array2d), IsFalse());
+
+  TypeConstraints constraints_2d = SpecificTypes(array2d);
+  EXPECT_THAT(constraints_2d.allows_type(array2d), IsTrue());
+  EXPECT_THAT(constraints_2d.allows_type(array_of_ptrs), IsFalse());
+  EXPECT_THAT(constraints_2d.allows_type(ptr_to_array), IsFalse());
+  EXPECT_THAT(constraints_2d.allows_type(array_of_three), IsFalse());
 }
 
 TEST(Constraints, Unsatisfiability) {

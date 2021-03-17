@@ -152,6 +152,24 @@ bool EnumType::operator!=(const EnumType& rhs) const {
   return name_ != rhs.name_ || scoped_ != rhs.scoped_;
 }
 
+ArrayType::ArrayType(Type type, size_t size)
+    : type_(std::make_shared<Type>(std::move(type))), size_(size) {}
+const Type& ArrayType::type() const { return *type_; }
+size_t ArrayType::size() const { return size_; }
+std::ostream& operator<<(std::ostream& os, const ArrayType& type) {
+  // TODO: Fix formatting of types combined by arrays and pointers.
+  // E.g. the correct formatting of pointer to array of ints is `int (*)[N]`,
+  // while the current formatting outputs `int[N]*`. Right now, this isn't
+  // critical since casting to array types isn't supported yet.
+  return os << type.type() << "[" << type.size() << "]";
+}
+bool ArrayType::operator==(const ArrayType& rhs) const {
+  return size_ == rhs.size_ && *type_ == *rhs.type_;
+}
+bool ArrayType::operator!=(const ArrayType& rhs) const {
+  return size_ != rhs.size_ || *type_ != *rhs.type_;
+}
+
 QualifiedType::QualifiedType(Type type, CvQualifiers cv_qualifiers)
     : type_(std::make_shared<Type>(std::move(type))),
       cv_qualifiers_(cv_qualifiers) {}
@@ -677,10 +695,12 @@ enum class HashingTypeKind {
   TaggedType,
   NullptrType,
   EnumType,
+  ArrayType,
 };
 
 namespace std {
 
+using fuzzer::ArrayType;
 using fuzzer::EnumType;
 using fuzzer::NullptrType;
 using fuzzer::PointerType;
@@ -705,7 +725,11 @@ size_t hash<NullptrType>::operator()(const NullptrType&) const {
 }
 
 size_t hash<EnumType>::operator()(const EnumType& type) const {
-  return hash_combine(HashingTypeKind::EnumType, type.name());
+  return hash_combine(HashingTypeKind::EnumType, type.name(), type.is_scoped());
+}
+
+size_t hash<ArrayType>::operator()(const ArrayType& type) const {
+  return hash_combine(HashingTypeKind::ArrayType, type.type(), type.size());
 }
 
 }  // namespace std

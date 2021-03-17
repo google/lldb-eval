@@ -74,7 +74,21 @@ class SymbolTable {
       lldb::SBFrame& frame, bool ignore_qualified_types = false);
 
   void add_var(Type type, VariableExpr var, int freedom_index = 0) {
-    var_map_[std::move(type)].emplace_back(std::move(var), freedom_index);
+    var_map_[type].emplace_back(std::move(var), freedom_index);
+
+    // Collect all array types contained in the `type`.
+    while (std::holds_alternative<PointerType>(type) ||
+           std::holds_alternative<ArrayType>(type)) {
+      const auto* as_array = std::get_if<ArrayType>(&type);
+      if (as_array != nullptr) {
+        array_types_.insert(*as_array);
+        type = as_array->type();
+      }
+      const auto* as_pointer = std::get_if<PointerType>(&type);
+      if (as_pointer != nullptr) {
+        type = as_pointer->type().type();
+      }
+    }
   }
 
   const std::unordered_map<Type, std::vector<VariableFreedomPair>>& vars()
@@ -116,12 +130,17 @@ class SymbolTable {
     return tagged_types_;
   }
 
+  const std::unordered_set<ArrayType>& array_types() const {
+    return array_types_;
+  }
+
  private:
   std::unordered_map<Type, std::vector<VariableFreedomPair>> var_map_;
   std::unordered_map<Type, std::vector<Function>> function_map_;
   std::unordered_map<Type, std::vector<Field>> fields_by_type_;
   std::unordered_map<EnumType, std::vector<EnumConstant>> enum_map_;
   std::unordered_set<TaggedType> tagged_types_;
+  std::unordered_set<ArrayType> array_types_;
 };
 
 }  // namespace fuzzer

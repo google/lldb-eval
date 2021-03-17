@@ -181,6 +181,12 @@ class FakeGeneratorRng : public GeneratorRng {
     return type;
   }
 
+  ArrayType pick_array_type(
+      const std::vector<std::reference_wrapper<const ArrayType>>&) override {
+    assert(false && "Not implemented yet!");
+    return ArrayType(ScalarType::SignedInt, 2);
+  }
+
   bool gen_binop_ptr_expr(float) override {
     bool gen = false;
     if (!gen_binop_ptr_expr_.empty()) {
@@ -402,6 +408,8 @@ class FakeGeneratorRng : public GeneratorRng {
     scalar_types_.push_back(e);
   }
 
+  void operator()(const ArrayType&) { assert(false && "Not implemented"); }
+
  private:
   std::vector<UnOp> un_ops_;
   std::vector<BinOp> bin_ops_;
@@ -567,6 +575,13 @@ class AstComparator {
   void operator()(const EnumType& lhs, const EnumType& rhs) {
     if (lhs.name() != rhs.name()) {
       add_mismatch(lhs.name(), rhs.name());
+    }
+  }
+
+  void operator()(const ArrayType& lhs, const ArrayType& rhs) {
+    std::visit(*this, lhs.type(), rhs.type());
+    if (lhs.size() != rhs.size()) {
+      add_mismatch(lhs.size(), rhs.size());
     }
   }
 
