@@ -210,6 +210,12 @@ class ClassAnalyzer {
     uint32_t id;
     bool is_virtual;  // Is it a virtually inherited field?
 
+    FieldInfo(std::string name, Type type, uint32_t id, bool is_virtual = false)
+        : name(std::move(name)),
+          type(std::move(type)),
+          id(id),
+          is_virtual(is_virtual) {}
+
     friend bool operator==(const FieldInfo& lhs, const FieldInfo& rhs) {
       return lhs.id == rhs.id && lhs.is_virtual == rhs.is_virtual &&
              lhs.name == rhs.name && lhs.type == rhs.type;
@@ -268,8 +274,8 @@ class ClassAnalyzer {
       lldb::SBTypeMember field = type.GetFieldAtIndex(i);
       auto maybe_type = convert_type(field.GetType(), ignore_qualified_types_);
       if (maybe_type.has_value()) {
-        fields.insert({fix_name(field.GetName()), std::move(maybe_type.value()),
-                       next_field_id()});
+        fields.emplace(fix_name(field.GetName()), std::move(maybe_type.value()),
+                       next_field_id());
       }
     }
 
