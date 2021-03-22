@@ -173,67 +173,6 @@ fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame,
       };
 
   {
-    fuzzer::TaggedType base1("MultiInheritBase1");
-    fuzzer::TaggedType base2("MultiInheritBase2");
-    fuzzer::TaggedType derived("MultiInheritDerived");
-
-    add_field("f1", fuzzer::ScalarType::SignedInt, {base1, derived});
-    add_field("f2", fuzzer::ScalarType::SignedInt, {base2, derived});
-    add_field("f3", fuzzer::ScalarType::SignedInt, {derived});
-
-    symtab.add_var(derived, fuzzer::VariableExpr("multi"));
-  }
-
-  {
-    fuzzer::TaggedType base("DeadlyDiamondBase");
-    fuzzer::TaggedType derived1("DeadlyDiamondDerived1");
-    fuzzer::TaggedType derived2("DeadlyDiamondDerived2");
-    fuzzer::TaggedType subclass("DeadlyDiamondSubclass");
-
-    // Note: don't add `f1` to `DeadlyDiamondSubclass`.
-    add_field("f1", fuzzer::ScalarType::SignedInt, {base, derived1, derived2});
-    add_field("f2", fuzzer::ScalarType::SignedInt, {derived1, subclass});
-    add_field("f3", fuzzer::ScalarType::SignedInt, {derived2, subclass});
-    add_field("f4", fuzzer::ScalarType::SignedInt, {subclass});
-
-    symtab.add_var(subclass, fuzzer::VariableExpr("diamond"));
-  }
-
-  {
-    fuzzer::TaggedType base("VirtualDiamondBase");
-    fuzzer::TaggedType derived1("VirtualDiamondDerived1");
-    fuzzer::TaggedType derived2("VirtualDiamondDerived2");
-    fuzzer::TaggedType subclass("VirtualDiamondSubclass");
-
-    add_field("f1", fuzzer::ScalarType::SignedInt,
-              {base, derived1, derived2, subclass});
-    add_field("f2", fuzzer::ScalarType::SignedInt, {derived1, subclass});
-    add_field("f3", fuzzer::ScalarType::SignedInt, {derived2, subclass});
-    add_field("f4", fuzzer::ScalarType::SignedInt, {subclass});
-
-    symtab.add_var(subclass, fuzzer::VariableExpr("virtual_diamond"));
-  }
-
-  {
-    fuzzer::TaggedType base1("EmptyBase");
-    fuzzer::TaggedType base2("NonEmptyBase");
-    fuzzer::TaggedType derived("NonEmptyDerived");
-
-    symtab.add_field(derived, "f1", fuzzer::ScalarType::SignedInt);
-    symtab.add_field(derived, "base", base1);
-    add_field("f2", fuzzer::ScalarType::SignedInt, {base2, derived});
-  }
-
-  {
-    fuzzer::TaggedType with_nested("ClassWithNestedClass");
-    fuzzer::TaggedType nested("ClassWithNestedClass::NestedClass");
-
-    symtab.add_var(with_nested, fuzzer::VariableExpr("with_nested"));
-    symtab.add_field(with_nested, "nested", nested);
-    symtab.add_field(nested, "f1", fuzzer::ScalarType::SignedInt);
-  }
-
-  {
     fuzzer::EnumType type("CStyleEnum", /*scoped=*/false);
     symtab.add_enum_literal(type, "VALUE1");
     symtab.add_enum_literal(type, "VALUE2");

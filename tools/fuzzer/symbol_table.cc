@@ -57,6 +57,15 @@ CvQualifiers guess_cv_qualifiers(lldb::SBType& type) {
   return CvQualifiers();
 }
 
+bool is_tagged_type(lldb::SBType& type) {
+  if (type.GetNumberOfTemplateArguments() != 0) {
+    // LLDB doesn't work well with template types.
+    return false;
+  }
+  return type.GetTypeClass() == lldb::eTypeClassStruct ||
+         type.GetTypeClass() == lldb::eTypeClassClass;
+}
+
 std::optional<Type> convert_type(lldb::SBType type,
                                  bool ignore_qualified_types) {
   type = type.GetCanonicalType();
@@ -82,7 +91,7 @@ std::optional<Type> convert_type(lldb::SBType type,
                                      guess_cv_qualifiers(pointee_type)));
   }
 
-  if (type.GetTypeClass() == lldb::eTypeClassStruct) {
+  if (is_tagged_type(type)) {
     return TaggedType(type.GetName());
   }
 
@@ -191,6 +200,122 @@ const char* fix_name(const char* name) {
   return name;
 }
 
+// A helper class that analyzes relations among structs and classes and collects
+// necessary field information.
+class ClassAnalyzer {
+ public:
+  struct FieldInfo {
+    std::string name;
+    Type type;
+    uint32_t id;
+    bool is_virtual;  // Is it a virtually inherited field?
+
+    friend bool operator==(const FieldInfo& lhs, const FieldInfo& rhs) {
+      return lhs.id == rhs.id && lhs.is_virtual == rhs.is_virtual &&
+             lhs.name == rhs.name && lhs.type == rhs.type;
+    }
+
+    // Needed for std::unordered_set.
+    struct Hash {
+      size_t operator()(const FieldInfo& field_info) const {
+        return field_info.id;
+      }
+    };
+  };
+
+  class ClassInfo {
+   public:
+    using FieldSet = std::unordered_set<FieldInfo, FieldInfo::Hash>;
+
+    ClassInfo() = default;
+    explicit ClassInfo(FieldSet fields) : fields_(std::move(fields)) {
+      for (const auto& field : fields_) {
+        num_field_names_[field.name]++;
+      }
+    }
+
+    bool is_unique_field_name(const std::string& field_name) const {
+      auto it = num_field_names_.find(field_name);
+      return it != num_field_names_.end() && it->second == 1;
+    }
+
+    const FieldSet& fields() const { return fields_; }
+
+   private:
+    FieldSet fields_;
+    std::unordered_map<std::string, size_t> num_field_names_;
+  };
+
+  explicit ClassAnalyzer(bool ignore_qualified_types)
+      : ignore_qualified_types_(ignore_qualified_types) {}
+
+  const ClassInfo& get_class_info(lldb::SBType type) {
+    return get_cached_class_info(type);
+  }
+
+ private:
+  const ClassInfo& get_cached_class_info(lldb::SBType type) {
+    const std::string type_name = type.GetName();
+    if (!is_tagged_type(type) ||
+        cached_types_.find(type_name) != cached_types_.end()) {
+      return cached_types_[type_name];
+    }
+
+    ClassInfo::FieldSet fields;
+
+    // Collect fields declared in the `type`.
+    for (uint32_t i = 0; i < type.GetNumberOfFields(); ++i) {
+      lldb::SBTypeMember field = type.GetFieldAtIndex(i);
+      auto maybe_type = convert_type(field.GetType(), ignore_qualified_types_);
+      if (maybe_type.has_value()) {
+        fields.insert({fix_name(field.GetName()), std::move(maybe_type.value()),
+                       next_field_id()});
+      }
+    }
+
+    // SBType::GetDirectBaseClass includes virtually inherited types, too.
+    // This set is used to store virtually inherited base types in order to skip
+    // them during processing of non-virtually inherited base types.
+    std::unordered_set<std::string> virtually_inherited;
+
+    // Collect fields from virtually inherited types.
+    for (uint32_t i = 0; i < type.GetNumberOfVirtualBaseClasses(); ++i) {
+      lldb::SBType base_type = type.GetVirtualBaseClassAtIndex(i).GetType();
+      virtually_inherited.insert(base_type.GetName());
+      const auto& sub_class_info = get_cached_class_info(base_type);
+      for (auto field : sub_class_info.fields()) {
+        field.is_virtual = true;
+        fields.insert(std::move(field));
+      }
+    }
+
+    // Collect fields from non-virtually inherited types.
+    for (uint32_t i = 0; i < type.GetNumberOfDirectBaseClasses(); ++i) {
+      lldb::SBType base_type = type.GetDirectBaseClassAtIndex(i).GetType();
+      if (virtually_inherited.find(base_type.GetName()) !=
+          virtually_inherited.end()) {
+        // Skip if virtually inherited.
+        continue;
+      }
+      const auto& sub_class_info = get_cached_class_info(base_type);
+      for (auto field : sub_class_info.fields()) {
+        if (!field.is_virtual) {
+          field.id = next_field_id();
+        }
+        fields.insert(std::move(field));
+      }
+    }
+
+    return cached_types_[type_name] = ClassInfo(std::move(fields));
+  }
+
+  uint32_t next_field_id() { return next_field_id_++; }
+
+  bool ignore_qualified_types_;
+  uint32_t next_field_id_ = 0;
+  std::unordered_map<std::string, ClassInfo> cached_types_;
+};
+
 }  // namespace
 
 // Creates a symbol table from the lldb context. It populates local and global
@@ -221,20 +346,23 @@ SymbolTable SymbolTable::create_from_lldb_context(lldb::SBFrame& frame,
     }
   }
 
-  // Populate struct fields.
-  lldb::SBTypeList types = frame.GetModule().GetTypes(lldb::eTypeClassStruct);
+  // Populate struct/class fields.
+  lldb::SBTypeList types = frame.GetModule().GetTypes(lldb::eTypeClassStruct |
+                                                      lldb::eTypeClassClass);
   uint32_t types_size = types.GetSize();
+
+  ClassAnalyzer classes(ignore_qualified_types);
 
   for (uint32_t i = 0; i < types_size; ++i) {
     lldb::SBType type = types.GetTypeAtIndex(i);
-    const auto tagged_type = TaggedType(fix_name(type.GetName()));
-    for (uint32_t i = 0; i < type.GetNumberOfFields(); ++i) {
-      lldb::SBTypeMember field = type.GetFieldAtIndex(i);
-      auto maybe_field_type =
-          convert_type(field.GetType(), ignore_qualified_types);
-      if (maybe_field_type.has_value()) {
-        symtab.add_field(tagged_type, fix_name(field.GetName()),
-                         std::move(maybe_field_type.value()));
+    if (!is_tagged_type(type)) {
+      continue;
+    }
+    const auto tagged_type = TaggedType(type.GetName());
+    const auto& info = classes.get_class_info(type);
+    for (const auto& field : info.fields()) {
+      if (info.is_unique_field_name(field.name)) {
+        symtab.add_field(tagged_type, field.name, field.type);
       }
     }
   }
