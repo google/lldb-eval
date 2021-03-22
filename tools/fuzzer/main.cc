@@ -163,15 +163,6 @@ fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame,
   fuzzer::SymbolTable symtab = fuzzer::SymbolTable::create_from_lldb_context(
       frame, /*ignore_qualified_types=*/!cv_qualifiers_enabled);
 
-  // A helper lambda to add the same field to multiple class types.
-  auto add_field =
-      [&symtab](const std::string& field_name, const fuzzer::Type& field_type,
-                const std::vector<fuzzer::TaggedType>& tagged_types) {
-        for (const auto& tagged_type : tagged_types) {
-          symtab.add_field(tagged_type, field_name, field_type);
-        }
-      };
-
   {
     fuzzer::EnumType type("CStyleEnum", /*scoped=*/false);
     symtab.add_enum_literal(type, "VALUE1");
