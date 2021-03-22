@@ -273,32 +273,32 @@ class ClassAnalyzer {
       }
     }
 
-    // SBType::GetDirectBaseClass includes virtually inherited types, too.
-    // This set is used to store virtually inherited base types in order to skip
-    // them during processing of non-virtually inherited base types.
+    // SBType::GetDirectBaseClass includes both virtual and non-virtual base
+    // types. This set is used to store virtual base types in order to skip
+    // them during processing of non-virtual base types.
     std::unordered_set<std::string> virtually_inherited;
 
-    // Collect fields from virtually inherited types.
+    // Collect fields from virtual base types.
     for (uint32_t i = 0; i < type.GetNumberOfVirtualBaseClasses(); ++i) {
       lldb::SBType base_type = type.GetVirtualBaseClassAtIndex(i).GetType();
       virtually_inherited.insert(base_type.GetName());
-      const auto& sub_class_info = get_cached_class_info(base_type);
-      for (auto field : sub_class_info.fields()) {
+      const auto& base_class_info = get_cached_class_info(base_type);
+      for (auto field : base_class_info.fields()) {
         field.is_virtual = true;
         fields.insert(std::move(field));
       }
     }
 
-    // Collect fields from non-virtually inherited types.
+    // Collect fields from non-virtual base types.
     for (uint32_t i = 0; i < type.GetNumberOfDirectBaseClasses(); ++i) {
       lldb::SBType base_type = type.GetDirectBaseClassAtIndex(i).GetType();
       if (virtually_inherited.find(base_type.GetName()) !=
           virtually_inherited.end()) {
-        // Skip if virtually inherited.
+        // Skip virtual base types.
         continue;
       }
-      const auto& sub_class_info = get_cached_class_info(base_type);
-      for (auto field : sub_class_info.fields()) {
+      const auto& base_class_info = get_cached_class_info(base_type);
+      for (auto field : base_class_info.fields()) {
         if (!field.is_virtual) {
           field.id = next_field_id();
         }
