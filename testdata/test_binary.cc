@@ -750,6 +750,19 @@ void TestPrefixIncDec() {
   // BREAK(TestPostfixIncDec)
 }
 
+void TestDereferencedType() {
+  struct TTuple {
+    int x = 1;
+  };
+  using TPair = TTuple;
+
+  TPair p{};
+  const TPair& p_ref = p;
+  const TPair* p_ptr = &p;
+
+  // BREAK(TestDereferencedType)
+}
+
 namespace test_binary {
 
 void main() {
@@ -785,6 +798,16 @@ void main() {
   TestSizeOf();
   TestBuiltinFunction_Log2();
   TestArrayDereference();
+  TestDereferencedType();
+
+  struct TTuple {
+    int x = 1;
+  };
+  using TPair = TTuple;
+
+  TPair p{};
+  const TPair& pr = p;
+  const TPair* pp = &p;
 
   // BREAK HERE
 }

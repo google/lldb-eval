@@ -1820,3 +1820,32 @@ TEST_F(EvalTest, TestPostfixIncDec) {
   EXPECT_THAT(EvalWithContext("$d--", vars_), IsEqual("3.5"));
   EXPECT_THAT(EvalWithContext("$d-- - 1", vars_), IsEqual("1.5"));
 }
+
+TEST_F(EvalTest, TestDereferencedType) {
+  // When dereferencing the value LLDB also removes the typedef and the
+  // resulting value has the canonical type. We have to mitigate that, because
+  // having the correct type is important for visualization logic.
+  //
+  // In this example we have:
+  //
+  //   ```
+  //   struct TTuple { ... };
+  //   using TPair = TTuple;
+  //   const TPair& p_ref = ...;
+  //   const TPair* p_ptr = ...;
+  //   ```
+  //
+  // The expression evaluator removes the references from all values and we must
+  // verify that the resulting type is correct.
+
+  for (auto&& expr : {"p_ref", "*p_ptr"}) {
+    // Directly evaluate the expression and verify the types.
+    auto ret = Eval(expr);
+
+    ASSERT_TRUE(ret.lldb_eval_error.Success());
+    ASSERT_TRUE(ret.lldb_value.has_value());
+
+    ASSERT_STREQ(ret.lldb_eval_value.GetTypeName(), "TPair");
+    ASSERT_STREQ(ret.lldb_value.value().GetTypeName(), "TPair");
+  }
+}

@@ -204,7 +204,15 @@ void Interpreter::Visit(const IdentifierNode* node) {
   // If value is a reference, dereference it to get to the underlying type. All
   // operations on a reference should be actually operations on the referent.
   if (val.type().IsReferenceType()) {
+    // TODO(werat): LLDB canonizes the type upon a dereference. This looks like
+    // a bug, but for now we need to mitigate it. Check if the resulting type is
+    // incorrect and fix it up.
+    lldb::SBType deref_type = val.type().GetDereferencedType();
     val = val.Dereference();
+
+    if (val.type() != deref_type) {
+      val = Value(val.inner_value().Cast(deref_type));
+    }
   }
 
   result_ = val;
