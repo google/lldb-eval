@@ -1365,6 +1365,14 @@ TEST_F(EvalTest, TestValueScope) {
   EXPECT_THAT(Eval("x_"), IsError("use of undeclared identifier 'x_'"));
   EXPECT_THAT(Eval("y_"), IsError("use of undeclared identifier 'y_'"));
   EXPECT_THAT(Eval("z_"), IsEqual("3"));
+
+  // In the frame context `this` is not available here.
+  EXPECT_THAT(
+      Eval("this->y_"),
+      IsError("invalid use of 'this' outside of a non-static member function"));
+  EXPECT_THAT(
+      Eval("(*this)->y_"),
+      IsError("invalid use of 'this' outside of a non-static member function"));
 }
 
 TEST_F(EvalTest, TestBitField) {
