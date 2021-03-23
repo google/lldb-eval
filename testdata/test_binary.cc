@@ -608,18 +608,25 @@ void TestTemplateWithNumericArguments() {
   // BREAK(TestTemplateWithNumericArguments)
 }
 
+namespace test_scope {
+
+class Value {
+ public:
+  Value(int x, float y) : x_(x), y_(y) {}
+
+ private:
+  int x_;
+  float y_;
+};
+
+}  // namespace test_scope
+
 void TestValueScope() {
-  class Value {
-   public:
-    Value(int x, double y) : x_(x), y_(y) {}
-
-   private:
-    int x_;
-    double y_;
-  };
-
-  Value var(1, 2.5);
+  test_scope::Value var(1, 2.5f);
   uint64_t z_ = 3;
+
+  // "raw" representation of the Value.
+  int bytes[] = {1, 0x40200000};
 
   // BREAK(TestValueScope)
 }

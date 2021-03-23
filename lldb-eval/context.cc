@@ -157,6 +157,10 @@ lldb::SBValue Context::LookupIdentifier(const std::string& name) const {
             frame.FindVariable("this").GetChildMemberWithName(name_ref.data());
       }
     } else {
+      // In a "value" scope `this` refers to the scope object itself.
+      if (name_ref == "this") {
+        return scope_.AddressOf();
+      }
       // Lookup the variable as a member of the current scope value.
       value = scope_.GetChildMemberWithName(name_ref.data());
     }

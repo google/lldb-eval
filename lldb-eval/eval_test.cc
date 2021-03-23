@@ -1347,6 +1347,21 @@ TEST_F(EvalTest, TestValueScope) {
   EXPECT_THAT(Scope("var").Eval("z_"),
               IsError("use of undeclared identifier 'z_'"));
 
+  // In "value" scope `this` refers to the scope object.
+  EXPECT_THAT(Scope("var").Eval("this->y_"), IsEqual("2.5"));
+  EXPECT_THAT(Scope("var").Eval("(*this).y_"), IsEqual("2.5"));
+
+  // Test for the "artificial" value, i.e. created by the expression.
+  lldb::SBError error;
+  lldb::SBValue scope_var =
+      lldb_eval::EvaluateExpression(frame_, "(test_scope::Value&)bytes", error);
+  EXPECT_TRUE(scope_var.IsValid());
+  EXPECT_TRUE(error.Success());
+
+  EvaluatorHelper scope(scope_var, true);
+  EXPECT_THAT(scope.Eval("this->y_"), IsEqual("2.5"));
+  EXPECT_THAT(scope.Eval("(*this).y_"), IsEqual("2.5"));
+
   EXPECT_THAT(Eval("x_"), IsError("use of undeclared identifier 'x_'"));
   EXPECT_THAT(Eval("y_"), IsError("use of undeclared identifier 'y_'"));
   EXPECT_THAT(Eval("z_"), IsEqual("3"));
