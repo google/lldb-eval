@@ -1735,7 +1735,8 @@ ExprResult Parser::ParseBooleanLiteral() {
   bool literal_value = token_.is(clang::tok::kw_true);
   ConsumeToken();
   return std::make_unique<LiteralNode>(
-      loc, CreateValueFromBool(target_, literal_value));
+      loc, CreateValueFromBool(target_, literal_value),
+      /*is_literal_zero*/ false);
 }
 
 // Parse an pointer_literal.
@@ -1747,7 +1748,8 @@ ExprResult Parser::ParsePointerLiteral() {
   Expect(clang::tok::kw_nullptr);
   clang::SourceLocation loc = token_.getLocation();
   ConsumeToken();
-  return std::make_unique<LiteralNode>(loc, CreateValueNullptr(target_));
+  return std::make_unique<LiteralNode>(loc, CreateValueNullptr(target_),
+                                       /*is_zero_literal*/ false);
 }
 
 ExprResult Parser::ParseNumericConstant(clang::Token token) {
@@ -1812,7 +1814,8 @@ ExprResult Parser::ParseFloatingLiteral(clang::NumericLiteralParser& literal,
   Value value =
       CreateValueFromAPFloat(target_, raw_value, target_.GetBasicType(type));
 
-  return std::make_unique<LiteralNode>(token.getLocation(), std::move(value));
+  return std::make_unique<LiteralNode>(token.getLocation(), std::move(value),
+                                       /*is_zero_literal*/ false);
 }
 
 ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
@@ -1831,11 +1834,19 @@ ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
 
   auto [type, is_unsigned] = PickIntegerType(literal, raw_value);
 
+  bool is_zero_literal =
+      raw_value.isNullValue() &&
+      (type == lldb::eBasicTypeInt || type == lldb::eBasicTypeUnsignedInt ||
+       type == lldb::eBasicTypeLong || type == lldb::eBasicTypeUnsignedLong ||
+       type == lldb::eBasicTypeLongLong ||
+       type == lldb::eBasicTypeUnsignedLongLong);
+
   Value value =
       CreateValueFromAPInt(target_, llvm::APSInt(raw_value, is_unsigned),
                            target_.GetBasicType(type));
 
-  return std::make_unique<LiteralNode>(token.getLocation(), std::move(value));
+  return std::make_unique<LiteralNode>(token.getLocation(), std::move(value),
+                                       is_zero_literal);
 }
 
 // Parse a builtin_func.
@@ -1996,6 +2007,17 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
       return std::make_unique<ErrorNode>();
     }
     kind = CStyleCastKind::kPointer;
+
+  } else if (type.IsNullPtrType()) {
+    // Cast to nullptr type.
+    if (!rhs_type.IsNullPtrType() && !rhs->is_literal_zero()) {
+      BailOut(ErrorCode::kInvalidOperandType,
+              llvm::formatv("cannot cast from type '{0}' to type '{1}'",
+                            rhs_type.GetName(), type.GetName()),
+              location);
+      return std::make_unique<ErrorNode>();
+    }
+    kind = CStyleCastKind::kNullptr;
 
   } else if (type.IsReferenceType()) {
     // Cast to a reference type.
@@ -2566,16 +2588,11 @@ ExprResult Parser::BuildBinaryComparison(BinaryOpKind kind, ExprResult lhs,
                                           std::move(lhs), std::move(rhs));
   }
 
-  auto is_nullptr_or_zero = [&](Type t) {
-    // Technically only literal zero is allowed here, but we don't have the
-    // information about the value being literal to implement the restriction.
-    // TODO(werat): Propagate the information about literal zero.
-    return t.IsNullPtrType() || t.IsInteger();
-  };
+  bool lhs_nullptr_or_zero = lhs_type.IsNullPtrType() || lhs->is_literal_zero();
+  bool rhs_nullptr_or_zero = rhs_type.IsNullPtrType() || rhs->is_literal_zero();
 
-  if (!is_ordered &&
-      ((lhs_type.IsNullPtrType() && is_nullptr_or_zero(rhs_type)) ||
-       (is_nullptr_or_zero(lhs_type) && rhs_type.IsNullPtrType()))) {
+  if (!is_ordered && ((lhs_type.IsNullPtrType() && rhs_nullptr_or_zero) ||
+                      (lhs_nullptr_or_zero && rhs_type.IsNullPtrType()))) {
     return std::make_unique<BinaryOpNode>(location, boolean_ty, kind,
                                           std::move(lhs), std::move(rhs));
   }

@@ -287,6 +287,10 @@ void Interpreter::Visit(const CStyleCastNode* node) {
       result_ = CreateValueFromPointer(target_, rhs.GetUInt64(), type);
       return;
     }
+    case CStyleCastKind::kNullptr: {
+      result_ = CreateValueNullptr(target_);
+      return;
+    }
     case CStyleCastKind::kReference: {
       result_ = Value(rhs.inner_value().Cast(type.GetDereferencedType()));
       return;

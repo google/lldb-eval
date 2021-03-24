@@ -640,6 +640,14 @@ TEST_F(EvalTest, PointerIntegerComparison) {
 
   EXPECT_THAT(Eval("nullptr == 0"), IsEqual("true"));
   EXPECT_THAT(Eval("0 != nullptr"), IsEqual("false"));
+  EXPECT_THAT(Eval("nullptr == 0U"), IsEqual("true"));
+  EXPECT_THAT(Eval("0L != nullptr"), IsEqual("false"));
+  EXPECT_THAT(Eval("nullptr == 0UL"), IsEqual("true"));
+  EXPECT_THAT(Eval("0ULL != nullptr"), IsEqual("false"));
+  EXPECT_THAT(Eval("nullptr == 0x0"), IsEqual("true"));
+  EXPECT_THAT(Eval("0b0 != nullptr"), IsEqual("false"));
+  EXPECT_THAT(Eval("nullptr == 00"), IsEqual("true"));
+  EXPECT_THAT(Eval("0x0LLU != nullptr"), IsEqual("false"));
 
   EXPECT_THAT(Eval("0 == std_nullptr_t"), IsEqual("true"));
   EXPECT_THAT(Eval("std_nullptr_t != 0"), IsEqual("false"));
@@ -653,11 +661,24 @@ TEST_F(EvalTest, PointerIntegerComparison) {
       Eval("nullptr > 0"),
       IsError("invalid operands to binary expression ('nullptr_t' and 'int')"));
 
-  // TODO(werat): Disable until the literal zero is supported:
+  EXPECT_THAT(
+      Eval("1 == nullptr"),
+      IsError("invalid operands to binary expression ('int' and 'nullptr_t')"));
+
+  EXPECT_THAT(
+      Eval("nullptr == (int)0"),
+      IsError("invalid operands to binary expression ('nullptr_t' and 'int')"));
+
+  EXPECT_THAT(
+      Eval("false == nullptr"),
+      IsError(
+          "invalid operands to binary expression ('bool' and 'nullptr_t')"));
+
+  // TODO: Enable when we support char literals.
   // EXPECT_THAT(
-  //     Eval("1 == nullptr"),
+  //     Eval("'\0' == nullptr"),
   //     IsError(
-  //       "invalid operands to binary expression ('int' and 'nullptr_t')"));
+  //         "invalid operands to binary expression ('char' and 'nullptr_t')"));
 
   EXPECT_THAT(Eval("nullptr > nullptr"),
               IsError("invalid operands to binary expression ('nullptr_t' and "
@@ -1117,6 +1138,15 @@ TEST_F(EvalTest, TestCStyleCastPointer) {
               IsError("type name declared as a reference to a reference"));
   EXPECT_THAT(Eval("(int&*)ap"), IsError("'type name' declared as a pointer "
                                          "to a reference of type 'int &'"));
+
+  EXPECT_THAT(Eval("(std::nullptr_t)nullptr"), IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("(std::nullptr_t)0"), IsEqual("0x0000000000000000"));
+
+  EXPECT_THAT(Eval("(std::nullptr_t)1"),
+              IsError("cannot cast from type 'int' to type 'std::nullptr_t'"));
+  EXPECT_THAT(
+      Eval("(std::nullptr_t)ap"),
+      IsError("cannot cast from type 'int *' to type 'std::nullptr_t'"));
 }
 
 TEST_F(EvalTest, TestCStyleCastNullptrType) {

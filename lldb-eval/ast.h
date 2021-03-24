@@ -43,6 +43,7 @@ class AstNode {
   virtual bool is_rvalue() const = 0;
   virtual bool is_bitfield() const { return false; };
   virtual bool is_context_var() const { return false; };
+  virtual bool is_literal_zero() const { return false; }
   virtual lldb::SBType result_type() const = 0;
 
   clang::SourceLocation location() const { return location_; }
@@ -69,17 +70,21 @@ class ErrorNode : public AstNode {
 
 class LiteralNode : public AstNode {
  public:
-  LiteralNode(clang::SourceLocation location, Value value)
-      : AstNode(location), value_(std::move(value)) {}
+  LiteralNode(clang::SourceLocation location, Value value, bool is_literal_zero)
+      : AstNode(location),
+        value_(std::move(value)),
+        is_literal_zero_(is_literal_zero) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return true; }
+  bool is_literal_zero() const override { return is_literal_zero_; }
   lldb::SBType result_type() const override { return value_.type(); }
 
   Value value() const { return value_; }
 
  private:
   Value value_;
+  bool is_literal_zero_;
 };
 
 class IdentifierNode : public AstNode {
@@ -151,6 +156,7 @@ enum class CStyleCastKind {
   kArithmetic,
   kEnumeration,
   kPointer,
+  kNullptr,
   kReference,
 };
 
