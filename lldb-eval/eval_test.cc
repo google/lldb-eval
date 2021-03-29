@@ -674,6 +674,10 @@ TEST_F(EvalTest, PointerIntegerComparison) {
       IsError(
           "invalid operands to binary expression ('bool' and 'nullptr_t')"));
 
+  EXPECT_THAT(
+      Eval("nullptr == (true ? 0 : 0)"),
+      IsError("invalid operands to binary expression ('nullptr_t' and 'int')"));
+
   // TODO: Enable when we support char literals.
   // EXPECT_THAT(
   //     Eval("'\0' == nullptr"),
