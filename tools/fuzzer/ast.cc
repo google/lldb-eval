@@ -22,6 +22,7 @@
 #include <cstdio>
 #include <ios>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <type_traits>
 #include <utility>
@@ -461,6 +462,47 @@ std::ostream& operator<<(std::ostream& os, const FunctionCallExpr& expr) {
   return os << ")";
 }
 
+SizeofExpr::SizeofExpr(Expr expr)
+    : arg_(std::make_unique<Expr>(std::move(expr))) {}
+SizeofExpr::SizeofExpr(Type type) : arg_(std::move(type)) {}
+std::optional<std::reference_wrapper<const Expr>> SizeofExpr::maybe_expr()
+    const {
+  const auto* as_expr = std::get_if<std::shared_ptr<Expr>>(&arg_);
+  if (as_expr != nullptr) {
+    return **as_expr;
+  }
+  return {};
+}
+std::optional<std::reference_wrapper<const Type>> SizeofExpr::maybe_type()
+    const {
+  const auto* as_type = std::get_if<Type>(&arg_);
+  if (as_type != nullptr) {
+    return *as_type;
+  }
+  return {};
+}
+std::ostream& operator<<(std::ostream& os, const SizeofExpr& expr) {
+  os << "sizeof";
+  auto maybe_expr = expr.maybe_expr();
+  if (maybe_expr.has_value()) {
+    const Expr& child = maybe_expr.value();
+    // If the child isn't a parenthesized expression, separate the expression
+    // and 'sizeof' with a space.
+    if (!std::holds_alternative<ParenthesizedExpr>(child)) {
+      os << " ";
+    }
+    return os << child;
+  }
+  auto maybe_type = expr.maybe_type();
+  if (maybe_type.has_value()) {
+    // Always use parenthesis since lldb-eval doesn't allow expressions in the
+    // form of `sizeof type_id`.
+    return os << "(" << maybe_type.value() << ")";
+  }
+  assert(false && "Did you introduce a new alternative?");
+  return os;
+}
+
 std::ostream& operator<<(std::ostream& os, const BooleanConstant& expr) {
   const char* to_print = expr.value() ? "true" : "false";
   return os << to_print;
@@ -619,6 +661,24 @@ class ExprDumper {
       emit_indentation();
       printf("Argument #%zu:", i + 1);
       indented_visit(*args[i]);
+    }
+  }
+
+  void operator()(const SizeofExpr& e) {
+    emit_marked_indentation();
+    printf("Sizeof:");
+
+    auto maybe_type = e.maybe_type();
+    if (maybe_type.has_value()) {
+      std::ostringstream os;
+      os << maybe_type.value();
+      printf("  Type: %s\n", os.str().c_str());
+      return;
+    }
+
+    auto maybe_expr = e.maybe_expr();
+    if (maybe_expr.has_value()) {
+      indented_visit(maybe_expr.value());
     }
   }
 

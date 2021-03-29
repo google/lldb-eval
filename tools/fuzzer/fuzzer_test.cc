@@ -227,6 +227,16 @@ class FakeGeneratorRng : public GeneratorRng {
     return gen;
   }
 
+  bool gen_sizeof_type(float) override {
+    bool gen = false;
+    if (!gen_sizeof_type_.empty()) {
+      gen = gen_sizeof_type_.back();
+      gen_sizeof_type_.pop_back();
+    }
+
+    return gen;
+  }
+
   CvQualifiers gen_cv_qualifiers(float, float) override {
     assert(!cv_qualifiers_.empty());
     CvQualifiers cv = cv_qualifiers_.back();
@@ -259,6 +269,7 @@ class FakeGeneratorRng : public GeneratorRng {
     std::reverse(rng.scalar_types_.begin(), rng.scalar_types_.end());
     std::reverse(rng.tagged_types_.begin(), rng.tagged_types_.end());
     std::reverse(rng.enum_types_.begin(), rng.enum_types_.end());
+    std::reverse(rng.gen_sizeof_type_.begin(), rng.gen_sizeof_type_.end());
 
     std::reverse(rng.vars_.begin(), rng.vars_.end());
 
@@ -379,6 +390,23 @@ class FakeGeneratorRng : public GeneratorRng {
     assert(false && "Not implemented yet!");
   }
 
+  void operator()(const SizeofExpr& e) {
+    expr_kinds_.push_back(ExprKind::SizeofExpr);
+    auto maybe_expr = e.maybe_expr();
+    if (maybe_expr.has_value()) {
+      gen_sizeof_type_.push_back(false);
+      const Expr& expr = maybe_expr.value();
+      std::visit(*this, expr);
+      return;
+    }
+    auto maybe_type = e.maybe_type();
+    if (maybe_type.has_value()) {
+      gen_sizeof_type_.push_back(true);
+      const Type& type = maybe_type.value();
+      std::visit(*this, type);
+    }
+  }
+
   void operator()(const QualifiedType& e) {
     cv_qualifiers_.push_back(e.cv_qualifiers());
     std::visit(*this, e.type());
@@ -433,6 +461,7 @@ class FakeGeneratorRng : public GeneratorRng {
   std::vector<bool> gen_binop_ptr_expr_;
   std::vector<bool> gen_binop_ptrdiff_expr_;
   std::vector<bool> gen_binop_ptr_or_enum_;
+  std::vector<bool> gen_sizeof_type_;
 };
 
 struct Mismatch {
@@ -538,6 +567,31 @@ class AstComparator {
 
     for (size_t i = 0; i < lhs.args().size(); ++i) {
       std::visit(*this, *lhs.args()[i], *rhs.args()[i]);
+    }
+  }
+
+  void operator()(const SizeofExpr& lhs, const SizeofExpr& rhs) {
+    auto lhs_maybe_expr = lhs.maybe_expr();
+    auto rhs_maybe_expr = rhs.maybe_expr();
+    auto lhs_maybe_type = lhs.maybe_type();
+    auto rhs_maybe_type = rhs.maybe_type();
+    if (lhs_maybe_type.has_value() && rhs_maybe_expr.has_value()) {
+      add_mismatch(lhs_maybe_type.value(), rhs_maybe_expr.has_value());
+      return;
+    }
+    if (lhs_maybe_expr.has_value() && rhs_maybe_type.has_value()) {
+      add_mismatch(lhs_maybe_expr.value(), rhs_maybe_type.has_value());
+      return;
+    }
+    if (lhs_maybe_type.has_value() && rhs_maybe_type.has_value()) {
+      const Type& lhs_type = lhs_maybe_type.value();
+      const Type& rhs_type = rhs_maybe_type.value();
+      std::visit(*this, lhs_type, rhs_type);
+    }
+    if (lhs_maybe_expr.has_value() && rhs_maybe_expr.has_value()) {
+      const Expr& lhs_expr = lhs_maybe_expr.value();
+      const Expr& rhs_expr = rhs_maybe_expr.value();
+      std::visit(*this, lhs_expr, rhs_expr);
     }
   }
 
@@ -923,6 +977,28 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
     std::string str = "0x0.0000000000001p-1022";
 #endif
 
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    Expr expected = SizeofExpr(IntegerConstant(5));
+    std::string str = "sizeof 5";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    // clang-format off
+    Expr expected = SizeofExpr(
+        ParenthesizedExpr(
+            BinaryExpr(
+                IntegerConstant(1),
+                BinOp::Plus,
+                IntegerConstant(2))));
+    // clang-format on
+    std::string str = "sizeof(1 + 2)";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
+    Expr expected = SizeofExpr(ScalarType::SignedInt);
+    std::string str = "sizeof(int)";
     params.emplace_back(std::move(str), std::move(expected));
   }
 

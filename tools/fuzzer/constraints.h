@@ -179,6 +179,11 @@ class SpecificTypes {
   // Disallows `nullptr`s.
   void disallow_nullptr() { allows_nullptr_ = false; }
 
+  // Allows specific set of scalar types.
+  void allow_scalar_types(ScalarMask scalar_types) {
+    scalar_types_ = scalar_types;
+  }
+
   // Allows unscoped enum types.
   void allow_unscoped_enums() { unscoped_enum_types_ = AnyType{}; }
 

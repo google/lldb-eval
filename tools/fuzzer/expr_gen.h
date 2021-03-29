@@ -46,6 +46,7 @@ enum class ExprKind : unsigned char {
   EnumConstant,
   DereferenceExpr,
   FunctionCallExpr,
+  SizeofExpr,
   CastExpr,
   EnumLast = CastExpr,
 };
@@ -132,6 +133,9 @@ struct GenConfig {
   float const_prob = 0.3f;
   float volatile_prob = 0.05f;
 
+  // Probability that sizeof will take a type as a argument.
+  float sizeof_gen_type_prob = 0.3f;
+
   BinOpMask bin_op_mask = BinOpMask::all_set();
   UnOpMask un_op_mask = UnOpMask::all_set();
 
@@ -157,6 +161,7 @@ struct GenConfig {
       {1.0f, 0.0f},  // ExprKind::EnumConstant
       {1.0f, 0.1f},  // ExprKind::DereferenceExpr
       {1.0f, 0.1f},  // ExprKind::FunctionCallExpr
+      {1.0f, 0.1f},  // ExprKind::SizeofExpr
       {1.0f, 0.4f},  // ExprKind::CastExpr
   }};
 
@@ -193,6 +198,7 @@ class GeneratorRng {
   virtual bool gen_binop_flip_operands(float probability) = 0;
   virtual bool gen_binop_ptrdiff_expr(float probability) = 0;
   virtual bool gen_binop_ptr_or_enum(float probability) = 0;
+  virtual bool gen_sizeof_type(float probability) = 0;
   virtual CvQualifiers gen_cv_qualifiers(float const_prob,
                                          float volatile_prob) = 0;
   virtual VariableExpr pick_variable(
@@ -231,6 +237,7 @@ class DefaultGeneratorRng : public GeneratorRng {
   bool gen_binop_flip_operands(float probability) override;
   bool gen_binop_ptrdiff_expr(float probability) override;
   bool gen_binop_ptr_or_enum(float probability) override;
+  bool gen_sizeof_type(float probability) override;
   CvQualifiers gen_cv_qualifiers(float const_prob,
                                  float volatile_prob) override;
   VariableExpr pick_variable(
@@ -297,6 +304,8 @@ class ExprGenerator {
                                            const ExprConstraints& constraints);
   std::optional<Expr> gen_function_call_expr(
       const Weights& weights, const ExprConstraints& constraints);
+  std::optional<Expr> gen_sizeof_expr(const Weights& weights,
+                                      const ExprConstraints& constraints);
 
   std::optional<Type> gen_type(const Weights& weights,
                                const TypeConstraints& constraints,

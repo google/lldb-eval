@@ -21,6 +21,7 @@
 #include <cinttypes>
 #include <iosfwd>
 #include <memory>
+#include <optional>
 #include <string>
 #include <typeindex>  // forward references `std::hash`
 #include <variant>
@@ -189,6 +190,7 @@ class TernaryExpr;
 class CastExpr;
 class DereferenceExpr;
 class FunctionCallExpr;
+class SizeofExpr;
 class BooleanConstant;
 class NullptrConstant;
 class EnumConstant;
@@ -236,11 +238,12 @@ enum class BinOp : unsigned char {
 inline constexpr size_t NUM_BIN_OPS = (size_t)BinOp::EnumLast + 1;
 int bin_op_precedence(BinOp op);
 
-using Expr = std::variant<IntegerConstant, DoubleConstant, VariableExpr,
-                          UnaryExpr, BinaryExpr, AddressOf, MemberOf,
-                          MemberOfPtr, ArrayIndex, TernaryExpr, CastExpr,
-                          DereferenceExpr, FunctionCallExpr, BooleanConstant,
-                          NullptrConstant, EnumConstant, ParenthesizedExpr>;
+using Expr =
+    std::variant<IntegerConstant, DoubleConstant, VariableExpr, UnaryExpr,
+                 BinaryExpr, AddressOf, MemberOf, MemberOfPtr, ArrayIndex,
+                 TernaryExpr, CastExpr, DereferenceExpr, FunctionCallExpr,
+                 SizeofExpr, BooleanConstant, NullptrConstant, EnumConstant,
+                 ParenthesizedExpr>;
 inline constexpr size_t NUM_EXPR_KINDS = std::variant_size_v<Expr>;
 void dump_expr(const Expr& expr);
 std::ostream& operator<<(std::ostream& os, const Expr& expr);
@@ -572,6 +575,24 @@ class FunctionCallExpr {
  private:
   std::string name_;
   std::vector<std::shared_ptr<Expr>> args_;
+};
+
+class SizeofExpr {
+ public:
+  static constexpr int PRECEDENCE = 3;
+
+  SizeofExpr() = default;
+  explicit SizeofExpr(Expr expr);
+  explicit SizeofExpr(Type type);
+
+  friend std::ostream& operator<<(std::ostream& os, const SizeofExpr& expr);
+
+  std::optional<std::reference_wrapper<const Expr>> maybe_expr() const;
+  std::optional<std::reference_wrapper<const Type>> maybe_type() const;
+  int precedence() const { return PRECEDENCE; }
+
+ private:
+  std::variant<Type, std::shared_ptr<Expr>> arg_;
 };
 
 class BooleanConstant {

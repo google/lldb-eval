@@ -852,6 +852,51 @@ std::optional<Expr> ExprGenerator::gen_function_call_expr(
   return FunctionCallExpr(function.name(), std::move(args));
 }
 
+std::optional<Expr> ExprGenerator::gen_sizeof_expr(
+    const Weights& weights, const ExprConstraints& constraints) {
+  if (constraints.must_be_lvalue() ||
+      !constraints.type_constraints().allows_any_of(INT_TYPES)) {
+    return {};
+  }
+
+  bool gen_sizeof_type = rng_->gen_sizeof_type(cfg_.sizeof_gen_type_prob);
+  if (gen_sizeof_type) {
+    // `sizeof` can take any non-void type. However, LLDB currently doesn't
+    // allow expressions such as `sizeof(StructType)` without explicitly
+    // specifying `struct` or `class` keyword, e.g. `sizeof(struct StructType)`.
+    // Because of that, we limit generation of types only to pointers, scalar
+    // types and unscoped enums.
+    SpecificTypes types = SpecificTypes::make_any_pointer_constraints();
+    types.allow_scalar_types(INT_TYPES | FLOAT_TYPES);
+    types.allow_unscoped_enums();
+    auto maybe_type = gen_type(weights, types);
+    if (!maybe_type.has_value()) {
+      return {};
+    }
+    return SizeofExpr(std::move(maybe_type.value()));
+  }
+
+  auto maybe_expr = gen_with_weights(weights, TypeConstraints(AnyType()));
+  if (!maybe_expr.has_value()) {
+    return {};
+  }
+
+  auto expr = std::move(maybe_expr.value());
+  if (expr_precedence(expr) > SizeofExpr::PRECEDENCE) {
+    expr = ParenthesizedExpr(std::move(expr));
+  }
+
+  // C-style cast expression can't be a direct child of sizeof operator.
+  // TODO: Split C-style cast and C++ casts in separate classes (precedence
+  // determination and check will become easier).
+  if (std::holds_alternative<CastExpr>(expr) &&
+      expr_precedence(expr) == SizeofExpr::PRECEDENCE) {
+    expr = ParenthesizedExpr(std::move(expr));
+  }
+
+  return SizeofExpr(std::move(expr));
+}
+
 std::optional<Expr> ExprGenerator::gen_with_weights(
     const Weights& weights, const ExprConstraints& constraints) {
   Weights new_weights = weights;
@@ -932,6 +977,10 @@ std::optional<Expr> ExprGenerator::gen_with_weights(
 
       case ExprKind::FunctionCallExpr:
         maybe_expr = gen_function_call_expr(new_weights, constraints);
+        break;
+
+      case ExprKind::SizeofExpr:
+        maybe_expr = gen_sizeof_expr(new_weights, constraints);
         break;
 
       default:
@@ -1345,6 +1394,11 @@ bool DefaultGeneratorRng::gen_binop_ptrdiff_expr(float probability) {
 }
 
 bool DefaultGeneratorRng::gen_binop_ptr_or_enum(float probability) {
+  std::bernoulli_distribution distr(probability);
+  return distr(rng_);
+}
+
+bool DefaultGeneratorRng::gen_sizeof_type(float probability) {
   std::bernoulli_distribution distr(probability);
   return distr(rng_);
 }
