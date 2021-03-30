@@ -118,12 +118,14 @@ TEST(Constraints, PointerTypes) {
   EXPECT_THAT(void_ptr.allows_non_void_pointer(), IsFalse());
   EXPECT_THAT(void_ptr.allows_void_pointer(), IsTrue());
   EXPECT_THAT(void_ptr.allows_nullptr(), IsFalse());
+  EXPECT_THAT(void_ptr.allows_literal_zero(), IsTrue());
 
   EXPECT_THAT(null_ptr.allows_any_of(ScalarMask::all_set()), IsFalse());
   EXPECT_THAT(null_ptr.allowed_tagged_types(), IsEmpty());
   EXPECT_THAT(null_ptr.allows_non_void_pointer(), IsFalse());
   EXPECT_THAT(null_ptr.allows_void_pointer(), IsFalse());
   EXPECT_THAT(null_ptr.allows_nullptr(), IsTrue());
+  EXPECT_THAT(null_ptr.allows_literal_zero(), IsTrue());
 
   PointerType const_int_ptr{
       QualifiedType(ScalarType::SignedInt, CvQualifier::Const)};

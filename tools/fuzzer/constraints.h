@@ -81,6 +81,7 @@ class SpecificTypes {
     retval.scoped_enum_types_ = NoType{};
     retval.allows_void_pointer_ = true;
     retval.allows_nullptr_ = true;
+    retval.allows_literal_zero_ = true;
 
     return retval;
   }
@@ -93,6 +94,7 @@ class SpecificTypes {
     retval.array_types_ = AnyType{};
     retval.allows_void_pointer_ = true;
     retval.allows_nullptr_ = true;
+    retval.allows_literal_zero_ = true;
 
     return retval;
   }
@@ -134,7 +136,8 @@ class SpecificTypes {
            !std::holds_alternative<NoType>(array_types_) ||
            !std::holds_alternative<NoType>(unscoped_enum_types_) ||
            !std::holds_alternative<NoType>(scoped_enum_types_) ||
-           allows_void_pointer_ || allows_nullptr_;
+           allows_void_pointer_ || allows_nullptr_ ||
+           allows_literal_zero_;
   }
 
   // Scalar types allowed by these constraints.
@@ -177,7 +180,18 @@ class SpecificTypes {
   bool allows_nullptr() const { return allows_nullptr_; }
 
   // Disallows `nullptr`s.
-  void disallow_nullptr() { allows_nullptr_ = false; }
+  void disallow_nullptr() {
+    allows_nullptr_ = false;
+    if (!allows_void_pointer_) {
+      allows_literal_zero_ = false;
+    }
+  }
+
+  // Disallows `0` in pointer context.
+  void disallow_literal_zero() { allows_literal_zero_ = false; }
+
+  // Do these constraints allow literal `0` in pointer context?
+  bool allows_literal_zero() const { return allows_literal_zero_; }
 
   // Allows specific set of scalar types.
   void allow_scalar_types(ScalarMask scalar_types) {
@@ -206,6 +220,7 @@ class SpecificTypes {
   bool allows_void_pointer_ = false;
   bool allows_nullptr_ = false;
   std::optional<size_t> array_size_ = std::nullopt;
+  bool allows_literal_zero_ = false;
 };
 
 // The type constraints an expression can have. This class represents the fact
@@ -355,6 +370,22 @@ class TypeConstraints {
     assert(specific_types != nullptr && "Did you introduce a new alternative?");
 
     return specific_types->allows_nullptr();
+  }
+
+  // Do these constraints allow literal `0` in pointer context?
+  bool allows_literal_zero() const {
+    if (!satisfiable()) {
+      return false;
+    }
+
+    if (allows_any()) {
+      return true;
+    }
+
+    const auto* specific_types = as_specific_types();
+    assert(specific_types != nullptr && "Did you introduce a new alternative?");
+
+    return specific_types->allows_literal_zero();
   }
 
   // Do these constraints allow non-void pointers?

@@ -49,6 +49,7 @@ SpecificTypes::SpecificTypes(const Type& type, bool allow_arrays_if_ptr) {
     const auto& inner = pointer_type->type().type();
     if (inner == Type(ScalarType::Void)) {
       allows_void_pointer_ = true;
+      allows_literal_zero_ = true;
     }
 
     ptr_types_ =
@@ -81,6 +82,7 @@ SpecificTypes::SpecificTypes(const Type& type, bool allow_arrays_if_ptr) {
 
   if (std::holds_alternative<NullptrType>(type)) {
     allows_nullptr_ = true;
+    allows_literal_zero_ = true;
     return;
   }
 
@@ -102,6 +104,7 @@ SpecificTypes SpecificTypes::make_pointer_constraints(
     retval.array_types_ = specific_types;
   }
   retval.allows_void_pointer_ = (bool)void_ptr_constraint;
+  retval.allows_literal_zero_ = (bool)void_ptr_constraint;
 
   // We should never allow `nullptr` because dereferencing it is illegal.
   retval.allows_nullptr_ = false;
@@ -164,6 +167,7 @@ SpecificTypes SpecificTypes::static_cast_to(const Type& type) {
     SpecificTypes retval = SpecificTypes(type);
     retval.allows_nullptr_ = true;
     retval.allows_void_pointer_ = true;
+    retval.allows_literal_zero_ = true;
     return retval;
   }
 
@@ -194,6 +198,7 @@ SpecificTypes SpecificTypes::reinterpret_cast_to(const Type& type) {
   if (std::holds_alternative<PointerType>(type)) {
     SpecificTypes retval = SpecificTypes::all_in_pointer_ctx();
     retval.allows_nullptr_ = false;
+    retval.allows_literal_zero_ = true;
     return retval;
   }
 

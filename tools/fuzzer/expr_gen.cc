@@ -147,8 +147,7 @@ std::optional<Expr> ExprGenerator::gen_integer_constant(
     return rng_->gen_integer_constant(cfg_.int_const_min, cfg_.int_const_max);
   }
 
-  if (type_constraints.allows_void_pointer() ||
-      type_constraints.allows_nullptr()) {
+  if (type_constraints.allows_literal_zero()) {
     return IntegerConstant(0);
   }
 
@@ -494,11 +493,14 @@ std::optional<Expr> ExprGenerator::gen_ternary_expr(
   }
   auto& type = maybe_type.value();
 
-  ExprConstraints new_constraints;
+  ExprConstraints lhs_constraints;
+  ExprConstraints rhs_constraints;
+
   if (constraints.must_be_lvalue()) {
-    new_constraints =
+    lhs_constraints =
         ExprConstraints(SpecificTypes(type), constraints.memory_constraints(),
                         ExprCategory::Lvalue);
+    rhs_constraints = lhs_constraints;
   } else if (std::holds_alternative<ScalarType>(type)) {
     ScalarMask mask = INT_TYPES;
     if (type_constraints.allows_any_of(FLOAT_TYPES)) {
@@ -510,20 +512,34 @@ std::optional<Expr> ExprGenerator::gen_ternary_expr(
       allowed_types.allow_unscoped_enums();
     }
 
-    new_constraints =
+    lhs_constraints =
         ExprConstraints(allowed_types, constraints.memory_constraints());
+    rhs_constraints = lhs_constraints;
   } else {
-    new_constraints = ExprConstraints(TypeConstraints(SpecificTypes(type)),
-                                      constraints.memory_constraints());
+    SpecificTypes allowed_types(type);
+    lhs_constraints = ExprConstraints(TypeConstraints(allowed_types),
+        constraints.memory_constraints());
+    if (std::holds_alternative<PointerType>(type) ||
+        std::holds_alternative<NullptrType>(type)) {
+      // Disallow `0` literal in pointer context in one child expression. This
+      // prevents invalid casts from `int` to pointer types, e.g.
+      // `static_cast<int*>(cond ? 0 : 0)`.
+      allowed_types.disallow_literal_zero();
+    }
+    rhs_constraints = ExprConstraints(TypeConstraints(allowed_types),
+        constraints.memory_constraints());
+    if (rng_->gen_binop_flip_operands(cfg_.binop_flip_operands_prob)) {
+      std::swap(lhs_constraints, rhs_constraints);
+    }
   }
 
-  auto maybe_lhs = gen_with_weights(weights, new_constraints);
+  auto maybe_lhs = gen_with_weights(weights, lhs_constraints);
   if (!maybe_lhs.has_value()) {
     return {};
   }
   Expr lhs = std::move(maybe_lhs.value());
 
-  auto maybe_rhs = gen_with_weights(weights, new_constraints);
+  auto maybe_rhs = gen_with_weights(weights, rhs_constraints);
   if (!maybe_rhs.has_value()) {
     return {};
   }
