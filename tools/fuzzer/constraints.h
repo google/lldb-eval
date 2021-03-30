@@ -136,8 +136,7 @@ class SpecificTypes {
            !std::holds_alternative<NoType>(array_types_) ||
            !std::holds_alternative<NoType>(unscoped_enum_types_) ||
            !std::holds_alternative<NoType>(scoped_enum_types_) ||
-           allows_void_pointer_ || allows_nullptr_ ||
-           allows_literal_zero_;
+           allows_void_pointer_ || allows_nullptr_ || allows_literal_zero_;
   }
 
   // Scalar types allowed by these constraints.

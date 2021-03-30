@@ -518,7 +518,7 @@ std::optional<Expr> ExprGenerator::gen_ternary_expr(
   } else {
     SpecificTypes allowed_types(type);
     lhs_constraints = ExprConstraints(TypeConstraints(allowed_types),
-        constraints.memory_constraints());
+                                      constraints.memory_constraints());
     if (std::holds_alternative<PointerType>(type) ||
         std::holds_alternative<NullptrType>(type)) {
       // Disallow `0` literal in pointer context in one child expression. This
@@ -527,7 +527,7 @@ std::optional<Expr> ExprGenerator::gen_ternary_expr(
       allowed_types.disallow_literal_zero();
     }
     rhs_constraints = ExprConstraints(TypeConstraints(allowed_types),
-        constraints.memory_constraints());
+                                      constraints.memory_constraints());
     if (rng_->gen_binop_flip_operands(cfg_.binop_flip_operands_prob)) {
       std::swap(lhs_constraints, rhs_constraints);
     }
