@@ -564,6 +564,7 @@ TEST_F(EvalTest, TestPointerArithmetic) {
                       "'const char *')"));
 
   EXPECT_THAT(Eval("+array"), IsOk());
+  EXPECT_THAT(Eval("+array_ref"), IsOk());
   EXPECT_THAT(Eval("-array"),
               IsError("invalid argument type 'int *' to unary expression\n"
                       "-array\n"
@@ -571,8 +572,11 @@ TEST_F(EvalTest, TestPointerArithmetic) {
 
   EXPECT_THAT(Eval("array + 1"), IsOk());
   EXPECT_THAT(Eval("1 + array"), IsOk());
+  EXPECT_THAT(Eval("array_ref + 1"), IsOk());
+  EXPECT_THAT(Eval("1 + array_ref"), IsOk());
 
   EXPECT_THAT(Eval("array - 1"), IsOk());
+  EXPECT_THAT(Eval("array_ref - 1"), IsOk());
   EXPECT_THAT(
       Eval("1 - array"),
       IsError("invalid operands to binary expression ('int' and 'int [10]')\n"
@@ -580,6 +584,8 @@ TEST_F(EvalTest, TestPointerArithmetic) {
               "  ^"));
 
   EXPECT_THAT(Eval("array - array"), IsEqual("0"));
+  EXPECT_THAT(Eval("array - array_ref"), IsEqual("0"));
+  EXPECT_THAT(Eval("array_ref - array_ref"), IsEqual("0"));
   EXPECT_THAT(
       Eval("array + array"),
       IsError(
@@ -1554,6 +1560,7 @@ TEST_F(EvalTest, TestScopedEnumArithmetic) {
               IsError("invalid operands to binary expression"));
   EXPECT_THAT(Eval("+enum_foo"), IsError("invalid argument type"));
   EXPECT_THAT(Eval("-enum_foo"), IsError("invalid argument type"));
+  EXPECT_THAT(Eval("~enum_foo"), IsError("invalid argument type"));
   EXPECT_THAT(Eval("!enum_foo"),
               IsError("invalid argument type 'ScopedEnum' to unary expression\n"
                       "!enum_foo\n"
@@ -1605,6 +1612,32 @@ TEST_F(EvalTest, TestUnscopedEnum) {
   EXPECT_THAT(Eval("(int*)1 + enum_one"), IsEqual("0x0000000000000005"));
   EXPECT_THAT(Eval("(int*)5 - enum_one"), IsEqual("0x0000000000000001"));
 
+  // Use references.
+  EXPECT_THAT(Eval("enum_one_ref"), IsEqual("kOne"));
+  EXPECT_THAT(Eval("enum_two_ref"), IsEqual("kTwo"));
+  EXPECT_THAT(Eval("enum_one_ref == enum_one"), IsEqual("true"));
+  EXPECT_THAT(Eval("enum_one_ref != enum_one"), IsEqual("false"));
+  EXPECT_THAT(Eval("enum_one_ref == enum_two"), IsEqual("false"));
+  EXPECT_THAT(Eval("enum_one_ref < enum_two"), IsEqual("true"));
+  EXPECT_THAT(Eval("enum_one_ref == UnscopedEnum::kOne"), IsEqual("true"));
+  EXPECT_THAT(Eval("enum_one_ref == UnscopedEnum::kTwo"), IsEqual("false"));
+  EXPECT_THAT(Eval("enum_one_ref != UnscopedEnum::kTwo"), IsEqual("true"));
+  EXPECT_THAT(Eval("enum_one_ref < UnscopedEnum::kTwo"), IsEqual("true"));
+  EXPECT_THAT(Eval("enum_one_ref == 1"), IsEqual("true"));
+  EXPECT_THAT(Eval("enum_one_ref + 1"), IsEqual("2"));
+  EXPECT_THAT(Eval("enum_one_ref * 2"), IsEqual("2"));
+  EXPECT_THAT(Eval("enum_two_ref / 2"), IsEqual("1"));
+  EXPECT_THAT(Eval("enum_one_ref % 2"), IsEqual("1"));
+  EXPECT_THAT(Eval("enum_two_ref & 2"), IsEqual("2"));
+  EXPECT_THAT(Eval("enum_two_ref | 0x01"), IsEqual("3"));
+  EXPECT_THAT(Eval("enum_two_ref ^ 0b11"), IsEqual("1"));
+  EXPECT_THAT(Eval("enum_two_ref >> 1"), IsEqual("1"));
+  EXPECT_THAT(Eval("enum_two_ref << 1"), IsEqual("4"));
+  EXPECT_THAT(Eval("+enum_one_ref"), IsEqual("1"));
+  EXPECT_THAT(Eval("!enum_one_ref"), IsEqual("false"));
+  EXPECT_THAT(Eval("(int*)1 + enum_one_ref"), IsEqual("0x0000000000000005"));
+  EXPECT_THAT(Eval("(int*)5 - enum_one_ref"), IsEqual("0x0000000000000001"));
+
   EXPECT_THAT(Eval("(long long)UnscopedEnum::kTwo"), IsEqual("2"));
   EXPECT_THAT(Eval("(unsigned int)enum_one"), IsEqual("1"));
   EXPECT_THAT(Eval("(short*)UnscopedEnumUInt8::kTwoU8"),
@@ -1621,6 +1654,7 @@ TEST_F(EvalTest, TestUnscopedEnumNegation) {
   this->compare_with_lldb_ = false;
 
   EXPECT_THAT(Eval("-enum_one"), IsEqual("-1"));
+  EXPECT_THAT(Eval("-enum_one_ref"), IsEqual("-1"));
   EXPECT_THAT(Eval("-(UnscopedEnumEmpty)1"), IsOk());
 }
 
@@ -1730,6 +1764,8 @@ TEST_F(EvalTest, TestBuiltinFunction_Log2) {
 
   EXPECT_THAT(Eval("__log2(c_enum)"), IsEqual("7"));
   EXPECT_THAT(Eval("__log2(cxx_enum)"), IsEqual("7"));
+  EXPECT_THAT(Eval("__log2(c_enum_ref)"), IsEqual("7"));
+  EXPECT_THAT(Eval("__log2(cxx_enum_ref)"), IsEqual("7"));
   EXPECT_THAT(Eval("__log2(CEnum::kFoo)"), IsEqual("7"));
   EXPECT_THAT(Eval("__log2(CxxEnum::kFoo)"), IsEqual("7"));
 

@@ -74,6 +74,8 @@ static void TestPointerArithmetic() {
   array[0] = 0;
   array[offset] = offset;
 
+  int(&array_ref)[10] = array;
+
   int* p_int0 = &array[0];
   int** pp_int0 = &p_int0;
   const int* cp_int0 = &array[0];
@@ -698,6 +700,9 @@ void TestUnscopedEnum() {
   auto enum_one = UnscopedEnum::kOne;
   auto enum_two = UnscopedEnum::kTwo;
 
+  auto& enum_one_ref = enum_one;
+  auto& enum_two_ref = enum_two;
+
   auto enum_zero_u8 = UnscopedEnumUInt8::kZeroU8;
   auto enum_one_u8 = UnscopedEnumUInt8::kOneU8;
   auto enum_two_u8 = UnscopedEnumUInt8::kTwoU8;
@@ -738,6 +743,9 @@ void TestBuiltinFunction_Log2() {
 
   enum CEnum { kFoo = 129 } c_enum = kFoo;
   enum class CxxEnum { kFoo = 129 } cxx_enum = CxxEnum::kFoo;
+
+  CEnum& c_enum_ref = c_enum;
+  CxxEnum& cxx_enum_ref = cxx_enum;
 
   // BREAK(TestBuiltinFunction_Log2)
 }

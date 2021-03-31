@@ -248,7 +248,7 @@ static ExprResult UsualUnaryConversions(lldb::SBTarget target,
                                         ExprResult expr) {
   // Perform usual conversions for unary operators. At the moment this includes
   // array-to-pointer and the integral promotion for eligible types.
-  Type result_type = expr->result_type();
+  Type result_type = expr->result_type_deref();
 
   // TODO(werat): Promote bitfields: e.g. uint32_t:10 -> int (not unsigned int).
 
@@ -2128,7 +2128,7 @@ ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind token_kind,
     case clang::tok::minus: {
       rhs = UsualUnaryConversions(target_, std::move(rhs));
       rhs_type = rhs->result_type_deref();
-      if (rhs_type.IsScalar() || rhs_type.IsUnscopedEnum() ||
+      if (rhs_type.IsScalar() ||
           // Unary plus is allowed for pointers.
           (token_kind == clang::tok::plus && rhs_type.IsPointerType())) {
         result_type = rhs->result_type();
@@ -2140,7 +2140,7 @@ ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind token_kind,
     case clang::tok::tilde: {
       rhs = UsualUnaryConversions(target_, std::move(rhs));
       rhs_type = rhs->result_type_deref();
-      if (rhs_type.IsInteger() || rhs_type.IsUnscopedEnum()) {
+      if (rhs_type.IsInteger()) {
         result_type = rhs->result_type();
         kind = UnaryOpKind::Not;
       }
@@ -2351,7 +2351,7 @@ ExprResult Parser::BuildBinarySubtraction(ExprResult lhs, ExprResult rhs,
   Type lhs_type = lhs->result_type_deref();
   Type rhs_type = rhs->result_type_deref();
 
-  if (lhs_type.IsPointerType() && rhs_type.IsIntegerOrUnscopedEnum()) {
+  if (lhs_type.IsPointerType() && rhs_type.IsInteger()) {
     if (lhs_type.IsPointerToVoid()) {
       BailOut(ErrorCode::kInvalidOperandType, "arithmetic on a pointer to void",
               location);
