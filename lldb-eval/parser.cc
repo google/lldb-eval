@@ -1749,7 +1749,7 @@ ExprResult Parser::ParsePointerLiteral() {
   clang::SourceLocation loc = token_.getLocation();
   ConsumeToken();
   return std::make_unique<LiteralNode>(loc, CreateValueNullptr(target_),
-                                       /*is_zero_literal*/ false);
+                                       /*is_literal_zero*/ false);
 }
 
 ExprResult Parser::ParseNumericConstant(clang::Token token) {
@@ -1815,7 +1815,7 @@ ExprResult Parser::ParseFloatingLiteral(clang::NumericLiteralParser& literal,
       CreateValueFromAPFloat(target_, raw_value, target_.GetBasicType(type));
 
   return std::make_unique<LiteralNode>(token.getLocation(), std::move(value),
-                                       /*is_zero_literal*/ false);
+                                       /*is_literal_zero*/ false);
 }
 
 ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
@@ -1834,19 +1834,15 @@ ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
 
   auto [type, is_unsigned] = PickIntegerType(literal, raw_value);
 
-  bool is_zero_literal =
-      raw_value.isNullValue() &&
-      (type == lldb::eBasicTypeInt || type == lldb::eBasicTypeUnsignedInt ||
-       type == lldb::eBasicTypeLong || type == lldb::eBasicTypeUnsignedLong ||
-       type == lldb::eBasicTypeLongLong ||
-       type == lldb::eBasicTypeUnsignedLongLong);
-
   Value value =
       CreateValueFromAPInt(target_, llvm::APSInt(raw_value, is_unsigned),
                            target_.GetBasicType(type));
 
+  // TODO: Char literal '\0' can't be used as literal zero in pointer context.
+  bool is_literal_zero = raw_value.isNullValue() && value.IsInteger();
+
   return std::make_unique<LiteralNode>(token.getLocation(), std::move(value),
-                                       is_zero_literal);
+                                       is_literal_zero);
 }
 
 // Parse a builtin_func.
@@ -2012,8 +2008,9 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
     // Cast to nullptr type.
     if (!rhs_type.IsNullPtrType() && !rhs->is_literal_zero()) {
       BailOut(ErrorCode::kInvalidOperandType,
-              llvm::formatv("cannot cast from type '{0}' to type '{1}'",
-                            rhs_type.GetName(), type.GetName()),
+              llvm::formatv("C-style cast from '{0}' to 'std::nullptr_t' (aka "
+                            "'nullptr_t') is not allowed",
+                            rhs_type.GetName()),
               location);
       return std::make_unique<ErrorNode>();
     }

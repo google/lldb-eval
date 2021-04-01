@@ -1147,10 +1147,11 @@ TEST_F(EvalTest, TestCStyleCastPointer) {
   EXPECT_THAT(Eval("(std::nullptr_t)0"), IsEqual("0x0000000000000000"));
 
   EXPECT_THAT(Eval("(std::nullptr_t)1"),
-              IsError("cannot cast from type 'int' to type 'std::nullptr_t'"));
-  EXPECT_THAT(
-      Eval("(std::nullptr_t)ap"),
-      IsError("cannot cast from type 'int *' to type 'std::nullptr_t'"));
+              IsError("C-style cast from 'int' to 'std::nullptr_t' (aka "
+                      "'nullptr_t') is not allowed"));
+  EXPECT_THAT(Eval("(std::nullptr_t)ap"),
+              IsError("C-style cast from 'int *' to 'std::nullptr_t' (aka "
+                      "'nullptr_t') is not allowed"));
 }
 
 TEST_F(EvalTest, TestCStyleCastNullptrType) {
