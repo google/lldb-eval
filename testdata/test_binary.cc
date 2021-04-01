@@ -707,7 +707,7 @@ void TestUnscopedEnum() {
   auto enum_one_u8 = UnscopedEnumUInt8::kOneU8;
   auto enum_two_u8 = UnscopedEnumUInt8::kTwoU8;
 
-  UnscopedEnumEmpty enum_empty;
+  UnscopedEnumEmpty enum_empty{};
 
   // BREAK(TestUnscopedEnum)
   // BREAK(TestUnscopedEnumNegation)
