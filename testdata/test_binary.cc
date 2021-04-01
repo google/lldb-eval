@@ -763,6 +763,17 @@ void TestDereferencedType() {
   // BREAK(TestDereferencedType)
 }
 
+void TestMemberFunctionCall() {
+  struct C {
+    int m() { return 1; }
+  };
+
+  C c;
+  c.m();
+
+  // BREAK(TestMemberFunctionCall)
+}
+
 namespace test_binary {
 
 void main() {
@@ -799,15 +810,7 @@ void main() {
   TestBuiltinFunction_Log2();
   TestArrayDereference();
   TestDereferencedType();
-
-  struct TTuple {
-    int x = 1;
-  };
-  using TPair = TTuple;
-
-  TPair p{};
-  const TPair& pr = p;
-  const TPair* pp = &p;
+  TestMemberFunctionCall();
 
   // BREAK HERE
 }

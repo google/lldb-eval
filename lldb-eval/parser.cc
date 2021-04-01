@@ -1083,10 +1083,19 @@ ExprResult Parser::ParsePostfixExpression() {
       case clang::tok::period:
       case clang::tok::arrow: {
         ConsumeToken();
+        clang::Token member_token = token_;
         auto member_id = ParseIdExpression();
+        // Check if this is a function call.
+        if (token_.is(clang::tok::l_paren)) {
+          // TODO: Check if `member_id` is actually a member function of `lhs`.
+          // If not, produce a more accurate diagnostic.
+          BailOut(ErrorCode::kNotImplemented,
+                  "member function calls are not supported",
+                  token_.getLocation());
+        }
         lhs = BuildMemberOf(std::move(lhs), std::move(member_id),
                             token.getKind() == clang::tok::arrow,
-                            token.getLocation());
+                            member_token.getLocation());
         break;
       }
       case clang::tok::plusplus: {

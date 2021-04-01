@@ -1849,3 +1849,11 @@ TEST_F(EvalTest, TestDereferencedType) {
     ASSERT_STREQ(ret.lldb_value.value().GetTypeName(), "TPair");
   }
 }
+
+TEST_F(EvalTest, TestMemberFunctionCall) {
+  // LLDB supports function calls, so disable it.
+  this->compare_with_lldb_ = false;
+
+  EXPECT_THAT(Eval("c.m()"),
+              IsError("member function calls are not supported"));
+}
