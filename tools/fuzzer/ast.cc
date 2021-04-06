@@ -495,8 +495,6 @@ std::ostream& operator<<(std::ostream& os, const SizeofExpr& expr) {
   }
   auto maybe_type = expr.maybe_type();
   if (maybe_type.has_value()) {
-    // Always use parenthesis since lldb-eval doesn't allow expressions in the
-    // form of `sizeof type_id`.
     return os << "(" << maybe_type.value() << ")";
   }
   assert(false && "Did you introduce a new alternative?");

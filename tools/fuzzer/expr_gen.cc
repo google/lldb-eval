@@ -861,11 +861,11 @@ std::optional<Expr> ExprGenerator::gen_sizeof_expr(
 
   bool gen_sizeof_type = rng_->gen_sizeof_type(cfg_.sizeof_gen_type_prob);
   if (gen_sizeof_type) {
-    // `sizeof` can take any non-void type. However, LLDB currently doesn't
-    // allow expressions such as `sizeof(StructType)` without explicitly
-    // specifying `struct` or `class` keyword, e.g. `sizeof(struct StructType)`.
-    // Because of that, we limit generation of types only to pointers, scalar
-    // types and unscoped enums.
+    // `sizeof` can take any non-void type. However, it seems that LLDB can't
+    // handle expressions such as `sizeof(StructType)` in all cases without
+    // explicitly specifying `struct` or `class` keyword, e.g.
+    // `sizeof(struct StructType)`. Because of that, we limit generation of
+    // types only to pointers, scalar types and unscoped enums.
     SpecificTypes types = SpecificTypes::make_any_pointer_constraints();
     types.allow_scalar_types(INT_TYPES | FLOAT_TYPES);
     types.allow_unscoped_enums();
