@@ -724,6 +724,8 @@ void TestTernaryOperator() {
   double dbl_arr[2] = {1.0, 2.0};
   struct T {
   } t;
+  enum EnumA { kOneA = 1, kTwoA } a_enum = kTwoA;
+  enum EnumB { kOneB = 1 } b_enum = kOneB;
   // BREAK(TestTernaryOperator)
 }
 

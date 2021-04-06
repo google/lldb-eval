@@ -1710,6 +1710,11 @@ TEST_F(EvalTest, TestTernaryOperator) {
   EXPECT_THAT(Eval("true ? c : 1"), IsEqual("2"));
   EXPECT_THAT(Eval("false ? 1 : c"), IsEqual("2"));
 
+  EXPECT_THAT(Eval("false ? a_enum : EnumA::kOneA"), IsEqual("kOneA"));
+  EXPECT_THAT(Eval("false ? b_enum : a_enum"), IsEqual("2"));
+  EXPECT_THAT(Eval("false ? c : b_enum"), IsEqual("1"));
+  EXPECT_THAT(Eval("false ? b_enum : c"), IsEqual("2"));
+
   EXPECT_THAT(Eval("true ? (int*)15 : 0"), IsEqual("0x000000000000000f"));
   EXPECT_THAT(Eval("true ? 0 : (int*)15"), IsEqual("0x0000000000000000"));
   EXPECT_THAT(Eval("true ? (int*)15 : nullptr"), IsEqual("0x000000000000000f"));
