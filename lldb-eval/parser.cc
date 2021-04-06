@@ -1838,11 +1838,9 @@ ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
       CreateValueFromAPInt(target_, llvm::APSInt(raw_value, is_unsigned),
                            target_.GetBasicType(type));
 
-  // TODO: Char literal '\0' can't be used as literal zero in pointer context.
-  bool is_literal_zero = raw_value.isNullValue() && value.IsInteger();
-
-  return std::make_unique<LiteralNode>(token.getLocation(), std::move(value),
-                                       is_literal_zero);
+  return std::make_unique<LiteralNode>(
+      token.getLocation(), std::move(value),
+      /*is_literal_zero*/ raw_value.isNullValue());
 }
 
 // Parse a builtin_func.
