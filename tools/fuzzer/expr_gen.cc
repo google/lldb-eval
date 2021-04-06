@@ -866,7 +866,7 @@ std::optional<Expr> ExprGenerator::gen_sizeof_expr(
     // explicitly specifying `struct` or `class` keyword, e.g.
     // `sizeof(struct StructType)`. Because of that, we limit generation of
     // types only to pointers, scalar types and unscoped enums.
-    SpecificTypes types = SpecificTypes::make_any_pointer_constraints();
+    SpecificTypes types = SpecificTypes::all_in_pointer_ctx();
     types.allow_scalar_types(INT_TYPES | FLOAT_TYPES);
     types.allow_unscoped_enums();
     auto maybe_type = gen_type(weights, types);
