@@ -719,7 +719,9 @@ void TestTernaryOperator() {
   int i = 1;
   int* pi = &i;
   char c = 2;
-  int array[2] = {1, 2};
+  int arr2[2] = {1, 2};
+  int arr3[3] = {1, 2, 3};
+  double dbl_arr[2] = {1.0, 2.0};
   struct T {
   } t;
   // BREAK(TestTernaryOperator)

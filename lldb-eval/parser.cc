@@ -2709,23 +2709,67 @@ ExprResult Parser::BuildTernaryOp(ExprResult cond, ExprResult lhs,
         location, result_type, std::move(cond), std::move(lhs), std::move(rhs));
   }
 
-  // If one operand is a pointer and the other one is arithmeric, convert
-  // arithmetic operand to a pointer.
-  if ((lhs_type.IsPointerType() || lhs_type.IsNullPtrType()) &&
-      (rhs_type.IsScalarOrUnscopedEnum() || rhs_type.IsNullPtrType())) {
+  // If one operand is nullptr and the other one is literal zero, convert
+  // the literal zero to a nullptr type.
+  if (lhs_type.IsNullPtrType() && rhs->is_literal_zero()) {
     rhs = std::make_unique<CStyleCastNode>(
-        rhs->location(), lhs_type, std::move(rhs), CStyleCastKind::kPointer);
+        rhs->location(), lhs_type, std::move(rhs), CStyleCastKind::kNullptr);
 
     return std::make_unique<TernaryOpNode>(location, lhs_type, std::move(cond),
                                            std::move(lhs), std::move(rhs));
   }
-  if ((rhs_type.IsPointerType() || rhs_type.IsNullPtrType()) &&
-      (lhs_type.IsScalarOrUnscopedEnum() || lhs_type.IsNullPtrType())) {
+  if (rhs_type.IsNullPtrType() && lhs->is_literal_zero()) {
     lhs = std::make_unique<CStyleCastNode>(
-        lhs->location(), rhs_type, std::move(lhs), CStyleCastKind::kPointer);
+        lhs->location(), rhs_type, std::move(lhs), CStyleCastKind::kNullptr);
 
     return std::make_unique<TernaryOpNode>(location, rhs_type, std::move(cond),
                                            std::move(lhs), std::move(rhs));
+  }
+
+  // At this point the resulting type should be a pointer, and at least one
+  // operand should either be an array or a pointer.
+
+  // Array operand types should be converted to pointer types.
+  auto lhs_type_orig = lhs_type;
+  auto rhs_type_orig = rhs_type;
+  if (lhs_type.IsArrayType()) {
+    lhs_type = lhs_type.GetArrayElementType().GetPointerType();
+  }
+  if (rhs_type.IsArrayType()) {
+    rhs_type = rhs_type.GetArrayElementType().GetPointerType();
+  }
+
+  // Deduce the resulting pointer type.
+  lldb::SBType pointer_type;
+  if (lhs_type.IsPointerType()) {
+    pointer_type = lhs_type;
+  } else if (rhs_type.IsPointerType()) {
+    pointer_type = rhs_type;
+  }
+
+  // Is `type` convertible to the `pointer_type`?
+  auto is_valid_type = [&pointer_type](Type type) {
+    return type.IsNullPtrType() || CompareTypes(type, pointer_type);
+  };
+
+  // Check if both operands are convertible to the common pointer type and
+  // convert each operand that isn't a pointer.
+  if (pointer_type.IsValid() &&
+      (lhs->is_literal_zero() || is_valid_type(lhs_type)) &&
+      (rhs->is_literal_zero() || is_valid_type(rhs_type))) {
+    if (!CompareTypes(lhs_type_orig, pointer_type)) {
+      lhs = std::make_unique<CStyleCastNode>(lhs->location(), pointer_type,
+                                             std::move(lhs),
+                                             CStyleCastKind::kPointer);
+    }
+    if (!CompareTypes(rhs_type_orig, pointer_type)) {
+      rhs = std::make_unique<CStyleCastNode>(rhs->location(), pointer_type,
+                                             std::move(rhs),
+                                             CStyleCastKind::kPointer);
+    }
+    return std::make_unique<TernaryOpNode>(location, pointer_type,
+                                           std::move(cond), std::move(lhs),
+                                           std::move(rhs));
   }
 
   BailOut(ErrorCode::kInvalidOperandType,

@@ -1710,10 +1710,23 @@ TEST_F(EvalTest, TestTernaryOperator) {
   EXPECT_THAT(Eval("true ? c : 1"), IsEqual("2"));
   EXPECT_THAT(Eval("false ? 1 : c"), IsEqual("2"));
 
-  // TODO(werat): Add test for:
-  // "true ? (int*)15 : 1" -> "incompatible operand types ('int *' and 'int')"
   EXPECT_THAT(Eval("true ? (int*)15 : 0"), IsEqual("0x000000000000000f"));
   EXPECT_THAT(Eval("true ? 0 : (int*)15"), IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("true ? (int*)15 : nullptr"), IsEqual("0x000000000000000f"));
+  EXPECT_THAT(Eval("true ? nullptr : (int*)15"), IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("true ? 0 : nullptr"), IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("true ? nullptr : 0"), IsEqual("0x0000000000000000"));
+
+  EXPECT_THAT(Eval("+(true ? arr2 : arr2)"), IsOk());
+  EXPECT_THAT(Eval("true ? arr2 : arr3"), IsOk());
+  EXPECT_THAT(Eval("true ? arr2 : 0"), IsOk());
+  EXPECT_THAT(Eval("true ? 0 : arr2"), IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("true ? arr2 : nullptr"), IsOk());
+  EXPECT_THAT(Eval("true ? nullptr : arr2"), IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("true ? arr2 : (int*)15"), IsOk());
+  EXPECT_THAT(Eval("true ? (int*)15 : arr2"), IsEqual("0x000000000000000f"));
+
+  EXPECT_THAT(Eval("&(true ? arr2 : arr2)"), IsOk());
 
   EXPECT_THAT(Eval("true ? t : 1"),
               IsError("incompatible operand types ('T' and 'int')\n"
@@ -1723,10 +1736,26 @@ TEST_F(EvalTest, TestTernaryOperator) {
               IsError("incompatible operand types ('int' and 'T')\n"
                       "true ? 1 : t\n"
                       "     ^"));
+  EXPECT_THAT(Eval("true ? (int*)15 : 1"),
+              IsError("incompatible operand types ('int *' and 'int')\n"
+                      "true ? (int*)15 : 1\n"
+                      "     ^"));
+  EXPECT_THAT(Eval("true ? arr2 : dbl_arr"),
+              IsError("incompatible operand types ('int *' and 'double *')\n"
+                      "true ? arr2 : dbl_arr\n"
+                      "     ^"));
 
   EXPECT_THAT(Eval("&(true ? *pi : 0)"),
               IsError("cannot take the address of an rvalue of type 'int'\n"
                       "&(true ? *pi : 0)\n"
+                      "^"));
+  EXPECT_THAT(Eval("&(true ? arr2 : pi)"),
+              IsError("cannot take the address of an rvalue of type 'int *'\n"
+                      "&(true ? arr2 : pi)\n"
+                      "^"));
+  EXPECT_THAT(Eval("&(true ? arr2 : arr3)"),
+              IsError("cannot take the address of an rvalue of type 'int *'\n"
+                      "&(true ? arr2 : arr3)\n"
                       "^"));
 
   EXPECT_THAT(Eval("true ? nullptr : pi"), IsEqual("0x0000000000000000"));
@@ -1737,7 +1766,7 @@ TEST_F(EvalTest, TestTernaryOperator) {
   // Use pointers and arrays in bool context.
   EXPECT_THAT(Eval("pi ? 1 : 2"), IsEqual("1"));
   EXPECT_THAT(Eval("nullptr ? 1 : 2"), IsEqual("2"));
-  EXPECT_THAT(Eval("array ? 1 : 2"), IsEqual("1"));
+  EXPECT_THAT(Eval("arr2 ? 1 : 2"), IsEqual("1"));
 }
 
 TEST_F(EvalTest, TestSizeOf) {
