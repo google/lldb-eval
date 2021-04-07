@@ -256,6 +256,9 @@ Value Value::Clone() {
 }
 
 void Value::Update(const llvm::APInt& v) {
+  assert(v.getBitWidth() == type_.GetByteSize() * CHAR_BIT &&
+         "illegal argument: new value should be of the same size");
+
   lldb::SBData data;
   lldb::SBError ignore;
   lldb::SBTarget target = value_.GetTarget();
