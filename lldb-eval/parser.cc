@@ -2709,6 +2709,43 @@ ExprResult Parser::BuildTernaryOp(ExprResult cond, ExprResult lhs,
         location, result_type, std::move(cond), std::move(lhs), std::move(rhs));
   }
 
+  // Apply array-to-pointer implicit conversions.
+  if (lhs_type.IsArrayType()) {
+    lhs_type = lhs_type.GetArrayElementType().GetPointerType();
+    lhs = std::make_unique<CStyleCastNode>(
+        lhs->location(), lhs_type, std::move(lhs), CStyleCastKind::kPointer);
+  }
+  if (rhs_type.IsArrayType()) {
+    rhs_type = rhs_type.GetArrayElementType().GetPointerType();
+    rhs = std::make_unique<CStyleCastNode>(
+        rhs->location(), rhs_type, std::move(rhs), CStyleCastKind::kPointer);
+  }
+
+  // Check if operands have the same pointer type.
+  if (CompareTypes(lhs_type, rhs_type)) {
+    return std::make_unique<TernaryOpNode>(location, lhs_type, std::move(cond),
+                                           std::move(lhs), std::move(rhs));
+  }
+
+  // If one operand is a pointer and the other is a nullptr or literal zero,
+  // convert the nullptr operand to pointer type.
+  if (lhs_type.IsPointerType() &&
+      (rhs->is_literal_zero() || rhs_type.IsNullPtrType())) {
+    rhs = std::make_unique<CStyleCastNode>(
+        rhs->location(), lhs_type, std::move(rhs), CStyleCastKind::kPointer);
+
+    return std::make_unique<TernaryOpNode>(location, lhs_type, std::move(cond),
+                                           std::move(lhs), std::move(rhs));
+  }
+  if ((lhs->is_literal_zero() || lhs_type.IsNullPtrType()) &&
+      rhs_type.IsPointerType()) {
+    lhs = std::make_unique<CStyleCastNode>(
+        lhs->location(), rhs_type, std::move(lhs), CStyleCastKind::kPointer);
+
+    return std::make_unique<TernaryOpNode>(location, rhs_type, std::move(cond),
+                                           std::move(lhs), std::move(rhs));
+  }
+
   // If one operand is nullptr and the other one is literal zero, convert
   // the literal zero to a nullptr type.
   if (lhs_type.IsNullPtrType() && rhs->is_literal_zero()) {
@@ -2724,54 +2761,6 @@ ExprResult Parser::BuildTernaryOp(ExprResult cond, ExprResult lhs,
 
     return std::make_unique<TernaryOpNode>(location, rhs_type, std::move(cond),
                                            std::move(lhs), std::move(rhs));
-  }
-
-  // At this point there's only one valid scenario left: the resulting type is
-  // a pointer and at least one operand is either an array or a pointer (while
-  // the other operand is an array, a pointer, a nullptr or a literal zero).
-  // Everything else should result with the "incompatible operand types" error.
-
-  // Apply array-to-pointer implicit conversions.
-  if (lhs_type.IsArrayType()) {
-    lhs_type = lhs_type.GetArrayElementType().GetPointerType();
-    lhs = std::make_unique<CStyleCastNode>(
-        lhs->location(), lhs_type, std::move(lhs), CStyleCastKind::kPointer);
-  }
-  if (rhs_type.IsArrayType()) {
-    rhs_type = rhs_type.GetArrayElementType().GetPointerType();
-    rhs = std::make_unique<CStyleCastNode>(
-        rhs->location(), rhs_type, std::move(rhs), CStyleCastKind::kPointer);
-  }
-
-  // Deduce the resulting pointer type.
-  lldb::SBType result_type;
-  if (lhs_type.IsPointerType()) {
-    result_type = lhs_type;
-  } else if (rhs_type.IsPointerType()) {
-    result_type = rhs_type;
-  }
-
-  auto is_convertible_to_result_type = [&result_type](Type& type) {
-    return type.IsNullPtrType() || CompareTypes(type, result_type);
-  };
-
-  // Check if both operands are convertible to the common pointer type and
-  // convert each operand that isn't a pointer.
-  if (result_type.IsValid() &&
-      (lhs->is_literal_zero() || is_convertible_to_result_type(lhs_type)) &&
-      (rhs->is_literal_zero() || is_convertible_to_result_type(rhs_type))) {
-    if (!lhs_type.IsPointerType()) {
-      lhs = std::make_unique<CStyleCastNode>(lhs->location(), result_type,
-                                             std::move(lhs),
-                                             CStyleCastKind::kPointer);
-    }
-    if (!rhs_type.IsPointerType()) {
-      rhs = std::make_unique<CStyleCastNode>(rhs->location(), result_type,
-                                             std::move(rhs),
-                                             CStyleCastKind::kPointer);
-    }
-    return std::make_unique<TernaryOpNode>(
-        location, result_type, std::move(cond), std::move(lhs), std::move(rhs));
   }
 
   BailOut(ErrorCode::kInvalidOperandType,
