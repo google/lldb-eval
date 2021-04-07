@@ -621,8 +621,8 @@ Value Interpreter::EvaluateUnaryBitwiseNot(Value rhs) {
 }
 
 Value Interpreter::EvaluateUnaryPrefixIncrement(Value rhs) {
-  assert((rhs.IsInteger() || rhs.IsFloat()) &&
-         "invalid ast: must be an arithmetic type");
+  assert((rhs.IsInteger() || rhs.IsFloat() || rhs.IsPointer()) &&
+         "invalid ast: must be either arithmetic type or pointer");
 
   if (rhs.IsInteger()) {
     llvm::APSInt v = rhs.GetInteger();
@@ -639,13 +639,20 @@ Value Interpreter::EvaluateUnaryPrefixIncrement(Value rhs) {
     rhs.Update(v.bitcastToAPInt());
     return rhs;
   }
+  if (rhs.IsPointer()) {
+    uint64_t v = rhs.GetUInt64();
+    v += rhs.type().GetPointeeType().GetByteSize();  // Do the increment.
+
+    rhs.Update(llvm::APInt(64, v));
+    return rhs;
+  }
 
   return Value();
 }
 
 Value Interpreter::EvaluateUnaryPrefixDecrement(Value rhs) {
-  assert((rhs.IsInteger() || rhs.IsFloat()) &&
-         "invalid ast: must be an arithmetic type");
+  assert((rhs.IsInteger() || rhs.IsFloat() || rhs.IsPointer()) &&
+         "invalid ast: must be either arithmetic type or pointer");
 
   if (rhs.IsInteger()) {
     llvm::APSInt v = rhs.GetInteger();
@@ -660,6 +667,13 @@ Value Interpreter::EvaluateUnaryPrefixDecrement(Value rhs) {
     v = v - llvm::APFloat(v.getSemantics(), 1ULL);
 
     rhs.Update(v.bitcastToAPInt());
+    return rhs;
+  }
+  if (rhs.IsPointer()) {
+    uint64_t v = rhs.GetUInt64();
+    v -= rhs.type().GetPointeeType().GetByteSize();  // Do the decrement.
+
+    rhs.Update(llvm::APInt(64, v));
     return rhs;
   }
 

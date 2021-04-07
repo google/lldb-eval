@@ -327,6 +327,17 @@ class EvalTest : public ::testing::Test {
     return true;
   }
 
+  bool CreateContextVariableArray(std::string type, std::string name,
+                                  std::string assignment) {
+    std::string expr = type + " " + name + "[] = " + assignment + "; " + name;
+    lldb::SBValue value = frame_.EvaluateExpression(expr.c_str());
+    if (value.GetError().Fail()) {
+      return false;
+    }
+    vars_.emplace(name, value);
+    return true;
+  }
+
  protected:
   lldb::SBDebugger debugger_;
   lldb::SBProcess process_;
@@ -1873,6 +1884,10 @@ TEST_F(EvalTest, TestPrefixIncDec) {
   EXPECT_THAT(Eval("--i"),
               IsError("side effects are not supported in this context"));
 
+  ASSERT_TRUE(CreateContextVariableArray("int", "$arr", "{1,2,3}"));
+  EXPECT_THAT(EvalWithContext("++$arr", vars_),
+              IsError("cannot increment value of type 'int [3]'"));
+
   ASSERT_TRUE(CreateContextVariable("$enum_foo", "ScopedEnum::kFoo"));
   EXPECT_THAT(EvalWithContext("++$enum_foo", vars_),
               IsError("cannot increment expression of enum type 'ScopedEnum'"));
@@ -1894,12 +1909,24 @@ TEST_F(EvalTest, TestPrefixIncDec) {
   EXPECT_THAT(EvalWithContext("++$d + 1", vars_), IsEqual("4.5"));
   EXPECT_THAT(EvalWithContext("--$d", vars_), IsEqual("2.5"));
   EXPECT_THAT(EvalWithContext("--$d - 1", vars_), IsEqual("0.5"));
+
+  ASSERT_TRUE(CreateContextVariable("$p", "(int*)4"));
+  EXPECT_THAT(EvalWithContext("++$p", vars_), IsEqual("0x0000000000000008"));
+  EXPECT_THAT(EvalWithContext("++$p + 1", vars_),
+              IsEqual("0x0000000000000010"));
+  EXPECT_THAT(EvalWithContext("--$p", vars_), IsEqual("0x0000000000000008"));
+  EXPECT_THAT(EvalWithContext("--$p - 1", vars_),
+              IsEqual("0x0000000000000000"));
 }
 
 TEST_F(EvalTest, TestPostfixIncDec) {
   EXPECT_THAT(Eval("1++"), IsError("expression is not assignable"));
   EXPECT_THAT(Eval("i--"),
               IsError("side effects are not supported in this context"));
+
+  ASSERT_TRUE(CreateContextVariableArray("int", "$arr", "{1,2,3}"));
+  EXPECT_THAT(EvalWithContext("$arr--", vars_),
+              IsError("cannot decrement value of type 'int [3]'"));
 
   ASSERT_TRUE(CreateContextVariable("$enum_foo", "ScopedEnum::kFoo"));
   EXPECT_THAT(EvalWithContext("$enum_foo++", vars_),
@@ -1924,6 +1951,14 @@ TEST_F(EvalTest, TestPostfixIncDec) {
   EXPECT_THAT(EvalWithContext("$d++ + 1", vars_), IsEqual("3.5"));
   EXPECT_THAT(EvalWithContext("$d--", vars_), IsEqual("3.5"));
   EXPECT_THAT(EvalWithContext("$d-- - 1", vars_), IsEqual("1.5"));
+
+  ASSERT_TRUE(CreateContextVariable("$p", "(int*)4"));
+  EXPECT_THAT(EvalWithContext("$p++", vars_), IsEqual("0x0000000000000004"));
+  EXPECT_THAT(EvalWithContext("$p++ + 1", vars_),
+              IsEqual("0x000000000000000c"));
+  EXPECT_THAT(EvalWithContext("$p--", vars_), IsEqual("0x000000000000000c"));
+  EXPECT_THAT(EvalWithContext("$p-- - 1", vars_),
+              IsEqual("0x0000000000000004"));
 }
 
 TEST_F(EvalTest, TestDereferencedType) {

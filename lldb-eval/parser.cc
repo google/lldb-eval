@@ -2241,9 +2241,9 @@ ExprResult Parser::BuildIncrementDecrement(UnaryOpKind kind, ExprResult rhs,
             location);
     return std::make_unique<ErrorNode>();
   }
-  if (!rhs_type.IsScalar()) {
+  if (!rhs_type.IsScalar() && !rhs_type.IsPointerType()) {
     BailOut(ErrorCode::kInvalidOperandType,
-            llvm::formatv("cannot {0} expression of type '{1}'", op_name,
+            llvm::formatv("cannot {0} value of type '{1}'", op_name,
                           rhs_type.GetName()),
             location);
     return std::make_unique<ErrorNode>();
