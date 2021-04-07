@@ -2731,7 +2731,7 @@ ExprResult Parser::BuildTernaryOp(ExprResult cond, ExprResult lhs,
   // the other operand is an array, a pointer, a nullptr or a literal zero).
   // Everything else should result with the "incompatible operand types" error.
 
-  // Convert array operands to pointers.
+  // Apply array-to-pointer implicit conversions.
   if (lhs_type.IsArrayType()) {
     lhs_type = lhs_type.GetArrayElementType().GetPointerType();
     lhs = std::make_unique<CStyleCastNode>(
