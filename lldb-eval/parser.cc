@@ -2755,7 +2755,7 @@ ExprResult Parser::BuildTernaryOp(ExprResult cond, ExprResult lhs,
     return std::make_unique<TernaryOpNode>(location, lhs_type, std::move(cond),
                                            std::move(lhs), std::move(rhs));
   }
-  if (rhs_type.IsNullPtrType() && lhs->is_literal_zero()) {
+  if (lhs->is_literal_zero() && rhs_type.IsNullPtrType()) {
     lhs = std::make_unique<CStyleCastNode>(
         lhs->location(), rhs_type, std::move(lhs), CStyleCastKind::kNullptr);
 
