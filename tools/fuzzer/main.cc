@@ -30,6 +30,7 @@
 #include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBError.h"
 #include "lldb/API/SBExecutionContext.h"
+#include "lldb/API/SBExpressionOptions.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBProcess.h"
 #include "lldb/API/SBTarget.h"
@@ -64,7 +65,10 @@ bool compare_types(lldb::SBType lhs, lldb::SBType rhs) {
 
 void eval_and_print_expr(lldb::SBFrame& frame, const std::string& expr,
                          Verbosity verbosity) {
-  auto lldb_value = frame.EvaluateExpression(expr.c_str());
+  // Disable auto fix-its in LLDB evaluations.
+  lldb::SBExpressionOptions options;
+  options.SetAutoApplyFixIts(false);
+  auto lldb_value = frame.EvaluateExpression(expr.c_str(), options);
   auto lldb_err = lldb_value.GetError();
 
   lldb::SBError lldb_eval_err;
