@@ -20,6 +20,7 @@
 #include "cpp-linenoise/linenoise.hpp"
 #include "lldb-eval/api.h"
 #include "lldb-eval/runner.h"
+#include "lldb/API/SBExpressionOptions.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBProcess.h"
 #include "lldb/API/SBTarget.h"
@@ -66,8 +67,11 @@ void EvalExprLLDB(lldb::SBFrame frame, const std::string& expr) {
   lldb::SBError error;
   lldb::SBValue value;
 
+  lldb::SBExpressionOptions options;
+  options.SetAutoApplyFixIts(false);
+
   auto elapsed = timer([&]() {
-    value = frame.EvaluateExpression(expr.c_str());
+    value = frame.EvaluateExpression(expr.c_str(), options);
     error = value.GetError();
   });
 
