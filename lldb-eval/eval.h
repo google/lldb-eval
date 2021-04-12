@@ -86,6 +86,14 @@ class Interpreter : Visitor {
   Value EvaluateBinaryRemainder(Value lhs, Value rhs);
   Value EvaluateBinaryBitwise(BinaryOpKind kind, Value lhs, Value rhs);
 
+  Value EvaluateAssignment(Value lhs, Value rhs);
+  Value EvaluateBinaryAddAssign(Value lhs, Value rhs);
+  Value EvaluateBinarySubAssign(Value lhs, Value rhs);
+  Value EvaluateBinaryMulAssign(Value lhs, Value rhs);
+  Value EvaluateBinaryDivAssign(Value lhs, Value rhs);
+  Value EvaluateBinaryRemAssign(Value lhs, Value rhs);
+  Value EvaluateBinaryBitwiseAssign(BinaryOpKind kind, Value lhs, Value rhs);
+
   Value PointerAdd(Value lhs, int64_t offset);
 
   FlowAnalysis* flow_analysis() { return flow_analysis_chain_.back(); }

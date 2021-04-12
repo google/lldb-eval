@@ -51,7 +51,7 @@ class AstNode {
   // The expression result type, but dereferenced in case it's a reference. This
   // is for convenience, since for the purposes of the semantic analysis only
   // the dereferenced type matters.
-  lldb::SBType result_type_deref();
+  lldb::SBType result_type_deref() const;
 
  private:
   clang::SourceLocation location_;
@@ -238,29 +238,41 @@ class ArraySubscriptNode : public AstNode {
 };
 
 enum class BinaryOpKind {
-  Mul,   // "*"
-  Div,   // "/"
-  Rem,   // "%"
-  Add,   // "+"
-  Sub,   // "-"
-  Shl,   // "<<"
-  Shr,   // ">>"
-  LT,    // "<"
-  GT,    // ">"
-  LE,    // "<="
-  GE,    // ">="
-  EQ,    // "=="
-  NE,    // "!="
-  And,   // "&"
-  Xor,   // "^"
-  Or,    // "|"
-  LAnd,  // "&&"
-  LOr,   // "||"
+  Mul,        // "*"
+  Div,        // "/"
+  Rem,        // "%"
+  Add,        // "+"
+  Sub,        // "-"
+  Shl,        // "<<"
+  Shr,        // ">>"
+  LT,         // "<"
+  GT,         // ">"
+  LE,         // "<="
+  GE,         // ">="
+  EQ,         // "=="
+  NE,         // "!="
+  And,        // "&"
+  Xor,        // "^"
+  Or,         // "|"
+  LAnd,       // "&&"
+  LOr,        // "||"
+  Assign,     // "="
+  MulAssign,  // "*="
+  DivAssign,  // "/="
+  RemAssign,  // "%="
+  AddAssign,  // "+="
+  SubAssign,  // "-="
+  ShlAssign,  // "<<="
+  ShrAssign,  // ">>="
+  AndAssign,  // "&="
+  XorAssign,  // "^="
+  OrAssign,   // "|="
 };
 
 std::string to_string(BinaryOpKind kind);
 BinaryOpKind clang_token_kind_to_binary_op_kind(
     clang::tok::TokenKind token_kind);
+bool binary_op_kind_is_comp_assign(BinaryOpKind kind);
 
 class BinaryOpNode : public AstNode {
  public:
@@ -273,7 +285,9 @@ class BinaryOpNode : public AstNode {
         rhs_(std::move(rhs)) {}
 
   void Accept(Visitor* v) const override;
-  bool is_rvalue() const override { return true; }
+  bool is_rvalue() const override {
+    return !binary_op_kind_is_comp_assign(kind_);
+  }
   lldb::SBType result_type() const override { return result_type_; }
 
   BinaryOpKind kind() const { return kind_; }

@@ -317,8 +317,10 @@ class EvalTest : public ::testing::Test {
     return EvaluatorHelper(scope_var, compare_with_lldb_);
   }
 
-  bool CreateContextVariable(std::string name, std::string assignment) {
-    std::string expr = "auto " + name + " = " + assignment + "; " + name;
+  bool CreateContextVariable(std::string type, std::string name, bool is_array,
+                             std::string assignment) {
+    std::string expr = type + " " + name + (is_array ? "[]" : "") + " = " +
+                       assignment + "; " + name;
     lldb::SBValue value = frame_.EvaluateExpression(expr.c_str());
     if (value.GetError().Fail()) {
       return false;
@@ -327,15 +329,13 @@ class EvalTest : public ::testing::Test {
     return true;
   }
 
+  bool CreateContextVariable(std::string name, std::string assignment) {
+    return CreateContextVariable("auto", name, false, assignment);
+  }
+
   bool CreateContextVariableArray(std::string type, std::string name,
                                   std::string assignment) {
-    std::string expr = type + " " + name + "[] = " + assignment + "; " + name;
-    lldb::SBValue value = frame_.EvaluateExpression(expr.c_str());
-    if (value.GetError().Fail()) {
-      return false;
-    }
-    vars_.emplace(name, value);
-    return true;
+    return CreateContextVariable(type, name, true, assignment);
   }
 
  protected:
@@ -791,7 +791,14 @@ TEST_F(EvalTest, TestLogicalOperators) {
                       "         ^"));
   EXPECT_THAT(
       Eval("s || false"),
-      IsError("value of type 'S' is not contextually convertible to 'bool'"));
+      IsError("value of type 'S' is not contextually convertible to 'bool'\n"
+              "s || false\n"
+              "^"));
+  EXPECT_THAT(
+      Eval("true || s"),
+      IsError("value of type 'S' is not contextually convertible to 'bool'\n"
+              "true || s\n"
+              "        ^"));
   EXPECT_THAT(
       Eval("s ? 1 : 2"),
       IsError("value of type 'S' is not contextually convertible to 'bool'"));
@@ -1996,4 +2003,216 @@ TEST_F(EvalTest, TestMemberFunctionCall) {
 
   EXPECT_THAT(Eval("c.m()"),
               IsError("member function calls are not supported"));
+}
+
+TEST_F(EvalTest, TestAssignment) {
+  EXPECT_THAT(Eval("1 = 1"), IsError("expression is not assignable"));
+  EXPECT_THAT(Eval("i = 1"), IsError("side effects are not supported"));
+
+  EXPECT_THAT(Eval("p = 1"),
+              IsError("no known conversion from 'int' to 'float *'"));
+  EXPECT_THAT(Eval("e = 1"),
+              IsError("no known conversion from 'int' to 'Enum'"));
+
+  ASSERT_TRUE(CreateContextVariable("$i", "1"));
+  EXPECT_THAT(EvalWithContext("$i = 2", vars_), IsEqual("2"));
+  EXPECT_THAT(EvalWithContext("$i = -2", vars_), IsEqual("-2"));
+  EXPECT_THAT(EvalWithContext("$i = e1", vars_), IsEqual("0"));
+  EXPECT_THAT(EvalWithContext("$i = e2", vars_), IsEqual("1"));
+
+  ASSERT_TRUE(CreateContextVariable("$f", "1.5f"));
+  EXPECT_THAT(EvalWithContext("$f = 2.5", vars_), IsEqual("2.5"));
+  EXPECT_THAT(EvalWithContext("$f = 3.5f", vars_), IsEqual("3.5"));
+
+  ASSERT_TRUE(CreateContextVariable("$s", "(short)100"));
+  EXPECT_THAT(EvalWithContext("$s = 100000", vars_), IsEqual("-31072"));
+
+  ASSERT_TRUE(CreateContextVariable("$p", "(int*)10"));
+  EXPECT_THAT(EvalWithContext("$p = 1", vars_),
+              IsError("no known conversion from 'int' to 'int *'"));
+  EXPECT_THAT(EvalWithContext("$p = (int*)12", vars_),
+              IsEqual("0x000000000000000c"));
+}
+
+TEST_F(EvalTest, TestCompositeAssignmentInvalid) {
+  EXPECT_THAT(Eval("1 += 1"), IsError("expression is not assignable"));
+  EXPECT_THAT(Eval("i += 1"), IsError("side effects are not supported"));
+
+  EXPECT_THAT(Eval("1 -= 1"), IsError("expression is not assignable"));
+  EXPECT_THAT(Eval("i -= 1"), IsError("side effects are not supported"));
+
+  EXPECT_THAT(Eval("1 *= 1"), IsError("expression is not assignable"));
+  EXPECT_THAT(Eval("i *= 1"), IsError("side effects are not supported"));
+
+  EXPECT_THAT(Eval("1 /= 1"), IsError("expression is not assignable"));
+  EXPECT_THAT(Eval("i /= 1"), IsError("side effects are not supported"));
+
+  EXPECT_THAT(Eval("1 %= 1"), IsError("expression is not assignable"));
+  EXPECT_THAT(Eval("i %= 1"), IsError("side effects are not supported"));
+  EXPECT_THAT(
+      Eval("f %= 1"),
+      IsError("invalid operands to binary expression ('float' and 'int')"));
+
+  ASSERT_TRUE(CreateContextVariable("Enum", "$e", false, "Enum::e1"));
+  EXPECT_THAT(
+      EvalWithContext("$e *= 1", vars_),
+      // TODO(werat): This should actually be:
+      // > assigning to 'Enum' from incompatible type 'int'
+      IsError("invalid operands to binary expression ('Enum' and 'int')"));
+
+  ASSERT_TRUE(CreateContextVariable("$i", "1"));
+  EXPECT_THAT(EvalWithContext("($i += 1) -= 2", vars_),
+              IsError("side effects are not supported in this context"));
+}
+
+TEST_F(EvalTest, TestCompositeAssignmentAdd) {
+  ASSERT_TRUE(CreateContextVariable("$i", "1"));
+  EXPECT_THAT(EvalWithContext("$i += 1", vars_), IsEqual("2"));
+  EXPECT_THAT(EvalWithContext("$i += 2", vars_), IsEqual("4"));
+  EXPECT_THAT(EvalWithContext("$i += -4", vars_), IsEqual("0"));
+  EXPECT_THAT(EvalWithContext("$i += e", vars_), IsEqual("0"));
+  EXPECT_THAT(EvalWithContext("$i += e2", vars_), IsEqual("1"));
+
+  ASSERT_TRUE(CreateContextVariable("$f", "1.5f"));
+  EXPECT_THAT(EvalWithContext("$f += 1", vars_), IsEqual("2.5"));
+  EXPECT_THAT(EvalWithContext("$f += -2", vars_), IsEqual("0.5"));
+  EXPECT_THAT(EvalWithContext("$f += 2.5", vars_), IsEqual("3"));
+  EXPECT_THAT(EvalWithContext("$f += e2", vars_), IsEqual("4"));
+
+  ASSERT_TRUE(CreateContextVariable("$s", "(short)100"));
+  EXPECT_THAT(EvalWithContext("$s += 1000", vars_), IsEqual("1100"));
+  EXPECT_THAT(EvalWithContext("$s += 100000", vars_), IsEqual("-29972"));
+
+  ASSERT_TRUE(CreateContextVariable("$p", "(int*)10"));
+  EXPECT_THAT(EvalWithContext("$p += 1", vars_), IsEqual("0x000000000000000e"));
+  EXPECT_THAT(
+      EvalWithContext("$p += 1.5", vars_),
+      IsError("invalid operands to binary expression ('int *' and 'double')"));
+  EXPECT_THAT(
+      EvalWithContext("$p += $p", vars_),
+      IsError("invalid operands to binary expression ('int *' and 'int *')"));
+  EXPECT_THAT(EvalWithContext("$i += $p", vars_),
+              IsError("no known conversion from 'int *' to 'int'"));
+}
+
+TEST_F(EvalTest, TestCompositeAssignmentSub) {
+  ASSERT_TRUE(CreateContextVariable("$i", "1"));
+  EXPECT_THAT(EvalWithContext("$i -= 1", vars_), IsEqual("0"));
+  EXPECT_THAT(EvalWithContext("$i -= 2", vars_), IsEqual("-2"));
+  EXPECT_THAT(EvalWithContext("$i -= -4", vars_), IsEqual("2"));
+  EXPECT_THAT(EvalWithContext("$i -= e", vars_), IsEqual("2"));
+  EXPECT_THAT(EvalWithContext("$i -= e2", vars_), IsEqual("1"));
+
+  ASSERT_TRUE(CreateContextVariable("$f", "1.5f"));
+  EXPECT_THAT(EvalWithContext("$f -= 1", vars_), IsEqual("0.5"));
+  EXPECT_THAT(EvalWithContext("$f -= -2", vars_), IsEqual("2.5"));
+  EXPECT_THAT(EvalWithContext("$f -= -2.5", vars_), IsEqual("5"));
+  EXPECT_THAT(EvalWithContext("$f -= e2", vars_), IsEqual("4"));
+
+  ASSERT_TRUE(CreateContextVariable("$s", "(short)100"));
+  EXPECT_THAT(EvalWithContext("$s -= 1000", vars_), IsEqual("-900"));
+  EXPECT_THAT(EvalWithContext("$s -= 100000", vars_), IsEqual("30172"));
+
+  ASSERT_TRUE(CreateContextVariable("$p", "(int*)10"));
+  EXPECT_THAT(EvalWithContext("$p -= 1", vars_), IsEqual("0x0000000000000006"));
+  EXPECT_THAT(EvalWithContext("$p -= $p", vars_),
+              IsError("no known conversion from 'long long' to 'int *'"));
+}
+
+TEST_F(EvalTest, TestCompositeAssignmentMul) {
+  ASSERT_TRUE(CreateContextVariable("$i", "1"));
+  EXPECT_THAT(EvalWithContext("$i *= 1", vars_), IsEqual("1"));
+  EXPECT_THAT(EvalWithContext("$i *= 2", vars_), IsEqual("2"));
+  EXPECT_THAT(EvalWithContext("$i *= -2.5", vars_), IsEqual("-5"));
+  EXPECT_THAT(EvalWithContext("$i *= e2", vars_), IsEqual("-5"));
+
+  ASSERT_TRUE(CreateContextVariable("$f", "1.5f"));
+  EXPECT_THAT(EvalWithContext("$f *= 1", vars_), IsEqual("1.5"));
+  EXPECT_THAT(EvalWithContext("$f *= 2", vars_), IsEqual("3"));
+  EXPECT_THAT(EvalWithContext("$f *= -2.5", vars_), IsEqual("-7.5"));
+  EXPECT_THAT(EvalWithContext("$f *= e2", vars_), IsEqual("-7.5"));
+
+  ASSERT_TRUE(CreateContextVariable("$s", "(short)100"));
+  EXPECT_THAT(EvalWithContext("$s *= 1000", vars_), IsEqual("-31072"));
+  EXPECT_THAT(EvalWithContext("$s *= -1000", vars_), IsEqual("7936"));
+}
+
+TEST_F(EvalTest, TestCompositeAssignmentDiv) {
+  ASSERT_TRUE(CreateContextVariable("$i", "15"));
+  EXPECT_THAT(EvalWithContext("$i /= 1", vars_), IsEqual("15"));
+  EXPECT_THAT(EvalWithContext("$i /= 2", vars_), IsEqual("7"));
+  EXPECT_THAT(EvalWithContext("$i /= -2", vars_), IsEqual("-3"));
+  EXPECT_THAT(EvalWithContext("$i /= e2", vars_), IsEqual("-3"));
+
+  ASSERT_TRUE(CreateContextVariable("$f", "15.5f"));
+  EXPECT_THAT(EvalWithContext("$f /= 1", vars_), IsEqual("15.5"));
+  EXPECT_THAT(EvalWithContext("$f /= 2", vars_), IsEqual("7.75"));
+  EXPECT_THAT(EvalWithContext("$f /= -2.5", vars_), IsEqual("-3.0999999"));
+  EXPECT_THAT(EvalWithContext("$f /= e2", vars_), IsEqual("-3.0999999"));
+
+  ASSERT_TRUE(CreateContextVariable("$s", "(short)100"));
+  EXPECT_THAT(EvalWithContext("$s /= 10", vars_), IsEqual("10"));
+  EXPECT_THAT(EvalWithContext("$s /= -3", vars_), IsEqual("-3"));
+}
+
+TEST_F(EvalTest, TestCompositeAssignmentRem) {
+  ASSERT_TRUE(CreateContextVariable("$i", "15"));
+  EXPECT_THAT(EvalWithContext("$i %= 8", vars_), IsEqual("7"));
+  EXPECT_THAT(EvalWithContext("$i %= -3", vars_), IsEqual("1"));
+  EXPECT_THAT(EvalWithContext("$i %= e2", vars_), IsEqual("0"));
+
+  ASSERT_TRUE(CreateContextVariable("$f", "15.5f"));
+  EXPECT_THAT(
+      EvalWithContext("$f %= 1", vars_),
+      IsError("invalid operands to binary expression ('float' and 'int')"));
+
+  ASSERT_TRUE(CreateContextVariable("$s", "(short)100"));
+  EXPECT_THAT(EvalWithContext("$s %= 0", vars_), IsEqual("0"));
+}
+
+TEST_F(EvalTest, TestCompositeAssignmentBitwise) {
+  ASSERT_TRUE(CreateContextVariable("$i", "0b11111111"));
+  EXPECT_THAT(EvalWithContext("$i &= 0b11110000", vars_), IsEqual("240"));
+  EXPECT_THAT(EvalWithContext("$i |= 0b01100011", vars_), IsEqual("243"));
+  EXPECT_THAT(EvalWithContext("$i ^= 0b00100010", vars_), IsEqual("209"));
+  EXPECT_THAT(EvalWithContext("$i << 2", vars_), IsEqual("836"));
+  EXPECT_THAT(EvalWithContext("$i >> 3", vars_), IsEqual("26"));
+
+  ASSERT_TRUE(CreateContextVariable("$f", "1.5f"));
+  EXPECT_THAT(
+      EvalWithContext("$f &= 1", vars_),
+      IsError("invalid operands to binary expression ('float' and 'int')"));
+  EXPECT_THAT(
+      EvalWithContext("$f |= 1", vars_),
+      IsError("invalid operands to binary expression ('float' and 'int')"));
+  EXPECT_THAT(
+      EvalWithContext("$f ^= 1", vars_),
+      IsError("invalid operands to binary expression ('float' and 'int')"));
+  EXPECT_THAT(
+      EvalWithContext("$f << 1", vars_),
+      IsError("invalid operands to binary expression ('float' and 'int')"));
+  EXPECT_THAT(
+      EvalWithContext("$f >> 1", vars_),
+      IsError("invalid operands to binary expression ('float' and 'int')"));
+
+  ASSERT_TRUE(CreateContextVariable("$s", "(short)100"));
+  EXPECT_THAT(EvalWithContext("$s >> 12", vars_), IsEqual("0"));
+  EXPECT_THAT(EvalWithContext("$s << 24", vars_), IsEqual("1677721600"));
+
+  ASSERT_TRUE(CreateContextVariable("$p", "(int*)10"));
+  EXPECT_THAT(
+      EvalWithContext("$p &= 1", vars_),
+      IsError("invalid operands to binary expression ('int *' and 'int')"));
+  EXPECT_THAT(
+      EvalWithContext("$p |= (char)1", vars_),
+      IsError("invalid operands to binary expression ('int *' and 'char')"));
+  EXPECT_THAT(
+      EvalWithContext("$p ^= &f", vars_),
+      IsError("invalid operands to binary expression ('int *' and 'float *')"));
+  EXPECT_THAT(
+      EvalWithContext("$p << 1", vars_),
+      IsError("invalid operands to binary expression ('int *' and 'int')"));
+  EXPECT_THAT(
+      EvalWithContext("$p >> $p", vars_),
+      IsError("invalid operands to binary expression ('int *' and 'int *')"));
 }

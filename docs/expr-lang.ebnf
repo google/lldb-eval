@@ -3,7 +3,20 @@
 
 expression = assignment_expression ;
 
-assignment_expression = conditional_expression ;
+assignment_expression = conditional_expression
+                        logical_or_expression assignment_operator assignment_expression ;
+
+assignment_operator = "="
+                    | "*="
+                    | "/="
+                    | "%="
+                    | "+="
+                    | "-="
+                    | ">>="
+                    | "<<="
+                    | "&="
+                    | "^="
+                    | "|=" ;
 
 conditional_expression = logical_or_expression
                        | logical_or_expression "?" expression ":" assignment_expression ;

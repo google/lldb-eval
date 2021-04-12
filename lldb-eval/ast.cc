@@ -21,24 +21,35 @@ namespace lldb_eval {
 std::string to_string(BinaryOpKind kind) {
   switch (kind) {
       // clang-format off
-    case BinaryOpKind::Mul:  return "*";
-    case BinaryOpKind::Div:  return "/";
-    case BinaryOpKind::Rem:  return "%";
-    case BinaryOpKind::Add:  return "+";
-    case BinaryOpKind::Sub:  return "-";
-    case BinaryOpKind::Shl:  return "<<";
-    case BinaryOpKind::Shr:  return ">>";
-    case BinaryOpKind::LT:   return "<";
-    case BinaryOpKind::GT:   return ">";
-    case BinaryOpKind::LE:   return "<=";
-    case BinaryOpKind::GE:   return ">=";
-    case BinaryOpKind::EQ:   return "==";
-    case BinaryOpKind::NE:   return "!=";
-    case BinaryOpKind::And:  return "&";
-    case BinaryOpKind::Xor:  return "^";
-    case BinaryOpKind::Or:   return "|";
-    case BinaryOpKind::LAnd: return "&&";
-    case BinaryOpKind::LOr:  return "||";
+    case BinaryOpKind::Mul:       return "'*'";
+    case BinaryOpKind::Div:       return "'/'";
+    case BinaryOpKind::Rem:       return "'%'";
+    case BinaryOpKind::Add:       return "'+'";
+    case BinaryOpKind::Sub:       return "'-'";
+    case BinaryOpKind::Shl:       return "'<<'";
+    case BinaryOpKind::Shr:       return "'>>'";
+    case BinaryOpKind::LT:        return "'<'";
+    case BinaryOpKind::GT:        return "'>'";
+    case BinaryOpKind::LE:        return "'<='";
+    case BinaryOpKind::GE:        return "'>='";
+    case BinaryOpKind::EQ:        return "'=='";
+    case BinaryOpKind::NE:        return "'!='";
+    case BinaryOpKind::And:       return "'&'";
+    case BinaryOpKind::Xor:       return "'^'";
+    case BinaryOpKind::Or:        return "'|'";
+    case BinaryOpKind::LAnd:      return "'&&'";
+    case BinaryOpKind::LOr:       return "'||'";
+    case BinaryOpKind::Assign:    return "'='";
+    case BinaryOpKind::MulAssign: return "'*='";
+    case BinaryOpKind::DivAssign: return "'/='";
+    case BinaryOpKind::RemAssign: return "'%='";
+    case BinaryOpKind::AddAssign: return "'+='";
+    case BinaryOpKind::SubAssign: return "'-='";
+    case BinaryOpKind::ShlAssign: return "'<<='";
+    case BinaryOpKind::ShrAssign: return "'>>='";
+    case BinaryOpKind::AndAssign: return "'&='";
+    case BinaryOpKind::XorAssign: return "'^='";
+    case BinaryOpKind::OrAssign:  return "'|='";
       // clang-format on
   }
   lldb_eval_unreachable("did you add an element to BinaryOpKind?");
@@ -48,30 +59,61 @@ BinaryOpKind clang_token_kind_to_binary_op_kind(
     clang::tok::TokenKind token_kind) {
   switch (token_kind) {
       // clang-format off
-    case clang::tok::star:           return BinaryOpKind::Mul;
-    case clang::tok::slash:          return BinaryOpKind::Div;
-    case clang::tok::percent:        return BinaryOpKind::Rem;
-    case clang::tok::plus:           return BinaryOpKind::Add;
-    case clang::tok::minus:          return BinaryOpKind::Sub;
-    case clang::tok::lessless:       return BinaryOpKind::Shl;
-    case clang::tok::greatergreater: return BinaryOpKind::Shr;
-    case clang::tok::less:           return BinaryOpKind::LT;
-    case clang::tok::greater:        return BinaryOpKind::GT;
-    case clang::tok::lessequal:      return BinaryOpKind::LE;
-    case clang::tok::greaterequal:   return BinaryOpKind::GE;
-    case clang::tok::equalequal:     return BinaryOpKind::EQ;
-    case clang::tok::exclaimequal:   return BinaryOpKind::NE;
-    case clang::tok::amp:            return BinaryOpKind::And;
-    case clang::tok::caret:          return BinaryOpKind::Xor;
-    case clang::tok::pipe:           return BinaryOpKind::Or;
-    case clang::tok::ampamp:         return BinaryOpKind::LAnd;
-    case clang::tok::pipepipe:       return BinaryOpKind::LOr;
+    case clang::tok::star:                return BinaryOpKind::Mul;
+    case clang::tok::slash:               return BinaryOpKind::Div;
+    case clang::tok::percent:             return BinaryOpKind::Rem;
+    case clang::tok::plus:                return BinaryOpKind::Add;
+    case clang::tok::minus:               return BinaryOpKind::Sub;
+    case clang::tok::lessless:            return BinaryOpKind::Shl;
+    case clang::tok::greatergreater:      return BinaryOpKind::Shr;
+    case clang::tok::less:                return BinaryOpKind::LT;
+    case clang::tok::greater:             return BinaryOpKind::GT;
+    case clang::tok::lessequal:           return BinaryOpKind::LE;
+    case clang::tok::greaterequal:        return BinaryOpKind::GE;
+    case clang::tok::equalequal:          return BinaryOpKind::EQ;
+    case clang::tok::exclaimequal:        return BinaryOpKind::NE;
+    case clang::tok::amp:                 return BinaryOpKind::And;
+    case clang::tok::caret:               return BinaryOpKind::Xor;
+    case clang::tok::pipe:                return BinaryOpKind::Or;
+    case clang::tok::ampamp:              return BinaryOpKind::LAnd;
+    case clang::tok::pipepipe:            return BinaryOpKind::LOr;
+    case clang::tok::equal:               return BinaryOpKind::Assign;
+    case clang::tok::starequal:           return BinaryOpKind::MulAssign;
+    case clang::tok::slashequal:          return BinaryOpKind::DivAssign;
+    case clang::tok::percentequal:        return BinaryOpKind::RemAssign;
+    case clang::tok::plusequal:           return BinaryOpKind::AddAssign;
+    case clang::tok::minusequal:          return BinaryOpKind::SubAssign;
+    case clang::tok::lesslessequal:       return BinaryOpKind::ShlAssign;
+    case clang::tok::greatergreaterequal: return BinaryOpKind::ShrAssign;
+    case clang::tok::ampequal:            return BinaryOpKind::AndAssign;
+    case clang::tok::caretequal:          return BinaryOpKind::XorAssign;
+    case clang::tok::pipeequal:           return BinaryOpKind::OrAssign;
       // clang-format on
 
     default:
       break;
   }
   lldb_eval_unreachable("did you add an element to BinaryOpKind?");
+}
+
+bool binary_op_kind_is_comp_assign(BinaryOpKind kind) {
+  switch (kind) {
+    case BinaryOpKind::Assign:
+    case BinaryOpKind::MulAssign:
+    case BinaryOpKind::DivAssign:
+    case BinaryOpKind::RemAssign:
+    case BinaryOpKind::AddAssign:
+    case BinaryOpKind::SubAssign:
+    case BinaryOpKind::ShlAssign:
+    case BinaryOpKind::ShrAssign:
+    case BinaryOpKind::AndAssign:
+    case BinaryOpKind::XorAssign:
+    case BinaryOpKind::OrAssign:
+      return true;
+
+    default:
+      return false;
+  }
 }
 
 std::string to_string(UnaryOpKind kind) {
@@ -92,7 +134,7 @@ std::string to_string(UnaryOpKind kind) {
   lldb_eval_unreachable("did you add an element to UnaryOpKind?");
 }
 
-lldb::SBType AstNode::result_type_deref() {
+lldb::SBType AstNode::result_type_deref() const {
   lldb::SBType type = result_type();
   return type.IsReferenceType() ? type.GetDereferencedType() : type;
 }

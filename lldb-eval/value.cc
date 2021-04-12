@@ -105,6 +105,10 @@ bool Type::IsNullPtrType() {
 
 bool Type::IsSigned() { return GetTypeFlags() & lldb::eTypeIsSigned; }
 
+bool Type::IsBasicType() {
+  return GetCanonicalType().GetBasicType() != lldb::eBasicTypeInvalid;
+}
+
 bool Type::IsEnum() { return GetTypeFlags() & lldb::eTypeIsEnumeration; }
 
 bool Type::IsScopedEnum() { return IsScopedEnum_V<lldb::SBType>(*this); }
@@ -266,6 +270,19 @@ void Value::Update(const llvm::APInt& v) {
                target.GetByteOrder(),
                static_cast<uint8_t>(target.GetAddressByteSize()));
   value_.SetData(data, ignore);
+}
+
+void Value::Update(Value v) {
+  assert((v.IsInteger() || v.IsFloat() || v.IsPointer()) &&
+         "illegal argument: new value should be of the same size");
+
+  if (v.IsInteger()) {
+    Update(v.GetInteger());
+  } else if (v.IsFloat()) {
+    Update(v.GetFloat().bitcastToAPInt());
+  } else if (v.IsPointer()) {
+    Update(llvm::APInt(64, v.GetUInt64()));
+  }
 }
 
 Value CastScalarToBasicType(lldb::SBTarget target, Value val,

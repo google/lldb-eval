@@ -254,7 +254,7 @@ void Interpreter::Visit(const BuiltinFunctionCallNode* node) {
 
 void Interpreter::Visit(const CStyleCastNode* node) {
   // Get the type and the value we need to cast.
-  lldb::SBType type = node->type();
+  Type type = node->type();
   auto rhs = EvalNode(node->rhs());
   if (!rhs) {
     return;
@@ -262,6 +262,8 @@ void Interpreter::Visit(const CStyleCastNode* node) {
 
   switch (node->kind()) {
     case CStyleCastKind::kArithmetic: {
+      assert(type.IsBasicType() &&
+             "invalid ast: target type should be a basic type.");
       // Pick an appropriate cast.
       if (rhs.IsPointer() || rhs.IsNullPtrType()) {
         result_ = CastPointerToBasicType(target_, rhs, type);
@@ -276,11 +278,15 @@ void Interpreter::Visit(const CStyleCastNode* node) {
       return;
     }
     case CStyleCastKind::kEnumeration: {
+      assert(type.IsEnum() &&
+             "invalid ast: target type should be an enumeration.");
       uint64_t value = rhs.GetUInt64();
       result_ = CreateValueFromBytes(target_, &value, type);
       return;
     }
     case CStyleCastKind::kPointer: {
+      assert(type.IsPointerType() &&
+             "invalid ast: target type should be a pointer.");
       if (rhs.type().IsArrayType()) {
         rhs = rhs.AddressOf();
       }
@@ -288,6 +294,8 @@ void Interpreter::Visit(const CStyleCastNode* node) {
       return;
     }
     case CStyleCastKind::kNullptr: {
+      assert(type.IsNullPtrType() &&
+             "invalid ast: target type should be a nullptr_t.");
       result_ = CreateValueNullptr(target_);
       return;
     }
@@ -447,6 +455,34 @@ void Interpreter::Visit(const BinaryOpNode* node) {
     case BinaryOpKind::GT:
     case BinaryOpKind::GE:
       result_ = EvaluateComparison(node->kind(), lhs, rhs);
+      return;
+
+    case BinaryOpKind::Assign:
+      result_ = EvaluateAssignment(lhs, rhs);
+      return;
+
+    case BinaryOpKind::AddAssign:
+      result_ = EvaluateBinaryAddAssign(lhs, rhs);
+      return;
+    case BinaryOpKind::SubAssign:
+      result_ = EvaluateBinarySubAssign(lhs, rhs);
+      return;
+    case BinaryOpKind::MulAssign:
+      result_ = EvaluateBinaryMulAssign(lhs, rhs);
+      return;
+    case BinaryOpKind::DivAssign:
+      result_ = EvaluateBinaryDivAssign(lhs, rhs);
+      return;
+    case BinaryOpKind::RemAssign:
+      result_ = EvaluateBinaryRemAssign(lhs, rhs);
+      return;
+
+    case BinaryOpKind::AndAssign:
+    case BinaryOpKind::OrAssign:
+    case BinaryOpKind::XorAssign:
+    case BinaryOpKind::ShlAssign:
+    case BinaryOpKind::ShrAssign:
+      result_ = EvaluateBinaryBitwiseAssign(node->kind(), lhs, rhs);
       return;
 
     default:
@@ -779,6 +815,120 @@ Value Interpreter::EvaluateBinaryBitwise(BinaryOpKind kind, Value lhs,
          "invalid ast: operands must be integers and have the same type");
 
   return EvaluateArithmeticOpInteger(target_, kind, lhs, rhs, lhs.type());
+}
+
+Value Interpreter::EvaluateAssignment(Value lhs, Value rhs) {
+  assert(CompareTypes(lhs.type(), rhs.type()) &&
+         "invalid ast: operands must have the same type");
+
+  lhs.Update(rhs);
+  return lhs;
+}
+
+Value Interpreter::EvaluateBinaryAddAssign(Value lhs, Value rhs) {
+  Value ret;
+
+  if (lhs.IsPointer()) {
+    assert(rhs.IsInteger() && "invalid ast: rhs must be an integer");
+    ret = EvaluateBinaryAddition(lhs, rhs);
+  } else {
+    assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");
+    assert(rhs.type().IsBasicType() && "invalid ast: rhs must be a basic type");
+    ret = CastScalarToBasicType(target_, lhs, rhs.type());
+    ret = EvaluateBinaryAddition(ret, rhs);
+    ret = CastScalarToBasicType(target_, ret, lhs.type());
+  }
+
+  lhs.Update(ret);
+  return lhs;
+}
+
+Value Interpreter::EvaluateBinarySubAssign(Value lhs, Value rhs) {
+  Value ret;
+
+  if (lhs.IsPointer()) {
+    assert(rhs.IsInteger() && "invalid ast: rhs must be an integer");
+    ret = EvaluateBinarySubtraction(lhs, rhs);
+  } else {
+    assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");
+    assert(rhs.type().IsBasicType() && "invalid ast: rhs must be a basic type");
+    ret = CastScalarToBasicType(target_, lhs, rhs.type());
+    ret = EvaluateBinarySubtraction(ret, rhs);
+    ret = CastScalarToBasicType(target_, ret, lhs.type());
+  }
+
+  lhs.Update(ret);
+  return lhs;
+}
+
+Value Interpreter::EvaluateBinaryMulAssign(Value lhs, Value rhs) {
+  assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");
+  assert(rhs.type().IsBasicType() && "invalid ast: rhs must be a basic type");
+
+  Value ret = CastScalarToBasicType(target_, lhs, rhs.type());
+  ret = EvaluateBinaryMultiplication(ret, rhs);
+  ret = CastScalarToBasicType(target_, ret, lhs.type());
+
+  lhs.Update(ret);
+  return lhs;
+}
+
+Value Interpreter::EvaluateBinaryDivAssign(Value lhs, Value rhs) {
+  assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");
+  assert(rhs.type().IsBasicType() && "invalid ast: rhs must be a basic type");
+
+  Value ret = CastScalarToBasicType(target_, lhs, rhs.type());
+  ret = EvaluateBinaryDivision(ret, rhs);
+  ret = CastScalarToBasicType(target_, ret, lhs.type());
+
+  lhs.Update(ret);
+  return lhs;
+}
+
+Value Interpreter::EvaluateBinaryRemAssign(Value lhs, Value rhs) {
+  assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");
+  assert(rhs.type().IsBasicType() && "invalid ast: rhs must be a basic type");
+
+  Value ret = CastScalarToBasicType(target_, lhs, rhs.type());
+  ret = EvaluateBinaryRemainder(ret, rhs);
+  ret = CastScalarToBasicType(target_, ret, lhs.type());
+
+  lhs.Update(ret);
+  return lhs;
+}
+
+Value Interpreter::EvaluateBinaryBitwiseAssign(BinaryOpKind kind, Value lhs,
+                                               Value rhs) {
+  switch (kind) {
+    case BinaryOpKind::AndAssign:
+      kind = BinaryOpKind::And;
+      break;
+    case BinaryOpKind::OrAssign:
+      kind = BinaryOpKind::Or;
+      break;
+    case BinaryOpKind::XorAssign:
+      kind = BinaryOpKind::Xor;
+      break;
+    case BinaryOpKind::ShlAssign:
+      kind = BinaryOpKind::Shl;
+      break;
+    case BinaryOpKind::ShrAssign:
+      kind = BinaryOpKind::Shr;
+      break;
+    default:
+      assert(false &&
+             "invalid BinaryOpKind: must be a composite assigment operation");
+      break;
+  }
+  assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");
+  assert(rhs.type().IsBasicType() && "invalid ast: rhs must be a basic type");
+
+  Value ret = CastScalarToBasicType(target_, lhs, rhs.type());
+  ret = EvaluateBinaryBitwise(kind, ret, rhs);
+  ret = CastScalarToBasicType(target_, ret, lhs.type());
+
+  lhs.Update(ret);
+  return lhs;
 }
 
 Value Interpreter::PointerAdd(Value lhs, int64_t offset) {

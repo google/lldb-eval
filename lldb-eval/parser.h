@@ -83,7 +83,6 @@ class Parser {
  private:
   ExprResult ParseExpression();
   ExprResult ParseAssignmentExpression();
-  ExprResult ParseConditionalExpression();
   ExprResult ParseLogicalOrExpression();
   ExprResult ParseLogicalAndExpression();
   ExprResult ParseInclusiveOrExpression();
@@ -134,6 +133,7 @@ class Parser {
   ExprResult ParseBuiltinFunction(clang::SourceLocation loc,
                                   std::unique_ptr<BuiltinFunctionDef> func_def);
 
+  bool ImplicitConversionIsAllowed(Type src, Type dst);
   ExprResult InsertImplicitConversion(ExprResult expr, Type type);
 
   void ConsumeToken();
@@ -163,23 +163,36 @@ class Parser {
 
   ExprResult BuildBinaryOp(BinaryOpKind kind, ExprResult lhs, ExprResult rhs,
                            clang::SourceLocation location);
-  ExprResult BuildBinaryAddition(ExprResult lhs, ExprResult rhs,
-                                 clang::SourceLocation location);
-  ExprResult BuildBinarySubtraction(ExprResult lhs, ExprResult rhs,
-                                    clang::SourceLocation location);
-  ExprResult BuildBinaryMulDiv(BinaryOpKind kind, ExprResult lhs,
-                               ExprResult rhs, clang::SourceLocation location);
-  ExprResult BuildBinaryRemainder(ExprResult lhs, ExprResult rhs,
-                                  clang::SourceLocation location);
-  ExprResult BuildBinaryBitwise(BinaryOpKind kind, ExprResult lhs,
-                                ExprResult rhs, clang::SourceLocation location);
-  ExprResult BuildBinaryComparison(BinaryOpKind kind, ExprResult lhs,
-                                   ExprResult rhs,
-                                   clang::SourceLocation location);
-  ExprResult BuildBinaryLogical(BinaryOpKind kind, ExprResult lhs,
-                                ExprResult rhs, clang::SourceLocation location);
+
+  lldb::SBType PrepareBinaryAddition(ExprResult& lhs, ExprResult& rhs,
+                                     clang::SourceLocation location,
+                                     bool is_comp_assign);
+  lldb::SBType PrepareBinarySubtraction(ExprResult& lhs, ExprResult& rhs,
+                                        clang::SourceLocation location,
+                                        bool is_comp_assign);
+  lldb::SBType PrepareBinaryMulDiv(BinaryOpKind kind, ExprResult& lhs,
+                                   ExprResult& rhs,
+                                   clang::SourceLocation location,
+                                   bool is_comp_assign);
+  lldb::SBType PrepareBinaryRemainder(ExprResult& lhs, ExprResult& rhs,
+                                      clang::SourceLocation location,
+                                      bool is_comp_assign);
+  lldb::SBType PrepareBinaryBitwise(BinaryOpKind kind, ExprResult& lhs,
+                                    ExprResult& rhs,
+                                    clang::SourceLocation location,
+                                    bool is_comp_assign);
+  lldb::SBType PrepareBinaryComparison(BinaryOpKind kind, ExprResult& lhs,
+                                       ExprResult& rhs,
+                                       clang::SourceLocation location);
+  lldb::SBType PrepareBinaryLogical(const ExprResult& lhs,
+                                    const ExprResult& rhs);
+
   ExprResult BuildBinarySubscript(ExprResult lhs, ExprResult rhs,
                                   clang::SourceLocation location);
+
+  lldb::SBType PrepareCompositeAssignment(Type comp_assign_type,
+                                          const ExprResult& lhs,
+                                          clang::SourceLocation location);
 
   ExprResult BuildTernaryOp(ExprResult cond, ExprResult lhs, ExprResult rhs,
                             clang::SourceLocation location);

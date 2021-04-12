@@ -39,6 +39,7 @@ class Type : public lldb::SBType {
   bool IsPointerToVoid();
   bool IsNullPtrType();
   bool IsSigned();
+  bool IsBasicType();
   bool IsEnum();
   bool IsScopedEnum();
   bool IsUnscopedEnum();
@@ -90,6 +91,7 @@ class Value {
 
   Value Clone();
   void Update(const llvm::APInt& v);
+  void Update(Value v);
 
  private:
   lldb::SBValue value_;

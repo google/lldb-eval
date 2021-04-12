@@ -29,6 +29,18 @@ using bazel::tools::cpp::runfiles::Runfiles;
 
 namespace lldb_eval {
 
+std::string print_common_props(const AstNode* node) {
+  std::string ret;
+
+  ret += "'";
+  ret += node->result_type().GetName();
+  ret += "'";
+  ret += " ";
+  ret += node->is_rvalue() ? "rvalue" : "lvalue";
+
+  return ret;
+}
+
 class AstPrinter : Visitor {
  public:
   void Print(const AstNode* tree) { tree->Accept(this); }
@@ -38,20 +50,25 @@ class AstPrinter : Visitor {
   }
 
   void Visit(const LiteralNode* node) override {
-    const char* value = node->value().inner_value().GetValue();
-    std::cout << "LiteralNode value=" << value << std::endl;
+    std::cout << "LiteralNode " << print_common_props(node) << " "
+              << "value=" << node->value().inner_value().GetValue()
+              << std::endl;
   }
 
   void Visit(const IdentifierNode* node) override {
-    std::cout << "IdentifierNode value=" << node->name() << std::endl;
+    std::cout << "IdentifierNode " << print_common_props(node) << " "
+              << "value=" << node->name() << std::endl;
   }
 
   void Visit(const SizeOfNode* node) override {
-    std::cout << "SizeOfNode type=" << node->operand().GetName() << std::endl;
+    std::cout << "SizeOfNode " << print_common_props(node) << " "
+              << "type=" << node->operand().GetName() << std::endl;
   }
 
   void Visit(const BuiltinFunctionCallNode* node) override {
-    std::cout << "BuiltinFunctionCallNode name=" << node->name() << std::endl;
+    std::cout << "BuiltinFunctionCallNode " << print_common_props(node) << " "
+              << "name=" << node->name() << std::endl;
+
     auto& args = node->arguments();
     for (size_t i = 0; i < args.size() - 1; ++i) {
       PrintChild(args[i].get());
@@ -62,38 +79,41 @@ class AstPrinter : Visitor {
   }
 
   void Visit(const CStyleCastNode* node) override {
-    const char* type = node->type().GetName();
-    std::cout << "CStyleCastNode type=" << type << std::endl;
+    std::cout << "CStyleCastNode " << print_common_props(node) << " "
+              << "type=" << node->type().GetName() << std::endl;
 
     PrintLastChild(node->rhs());
   }
 
   void Visit(const MemberOfNode* node) override {
-    std::cout << "MemberOfNode member=TODO" << std::endl;
+    std::cout << "MemberOfNode " << print_common_props(node) << " "
+              << "member=TODO" << std::endl;
     PrintLastChild(node->lhs());
   }
 
   void Visit(const ArraySubscriptNode* node) override {
-    std::cout << "ArraySubscriptNode" << std::endl;
+    std::cout << "ArraySubscriptNode " << print_common_props(node) << std::endl;
 
     PrintChild(node->base());
     PrintLastChild(node->index());
   }
 
   void Visit(const BinaryOpNode* node) override {
-    std::cout << "BinaryOpNode op=" << to_string(node->kind()) << std::endl;
+    std::cout << "BinaryOpNode " << print_common_props(node) << " "
+              << to_string(node->kind()) << std::endl;
 
     PrintChild(node->lhs());
     PrintLastChild(node->rhs());
   }
 
   void Visit(const UnaryOpNode* node) override {
-    std::cout << "UnaryOpNode op=" << to_string(node->kind()) << std::endl;
+    std::cout << "UnaryOpNode " << print_common_props(node) << " "
+              << to_string(node->kind()) << std::endl;
     PrintLastChild(node->rhs());
   }
 
   void Visit(const TernaryOpNode* node) override {
-    std::cout << "TernaryOpNode" << std::endl;
+    std::cout << "TernaryOpNode " << print_common_props(node) << std::endl;
 
     PrintChild(node->cond());
     PrintChild(node->lhs());

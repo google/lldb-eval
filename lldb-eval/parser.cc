@@ -51,6 +51,8 @@
 
 namespace {
 
+const lldb_eval::Type InvalidType = lldb_eval::Type();
+
 const char* kInvalidOperandsToUnaryExpression =
     "invalid argument type '{0}' to unary expression";
 
@@ -328,7 +330,8 @@ static lldb::BasicType BasicTypeToUnsigned(lldb::BasicType basic_type) {
 }
 
 static void PerformIntegerConversions(lldb::SBTarget target, ExprResult& l,
-                                      ExprResult& r) {
+                                      ExprResult& r, bool convert_lhs,
+                                      bool convert_rhs) {
   // Assert that rank(l) < rank(r).
   Type l_type = l->result_type_deref();
   Type r_type = r->result_type_deref();
@@ -345,22 +348,29 @@ static void PerformIntegerConversions(lldb::SBTarget target, ExprResult& l,
     if (r_size == l_size) {
       lldb::SBType r_type_unsigned = target.GetBasicType(
           BasicTypeToUnsigned(r_type.GetCanonicalType().GetBasicType()));
-      r = std::make_unique<CStyleCastNode>(r->location(), r_type_unsigned,
-                                           std::move(r),
-                                           CStyleCastKind::kArithmetic);
+      if (convert_rhs) {
+        r = std::make_unique<CStyleCastNode>(r->location(), r_type_unsigned,
+                                             std::move(r),
+                                             CStyleCastKind::kArithmetic);
+      }
     }
   }
 
-  l = std::make_unique<CStyleCastNode>(l->location(), r->result_type(),
-                                       std::move(l),
-                                       CStyleCastKind::kArithmetic);
+  if (convert_lhs) {
+    l = std::make_unique<CStyleCastNode>(l->location(), r->result_type(),
+                                         std::move(l),
+                                         CStyleCastKind::kArithmetic);
+  }
 }
 
 static lldb::SBType UsualArithmeticConversions(lldb::SBTarget target,
-                                               ExprResult& lhs,
-                                               ExprResult& rhs) {
+                                               ExprResult& lhs, ExprResult& rhs,
+                                               bool is_comp_assign = false) {
   // Apply unary conversions (e.g. intergal promotion) for both operands.
-  lhs = UsualUnaryConversions(target, std::move(lhs));
+  // In case of a composite assignment operator LHS shouldn't get promoted.
+  if (!is_comp_assign) {
+    lhs = UsualUnaryConversions(target, std::move(lhs));
+  }
   rhs = UsualUnaryConversions(target, std::move(rhs));
 
   Type lhs_type = lhs->result_type_deref();
@@ -372,7 +382,7 @@ static lldb::SBType UsualArithmeticConversions(lldb::SBTarget target,
 
   // If either of the operands is not arithmetic (e.g. pointer), we're done.
   if (!lhs_type.IsScalar() || !rhs_type.IsScalar()) {
-    return {};
+    return InvalidType;
   }
 
   // Handle conversions for floating types (float, double).
@@ -387,9 +397,11 @@ static lldb::SBType UsualArithmeticConversions(lldb::SBTarget target,
         return lhs_type;
       }
       assert(order < 0 && "illegal operands: must not be of the same type");
-      lhs = std::make_unique<CStyleCastNode>(lhs->location(), rhs_type,
-                                             std::move(lhs),
-                                             CStyleCastKind::kArithmetic);
+      if (!is_comp_assign) {
+        lhs = std::make_unique<CStyleCastNode>(lhs->location(), rhs_type,
+                                               std::move(lhs),
+                                               CStyleCastKind::kArithmetic);
+      }
       return rhs_type;
     }
 
@@ -401,8 +413,11 @@ static lldb::SBType UsualArithmeticConversions(lldb::SBTarget target,
       return lhs_type;
     }
     assert(rhs_type.IsFloat() && "illegal operand: must be a float");
-    lhs = std::make_unique<CStyleCastNode>(
-        lhs->location(), rhs_type, std::move(lhs), CStyleCastKind::kArithmetic);
+    if (!is_comp_assign) {
+      lhs = std::make_unique<CStyleCastNode>(lhs->location(), rhs_type,
+                                             std::move(lhs),
+                                             CStyleCastKind::kArithmetic);
+    }
     return rhs_type;
   }
 
@@ -415,13 +430,15 @@ static lldb::SBType UsualArithmeticConversions(lldb::SBTarget target,
   Rank r_rank = {ConversionRank(rhs_type), !rhs_type.IsSigned()};
 
   if (l_rank < r_rank) {
-    PerformIntegerConversions(target, lhs, rhs);
+    PerformIntegerConversions(target, lhs, rhs, !is_comp_assign, true);
   } else if (l_rank > r_rank) {
-    PerformIntegerConversions(target, rhs, lhs);
+    PerformIntegerConversions(target, rhs, lhs, true, !is_comp_assign);
   }
 
-  assert(CompareTypes(lhs->result_type_deref(), rhs->result_type_deref()) &&
-         "operands result types must be the same");
+  if (!is_comp_assign) {
+    assert(CompareTypes(lhs->result_type_deref(), rhs->result_type_deref()) &&
+           "integral promotion error: operands result types must be the same");
+  }
 
   return lhs->result_type_deref().GetCanonicalType();
 }
@@ -647,20 +664,44 @@ ExprResult Parser::ParseExpression() { return ParseAssignmentExpression(); }
 //
 //  assignment_expression:
 //    conditional_expression
+//    logical_or_expression assignment_operator assignment_expression
 //
-ExprResult Parser::ParseAssignmentExpression() {
-  return ParseConditionalExpression();
-}
-
-// Parse a conditional_expression
+//  assignment_operator:
+//    "="
+//    "*="
+//    "/="
+//    "%="
+//    "+="
+//    "-="
+//    ">>="
+//    "<<="
+//    "&="
+//    "^="
+//    "|="
 //
 //  conditional_expression:
 //    logical_or_expression
 //    logical_or_expression "?" expression ":" assignment_expression
 //
-ExprResult Parser::ParseConditionalExpression() {
+ExprResult Parser::ParseAssignmentExpression() {
   auto lhs = ParseLogicalOrExpression();
 
+  // Check if it's an assigment expression.
+  if (token_.isOneOf(clang::tok::equal, clang::tok::starequal,
+                     clang::tok::slashequal, clang::tok::percentequal,
+                     clang::tok::plusequal, clang::tok::minusequal,
+                     clang::tok::greatergreaterequal, clang::tok::lesslessequal,
+                     clang::tok::ampequal, clang::tok::caretequal,
+                     clang::tok::pipeequal)) {
+    // That's an assigment!
+    clang::Token token = token_;
+    ConsumeToken();
+    auto rhs = ParseAssignmentExpression();
+    lhs = BuildBinaryOp(clang_token_kind_to_binary_op_kind(token.getKind()),
+                        std::move(lhs), std::move(rhs), token.getLocation());
+  }
+
+  // Check if it's a conditional expression.
   if (token_.is(clang::tok::question)) {
     clang::Token token = token_;
     ConsumeToken();
@@ -1924,13 +1965,11 @@ ExprResult Parser::InsertImplicitConversion(ExprResult expr, Type type) {
     return expr;
   }
 
-  // Now see if there's a known conversion from `expr_type` to `type`.
-  if (type.IsInteger()) {
-    // Arithmetic types and enumerations can be implicitly converted to integer.
-    if (expr_type.IsScalarOrUnscopedEnum() || expr_type.IsScopedEnum()) {
-      return std::make_unique<CStyleCastNode>(
-          expr->location(), type, std::move(expr), CStyleCastKind::kArithmetic);
-    }
+  // Check if the implicit conversion is possible and insert a cast.
+  if (ImplicitConversionIsAllowed(expr_type, type)) {
+    // TODO(werat): What about if the converion is not `kArithmetic`?
+    return std::make_unique<CStyleCastNode>(
+        expr->location(), type, std::move(expr), CStyleCastKind::kArithmetic);
   }
 
   BailOut(ErrorCode::kInvalidOperandType,
@@ -1938,6 +1977,19 @@ ExprResult Parser::InsertImplicitConversion(ExprResult expr, Type type) {
                         expr_type.GetName(), type.GetName()),
           expr->location());
   return std::make_unique<ErrorNode>();
+}
+
+bool Parser::ImplicitConversionIsAllowed(Type src, Type dst) {
+  // Now see if there's a known conversion from `expr_type` to `type`.
+  if (dst.IsInteger() || dst.IsFloat()) {
+    // Arithmetic types and enumerations can be implicitly converted to integers
+    // and floating point types.
+    if (src.IsScalarOrUnscopedEnum() || src.IsScopedEnum()) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
@@ -2256,26 +2308,51 @@ ExprResult Parser::BuildIncrementDecrement(UnaryOpKind kind, ExprResult rhs,
 ExprResult Parser::BuildBinaryOp(BinaryOpKind kind, ExprResult lhs,
                                  ExprResult rhs,
                                  clang::SourceLocation location) {
+  // TODO(werat): Get the "original" type (i.e. the one before implicit casts)
+  // from the ExprResult.
+  Type orig_lhs_type = lhs->result_type_deref();
+  Type orig_rhs_type = rhs->result_type_deref();
+
+  // Result type of the binary expression. For example, for `char + int` the
+  // result type is `int`, but for `char += int` the result type is `char`.
+  lldb::SBType result_type;
+
+  // In case binary operation is a composite assignment, the type of the binary
+  // expression _before_ the assignment. For example, for `char += int`
+  // composite assignment type is `int`, because `char + int` is promoted to
+  // `int + int`.
+  lldb::SBType comp_assign_type;
+
   switch (kind) {
     case BinaryOpKind::Add:
-      return BuildBinaryAddition(std::move(lhs), std::move(rhs), location);
+      result_type =
+          PrepareBinaryAddition(lhs, rhs, location, /*is_comp_assign*/ false);
+      break;
 
     case BinaryOpKind::Sub:
-      return BuildBinarySubtraction(std::move(lhs), std::move(rhs), location);
+      result_type = PrepareBinarySubtraction(lhs, rhs, location,
+                                             /*is_comp_assign*/ false);
+      break;
 
     case BinaryOpKind::Mul:
     case BinaryOpKind::Div:
-      return BuildBinaryMulDiv(kind, std::move(lhs), std::move(rhs), location);
+      result_type = PrepareBinaryMulDiv(kind, lhs, rhs, location,
+                                        /*is_comp_assign*/ false);
+      break;
 
     case BinaryOpKind::Rem:
-      return BuildBinaryRemainder(std::move(lhs), std::move(rhs), location);
+      result_type =
+          PrepareBinaryRemainder(lhs, rhs, location, /*is_comp_assign*/ false);
+      break;
 
     case BinaryOpKind::And:
     case BinaryOpKind::Or:
     case BinaryOpKind::Xor:
     case BinaryOpKind::Shl:
     case BinaryOpKind::Shr:
-      return BuildBinaryBitwise(kind, std::move(lhs), std::move(rhs), location);
+      result_type = PrepareBinaryBitwise(kind, lhs, rhs, location,
+                                         /*is_comp_assign*/ false);
+      break;
 
     case BinaryOpKind::EQ:
     case BinaryOpKind::NE:
@@ -2283,44 +2360,93 @@ ExprResult Parser::BuildBinaryOp(BinaryOpKind kind, ExprResult lhs,
     case BinaryOpKind::LE:
     case BinaryOpKind::GT:
     case BinaryOpKind::GE:
-      return BuildBinaryComparison(kind, std::move(lhs), std::move(rhs),
-                                   location);
+      result_type = PrepareBinaryComparison(kind, lhs, rhs, location);
+      break;
 
     case BinaryOpKind::LAnd:
     case BinaryOpKind::LOr:
-      return BuildBinaryLogical(kind, std::move(lhs), std::move(rhs), location);
+      result_type = PrepareBinaryLogical(lhs, rhs);
+      break;
+
+    case BinaryOpKind::Assign:
+      // For plaing assignment try to implicitly convert RHS to the type of LHS.
+      // Later we'll check if the assignment is actually possible.
+      rhs = InsertImplicitConversion(std::move(rhs), lhs->result_type_deref());
+      // Shortcut for the case when the implicit conversion is not possible.
+      if (rhs->is_error()) {
+        return std::make_unique<ErrorNode>();
+      }
+      comp_assign_type = rhs->result_type_deref();
+      break;
+
+    case BinaryOpKind::AddAssign:
+      comp_assign_type = PrepareBinaryAddition(lhs, rhs, location,
+                                               /*is_comp_assign*/ true);
+      break;
+
+    case BinaryOpKind::SubAssign:
+      comp_assign_type = PrepareBinarySubtraction(lhs, rhs, location,
+                                                  /*is_comp_assign*/ true);
+      break;
+
+    case BinaryOpKind::MulAssign:
+    case BinaryOpKind::DivAssign:
+      comp_assign_type = PrepareBinaryMulDiv(kind, lhs, rhs, location,
+                                             /*is_comp_assign*/ true);
+      break;
+
+    case BinaryOpKind::RemAssign:
+      comp_assign_type =
+          PrepareBinaryRemainder(lhs, rhs, location, /*is_comp_assign*/ true);
+      break;
+
+    case BinaryOpKind::AndAssign:
+    case BinaryOpKind::OrAssign:
+    case BinaryOpKind::XorAssign:
+    case BinaryOpKind::ShlAssign:
+    case BinaryOpKind::ShrAssign:
+      comp_assign_type = PrepareBinaryBitwise(kind, lhs, rhs, location,
+                                              /*is_comp_assign*/ true);
+      break;
 
     default:
       break;
   }
 
+  // If we're building a composite assignment, check for composite assignments
+  // constraints: if the LHS is assignable, if the type of the binary operation
+  // can be assigned to it, etc.
+  if (comp_assign_type) {
+    result_type = PrepareCompositeAssignment(comp_assign_type, lhs, location);
+  }
+
+  // If the result type is valid, then the binary operation is valid!
+  if (result_type) {
+    return std::make_unique<BinaryOpNode>(location, result_type, kind,
+                                          std::move(lhs), std::move(rhs));
+  }
+
   BailOut(ErrorCode::kInvalidOperandType,
           llvm::formatv(kInvalidOperandsToBinaryExpression,
-                        lhs->result_type_deref().GetName(),
-                        rhs->result_type_deref().GetName()),
+                        orig_lhs_type.GetName(), orig_rhs_type.GetName()),
           location);
   return std::make_unique<ErrorNode>();
 }
 
-ExprResult Parser::BuildBinaryAddition(ExprResult lhs, ExprResult rhs,
-                                       clang::SourceLocation location) {
+lldb::SBType Parser::PrepareBinaryAddition(ExprResult& lhs, ExprResult& rhs,
+                                           clang::SourceLocation location,
+                                           bool is_comp_assign) {
   // Operation '+' works for:
   //
   //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
   //  {integer,unscoped_enum} <-> pointer
   //  pointer <-> {integer,unscoped_enum}
 
-  // TODO(werat): Get the "original" type (i.e. the one before implicit casts)
-  // from the ExprResult.
-  lldb::SBType orig_lhs_type = lhs->result_type_deref();
-  lldb::SBType orig_rhs_type = rhs->result_type_deref();
-
-  Type result_type = UsualArithmeticConversions(target_, lhs, rhs);
+  Type result_type =
+      UsualArithmeticConversions(target_, lhs, rhs, is_comp_assign);
 
   if (result_type.IsScalar()) {
-    return std::make_unique<BinaryOpNode>(location, result_type,
-                                          BinaryOpKind::Add, std::move(lhs),
-                                          std::move(rhs));
+    return result_type;
   }
 
   Type lhs_type = lhs->result_type_deref();
@@ -2338,40 +2464,33 @@ ExprResult Parser::BuildBinaryAddition(ExprResult lhs, ExprResult rhs,
   }
 
   if (!ptr_type || !integer_type.IsInteger()) {
-    BailOut(ErrorCode::kInvalidOperandType,
-            llvm::formatv(kInvalidOperandsToBinaryExpression,
-                          orig_lhs_type.GetName(), orig_rhs_type.GetName()),
-            location);
-    return std::make_unique<ErrorNode>();
+    // Invalid operands.
+    return InvalidType;
   }
 
   if (ptr_type.IsPointerToVoid()) {
     BailOut(ErrorCode::kInvalidOperandType, "arithmetic on a pointer to void",
             location);
-    return std::make_unique<ErrorNode>();
+    return InvalidType;
   }
 
-  return std::make_unique<BinaryOpNode>(location, ptr_type, BinaryOpKind::Add,
-                                        std::move(lhs), std::move(rhs));
+  return ptr_type;
 }
 
-ExprResult Parser::BuildBinarySubtraction(ExprResult lhs, ExprResult rhs,
-                                          clang::SourceLocation location) {
+lldb::SBType Parser::PrepareBinarySubtraction(ExprResult& lhs, ExprResult& rhs,
+                                              clang::SourceLocation location,
+                                              bool is_comp_assign) {
   // Operation '-' works for:
   //
   //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
   //  pointer <-> {integer,unscoped_enum}
   //  pointer <-> pointer (if pointee types are compatible)
 
-  lldb::SBType orig_lhs_type = lhs->result_type_deref();
-  lldb::SBType orig_rhs_type = rhs->result_type_deref();
-
-  Type result_type = UsualArithmeticConversions(target_, lhs, rhs);
+  Type result_type =
+      UsualArithmeticConversions(target_, lhs, rhs, is_comp_assign);
 
   if (result_type.IsScalar()) {
-    return std::make_unique<BinaryOpNode>(location, result_type,
-                                          BinaryOpKind::Sub, std::move(lhs),
-                                          std::move(rhs));
+    return result_type;
   }
 
   Type lhs_type = lhs->result_type_deref();
@@ -2381,18 +2500,17 @@ ExprResult Parser::BuildBinarySubtraction(ExprResult lhs, ExprResult rhs,
     if (lhs_type.IsPointerToVoid()) {
       BailOut(ErrorCode::kInvalidOperandType, "arithmetic on a pointer to void",
               location);
-      return std::make_unique<ErrorNode>();
+      return InvalidType;
     }
 
-    return std::make_unique<BinaryOpNode>(location, lhs_type, BinaryOpKind::Sub,
-                                          std::move(lhs), std::move(rhs));
+    return lhs_type;
   }
 
   if (lhs_type.IsPointerType() && rhs_type.IsPointerType()) {
     if (lhs_type.IsPointerToVoid() && rhs_type.IsPointerToVoid()) {
       BailOut(ErrorCode::kInvalidOperandType, "arithmetic on pointers to void",
               location);
-      return std::make_unique<ErrorNode>();
+      return InvalidType;
     }
 
     // Compare canonical unqualified pointer types.
@@ -2406,99 +2524,81 @@ ExprResult Parser::BuildBinarySubtraction(ExprResult lhs, ExprResult rhs,
           llvm::formatv("'{0}' and '{1}' are not pointers to compatible types",
                         lhs_type.GetName(), rhs_type.GetName()),
           location);
-      return std::make_unique<ErrorNode>();
+      return InvalidType;
     }
 
     // Pointer difference is technically ptrdiff_t, but the important part is
     // that it is signed.
-    lldb::SBType ptrdiff_ty = target_.GetBasicType(lldb::eBasicTypeLongLong);
-    return std::make_unique<BinaryOpNode>(location, ptrdiff_ty,
-                                          BinaryOpKind::Sub, std::move(lhs),
-                                          std::move(rhs));
+    // TODO(werat): Get the actual `std::ptrdiff_t` from the target.
+    return target_.GetBasicType(lldb::eBasicTypeLongLong);
   }
 
-  BailOut(ErrorCode::kInvalidOperandType,
-          llvm::formatv(kInvalidOperandsToBinaryExpression,
-                        orig_lhs_type.GetName(), orig_rhs_type.GetName()),
-          location);
-  return std::make_unique<ErrorNode>();
+  // Invalid operands.
+  return InvalidType;
 }
 
-ExprResult Parser::BuildBinaryMulDiv(BinaryOpKind kind, ExprResult lhs,
-                                     ExprResult rhs,
-                                     clang::SourceLocation location) {
+lldb::SBType Parser::PrepareBinaryMulDiv(BinaryOpKind kind, ExprResult& lhs,
+                                         ExprResult& rhs,
+                                         clang::SourceLocation location,
+                                         bool is_comp_assign) {
   // Operations {'*', '/'} work for:
   //
   //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
+  //
 
-  Type lhs_type = lhs->result_type_deref();
-  Type rhs_type = rhs->result_type_deref();
+  Type result_type =
+      UsualArithmeticConversions(target_, lhs, rhs, is_comp_assign);
 
-  if (lhs_type.IsScalarOrUnscopedEnum() && rhs_type.IsScalarOrUnscopedEnum()) {
-    // TODO(werat): Check for arithmetic zero division.
-    lldb::SBType result_type = UsualArithmeticConversions(target_, lhs, rhs);
-    return std::make_unique<BinaryOpNode>(location, result_type, kind,
-                                          std::move(lhs), std::move(rhs));
+  // TODO(werat): Check for arithmetic zero division.
+  if (result_type.IsScalar()) {
+    return result_type;
   }
 
-  BailOut(ErrorCode::kInvalidOperandType,
-          llvm::formatv(kInvalidOperandsToBinaryExpression, lhs_type.GetName(),
-                        rhs_type.GetName()),
-          location);
-  return std::make_unique<ErrorNode>();
+  // Invalid operands.
+  return InvalidType;
 }
 
-ExprResult Parser::BuildBinaryRemainder(ExprResult lhs, ExprResult rhs,
-                                        clang::SourceLocation location) {
+lldb::SBType Parser::PrepareBinaryRemainder(ExprResult& lhs, ExprResult& rhs,
+                                            clang::SourceLocation location,
+                                            bool is_comp_assign) {
   // Operation '%' works for:
   //
   //  {integer,unscoped_enum} <-> {integer,unscoped_enum}
 
-  Type orig_lhs_type = lhs->result_type_deref();
-  Type orig_rhs_type = rhs->result_type_deref();
+  Type result_type =
+      UsualArithmeticConversions(target_, lhs, rhs, is_comp_assign);
 
-  Type result_type = UsualArithmeticConversions(target_, lhs, rhs);
   // TODO(werat): Check for arithmetic zero division.
   if (result_type.IsInteger()) {
-    return std::make_unique<BinaryOpNode>(location, result_type,
-                                          BinaryOpKind::Rem, std::move(lhs),
-                                          std::move(rhs));
+    return result_type;
   }
 
-  BailOut(ErrorCode::kInvalidOperandType,
-          llvm::formatv(kInvalidOperandsToBinaryExpression,
-                        orig_lhs_type.GetName(), orig_rhs_type.GetName()),
-          location);
-  return std::make_unique<ErrorNode>();
+  // Invalid operands.
+  return InvalidType;
 }
 
-ExprResult Parser::BuildBinaryBitwise(BinaryOpKind kind, ExprResult lhs,
-                                      ExprResult rhs,
-                                      clang::SourceLocation location) {
+lldb::SBType Parser::PrepareBinaryBitwise(BinaryOpKind kind, ExprResult& lhs,
+                                          ExprResult& rhs,
+                                          clang::SourceLocation location,
+                                          bool is_comp_assign) {
   // Operations {'&', '|', '^', '>>', '<<'} work for:
   //
   //  {Integer,unscoped_enum} <-> {Integer,unscoped_enum}
 
-  Type orig_lhs_type = lhs->result_type_deref();
-  Type orig_rhs_type = rhs->result_type_deref();
-
-  Type result_type = UsualArithmeticConversions(target_, lhs, rhs);
+  Type result_type =
+      UsualArithmeticConversions(target_, lhs, rhs, is_comp_assign);
 
   if (result_type.IsInteger()) {
-    return std::make_unique<BinaryOpNode>(location, result_type, kind,
-                                          std::move(lhs), std::move(rhs));
+    return result_type;
   }
 
-  BailOut(ErrorCode::kInvalidOperandType,
-          llvm::formatv(kInvalidOperandsToBinaryExpression,
-                        orig_lhs_type.GetName(), orig_rhs_type.GetName()),
-          location);
-  return std::make_unique<ErrorNode>();
+  // Invalid operands.
+  return InvalidType;
 }
 
-ExprResult Parser::BuildBinaryComparison(BinaryOpKind kind, ExprResult lhs,
-                                         ExprResult rhs,
-                                         clang::SourceLocation location) {
+lldb::SBType Parser::PrepareBinaryComparison(BinaryOpKind kind, ExprResult& lhs,
+                                             ExprResult& rhs,
+                                             clang::SourceLocation location) {
   // Comparison works for:
   //
   //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
@@ -2508,9 +2608,6 @@ ExprResult Parser::BuildBinaryComparison(BinaryOpKind kind, ExprResult lhs,
   //  {integer,unscoped_enum,nullptr_t} <-> pointer
   //  nullptr_t <-> {nullptr_t,integer} (if integer is literal zero)
   //  {nullptr_t,integer} <-> nullptr_t (if integer is literal zero)
-
-  Type orig_lhs_type = lhs->result_type_deref();
-  Type orig_rhs_type = rhs->result_type_deref();
 
   // If the operands has arithmetic or enumeration type (scoped or unscoped),
   // usual arithmetic conversions are performed on both operands following the
@@ -2524,22 +2621,16 @@ ExprResult Parser::BuildBinaryComparison(BinaryOpKind kind, ExprResult lhs,
   lldb::SBType boolean_ty = target_.GetBasicType(lldb::eBasicTypeBool);
 
   if (lhs_type.IsScalarOrUnscopedEnum() && rhs_type.IsScalarOrUnscopedEnum()) {
-    return std::make_unique<BinaryOpNode>(location, boolean_ty, kind,
-                                          std::move(lhs), std::move(rhs));
+    return boolean_ty;
   }
 
   // Scoped enums can be compared only to the instances of the same type.
   if (lhs_type.IsScopedEnum() || rhs_type.IsScopedEnum()) {
     if (CompareTypes(lhs_type, rhs_type)) {
-      return std::make_unique<BinaryOpNode>(location, boolean_ty, kind,
-                                            std::move(lhs), std::move(rhs));
+      return boolean_ty;
     }
-
-    BailOut(ErrorCode::kInvalidOperandType,
-            llvm::formatv(kInvalidOperandsToBinaryExpression,
-                          orig_lhs_type.GetName(), orig_rhs_type.GetName()),
-            location);
-    return std::make_unique<ErrorNode>();
+    // Invalid operands.
+    return InvalidType;
   }
 
   bool is_ordered = (kind == BinaryOpKind::LT || kind == BinaryOpKind::LE ||
@@ -2573,14 +2664,13 @@ ExprResult Parser::BuildBinaryComparison(BinaryOpKind kind, ExprResult lhs,
         BailOut(ErrorCode::kInvalidOperandType,
                 llvm::formatv(
                     "comparison of distinct pointer types ('{0}' and '{1}')",
-                    orig_lhs_type.GetName(), orig_rhs_type.GetName()),
+                    lhs_type.GetName(), rhs_type.GetName()),
                 location);
-        return std::make_unique<ErrorNode>();
+        return InvalidType;
       }
     }
 
-    return std::make_unique<BinaryOpNode>(location, boolean_ty, kind,
-                                          std::move(lhs), std::move(rhs));
+    return boolean_ty;
   }
 
   bool lhs_nullptr_or_zero = lhs_type.IsNullPtrType() || lhs->is_literal_zero();
@@ -2588,41 +2678,34 @@ ExprResult Parser::BuildBinaryComparison(BinaryOpKind kind, ExprResult lhs,
 
   if (!is_ordered && ((lhs_type.IsNullPtrType() && rhs_nullptr_or_zero) ||
                       (lhs_nullptr_or_zero && rhs_type.IsNullPtrType()))) {
-    return std::make_unique<BinaryOpNode>(location, boolean_ty, kind,
-                                          std::move(lhs), std::move(rhs));
+    return boolean_ty;
   }
 
-  BailOut(ErrorCode::kInvalidOperandType,
-          llvm::formatv(kInvalidOperandsToBinaryExpression,
-                        orig_lhs_type.GetName(), orig_rhs_type.GetName()),
-          location);
-  return std::make_unique<ErrorNode>();
+  // Invalid operands.
+  return InvalidType;
 }
 
-ExprResult Parser::BuildBinaryLogical(BinaryOpKind kind, ExprResult lhs,
-                                      ExprResult rhs,
-                                      clang::SourceLocation location) {
+lldb::SBType Parser::PrepareBinaryLogical(const ExprResult& lhs,
+                                          const ExprResult& rhs) {
   Type lhs_type = lhs->result_type_deref();
   Type rhs_type = rhs->result_type_deref();
 
   if (!lhs_type.IsContextuallyConvertibleToBool()) {
     BailOut(ErrorCode::kInvalidOperandType,
             llvm::formatv(kValueIsNotConvertibleToBool, lhs_type.GetName()),
-            location);
-    return std::make_unique<ErrorNode>();
+            lhs->location());
+    return InvalidType;
   }
 
   if (!rhs_type.IsContextuallyConvertibleToBool()) {
     BailOut(ErrorCode::kInvalidOperandType,
             llvm::formatv(kValueIsNotConvertibleToBool, rhs_type.GetName()),
-            location);
-    return std::make_unique<ErrorNode>();
+            rhs->location());
+    return InvalidType;
   }
 
   // The result of the logical operator is always bool.
-  lldb::SBType boolean_ty = target_.GetBasicType(lldb::eBasicTypeBool);
-  return std::make_unique<BinaryOpNode>(location, boolean_ty, kind,
-                                        std::move(lhs), std::move(rhs));
+  return target_.GetBasicType(lldb::eBasicTypeBool);
 }
 
 ExprResult Parser::BuildBinarySubscript(ExprResult lhs, ExprResult rhs,
@@ -2678,6 +2761,44 @@ ExprResult Parser::BuildBinarySubscript(ExprResult lhs, ExprResult rhs,
   return std::make_unique<ArraySubscriptNode>(
       location, result_type, std::move(*base), std::move(*index),
       is_pointer_base);
+}
+
+lldb::SBType Parser::PrepareCompositeAssignment(
+    Type comp_assign_type, const ExprResult& lhs,
+    clang::SourceLocation location) {
+  // In C++ the requirement here is that the expression is "assignable".
+  // However in the debugger context side-effects are not allowed and the only
+  // case where composite assignments are permitted is when modifying the
+  // "context variable".
+  // Technically, `($var += 1) += 1` could be allowed too, since both
+  // operations modify the context variable. However, MSVC debugger doesn't
+  // allow it, so we don't implement it too.
+  if (lhs->is_rvalue()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv("expression is not assignable"), location);
+    return InvalidType;
+  }
+  if (!lhs->is_context_var()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv("side effects are not supported in this context: "
+                          "trying to modify data at the target process"),
+            location);
+    return InvalidType;
+  }
+
+  // Check if we can assign the result of the binary operation back to LHS.
+  Type lhs_type = lhs->result_type_deref();
+
+  if (CompareTypes(comp_assign_type, lhs_type) ||
+      ImplicitConversionIsAllowed(comp_assign_type, lhs_type)) {
+    return lhs_type;
+  }
+
+  BailOut(ErrorCode::kInvalidOperandType,
+          llvm::formatv("no known conversion from '{0}' to '{1}'",
+                        comp_assign_type.GetName(), lhs_type.GetName()),
+          location);
+  return InvalidType;
 }
 
 ExprResult Parser::BuildTernaryOp(ExprResult cond, ExprResult lhs,
