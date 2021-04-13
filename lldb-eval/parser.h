@@ -170,16 +170,11 @@ class Parser {
   lldb::SBType PrepareBinarySubtraction(ExprResult& lhs, ExprResult& rhs,
                                         clang::SourceLocation location,
                                         bool is_comp_assign);
-  lldb::SBType PrepareBinaryMulDiv(BinaryOpKind kind, ExprResult& lhs,
-                                   ExprResult& rhs,
-                                   clang::SourceLocation location,
+  lldb::SBType PrepareBinaryMulDiv(ExprResult& lhs, ExprResult& rhs,
                                    bool is_comp_assign);
   lldb::SBType PrepareBinaryRemainder(ExprResult& lhs, ExprResult& rhs,
-                                      clang::SourceLocation location,
                                       bool is_comp_assign);
-  lldb::SBType PrepareBinaryBitwise(BinaryOpKind kind, ExprResult& lhs,
-                                    ExprResult& rhs,
-                                    clang::SourceLocation location,
+  lldb::SBType PrepareBinaryBitwise(ExprResult& lhs, ExprResult& rhs,
                                     bool is_comp_assign);
   lldb::SBType PrepareBinaryComparison(BinaryOpKind kind, ExprResult& lhs,
                                        ExprResult& rhs,

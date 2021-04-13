@@ -2336,13 +2336,12 @@ ExprResult Parser::BuildBinaryOp(BinaryOpKind kind, ExprResult lhs,
 
     case BinaryOpKind::Mul:
     case BinaryOpKind::Div:
-      result_type = PrepareBinaryMulDiv(kind, lhs, rhs, location,
+      result_type = PrepareBinaryMulDiv(lhs, rhs,
                                         /*is_comp_assign*/ false);
       break;
 
     case BinaryOpKind::Rem:
-      result_type =
-          PrepareBinaryRemainder(lhs, rhs, location, /*is_comp_assign*/ false);
+      result_type = PrepareBinaryRemainder(lhs, rhs, /*is_comp_assign*/ false);
       break;
 
     case BinaryOpKind::And:
@@ -2350,7 +2349,7 @@ ExprResult Parser::BuildBinaryOp(BinaryOpKind kind, ExprResult lhs,
     case BinaryOpKind::Xor:
     case BinaryOpKind::Shl:
     case BinaryOpKind::Shr:
-      result_type = PrepareBinaryBitwise(kind, lhs, rhs, location,
+      result_type = PrepareBinaryBitwise(lhs, rhs,
                                          /*is_comp_assign*/ false);
       break;
 
@@ -2391,13 +2390,13 @@ ExprResult Parser::BuildBinaryOp(BinaryOpKind kind, ExprResult lhs,
 
     case BinaryOpKind::MulAssign:
     case BinaryOpKind::DivAssign:
-      comp_assign_type = PrepareBinaryMulDiv(kind, lhs, rhs, location,
+      comp_assign_type = PrepareBinaryMulDiv(lhs, rhs,
                                              /*is_comp_assign*/ true);
       break;
 
     case BinaryOpKind::RemAssign:
       comp_assign_type =
-          PrepareBinaryRemainder(lhs, rhs, location, /*is_comp_assign*/ true);
+          PrepareBinaryRemainder(lhs, rhs, /*is_comp_assign*/ true);
       break;
 
     case BinaryOpKind::AndAssign:
@@ -2405,7 +2404,7 @@ ExprResult Parser::BuildBinaryOp(BinaryOpKind kind, ExprResult lhs,
     case BinaryOpKind::XorAssign:
     case BinaryOpKind::ShlAssign:
     case BinaryOpKind::ShrAssign:
-      comp_assign_type = PrepareBinaryBitwise(kind, lhs, rhs, location,
+      comp_assign_type = PrepareBinaryBitwise(lhs, rhs,
                                               /*is_comp_assign*/ true);
       break;
 
@@ -2537,9 +2536,7 @@ lldb::SBType Parser::PrepareBinarySubtraction(ExprResult& lhs, ExprResult& rhs,
   return InvalidType;
 }
 
-lldb::SBType Parser::PrepareBinaryMulDiv(BinaryOpKind kind, ExprResult& lhs,
-                                         ExprResult& rhs,
-                                         clang::SourceLocation location,
+lldb::SBType Parser::PrepareBinaryMulDiv(ExprResult& lhs, ExprResult& rhs,
                                          bool is_comp_assign) {
   // Operations {'*', '/'} work for:
   //
@@ -2559,7 +2556,6 @@ lldb::SBType Parser::PrepareBinaryMulDiv(BinaryOpKind kind, ExprResult& lhs,
 }
 
 lldb::SBType Parser::PrepareBinaryRemainder(ExprResult& lhs, ExprResult& rhs,
-                                            clang::SourceLocation location,
                                             bool is_comp_assign) {
   // Operation '%' works for:
   //
@@ -2577,9 +2573,7 @@ lldb::SBType Parser::PrepareBinaryRemainder(ExprResult& lhs, ExprResult& rhs,
   return InvalidType;
 }
 
-lldb::SBType Parser::PrepareBinaryBitwise(BinaryOpKind kind, ExprResult& lhs,
-                                          ExprResult& rhs,
-                                          clang::SourceLocation location,
+lldb::SBType Parser::PrepareBinaryBitwise(ExprResult& lhs, ExprResult& rhs,
                                           bool is_comp_assign) {
   // Operations {'&', '|', '^', '>>', '<<'} work for:
   //
