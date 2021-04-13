@@ -791,8 +791,9 @@ void TestCompositeAssignment() {
   float f = 1.5f;
   float* p = &f;
 
-  enum Enum { e1, e2 };
-  Enum e = e1;
+  enum Enum { ONE, TWO };
+  Enum eOne = ONE;
+  Enum eTwo = TWO;
 
   // BREAK(TestAssignment)
   // BREAK(TestCompositeAssignmentInvalid)

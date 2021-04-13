@@ -2011,14 +2011,14 @@ TEST_F(EvalTest, TestAssignment) {
 
   EXPECT_THAT(Eval("p = 1"),
               IsError("no known conversion from 'int' to 'float *'"));
-  EXPECT_THAT(Eval("e = 1"),
+  EXPECT_THAT(Eval("eOne = 1"),
               IsError("no known conversion from 'int' to 'Enum'"));
 
   ASSERT_TRUE(CreateContextVariable("$i", "1"));
   EXPECT_THAT(EvalWithContext("$i = 2", vars_), IsEqual("2"));
   EXPECT_THAT(EvalWithContext("$i = -2", vars_), IsEqual("-2"));
-  EXPECT_THAT(EvalWithContext("$i = e1", vars_), IsEqual("0"));
-  EXPECT_THAT(EvalWithContext("$i = e2", vars_), IsEqual("1"));
+  EXPECT_THAT(EvalWithContext("$i = eOne", vars_), IsEqual("0"));
+  EXPECT_THAT(EvalWithContext("$i = eTwo", vars_), IsEqual("1"));
 
   ASSERT_TRUE(CreateContextVariable("$f", "1.5f"));
   EXPECT_THAT(EvalWithContext("$f = 2.5", vars_), IsEqual("2.5"));
@@ -2053,7 +2053,7 @@ TEST_F(EvalTest, TestCompositeAssignmentInvalid) {
       Eval("f %= 1"),
       IsError("invalid operands to binary expression ('float' and 'int')"));
 
-  ASSERT_TRUE(CreateContextVariable("Enum", "$e", false, "Enum::e1"));
+  ASSERT_TRUE(CreateContextVariable("Enum", "$e", false, "Enum::ONE"));
   EXPECT_THAT(
       EvalWithContext("$e *= 1", vars_),
       // TODO(werat): This should actually be:
@@ -2070,14 +2070,14 @@ TEST_F(EvalTest, TestCompositeAssignmentAdd) {
   EXPECT_THAT(EvalWithContext("$i += 1", vars_), IsEqual("2"));
   EXPECT_THAT(EvalWithContext("$i += 2", vars_), IsEqual("4"));
   EXPECT_THAT(EvalWithContext("$i += -4", vars_), IsEqual("0"));
-  EXPECT_THAT(EvalWithContext("$i += e", vars_), IsEqual("0"));
-  EXPECT_THAT(EvalWithContext("$i += e2", vars_), IsEqual("1"));
+  EXPECT_THAT(EvalWithContext("$i += eOne", vars_), IsEqual("0"));
+  EXPECT_THAT(EvalWithContext("$i += eTwo", vars_), IsEqual("1"));
 
   ASSERT_TRUE(CreateContextVariable("$f", "1.5f"));
   EXPECT_THAT(EvalWithContext("$f += 1", vars_), IsEqual("2.5"));
   EXPECT_THAT(EvalWithContext("$f += -2", vars_), IsEqual("0.5"));
   EXPECT_THAT(EvalWithContext("$f += 2.5", vars_), IsEqual("3"));
-  EXPECT_THAT(EvalWithContext("$f += e2", vars_), IsEqual("4"));
+  EXPECT_THAT(EvalWithContext("$f += eTwo", vars_), IsEqual("4"));
 
   ASSERT_TRUE(CreateContextVariable("$s", "(short)100"));
   EXPECT_THAT(EvalWithContext("$s += 1000", vars_), IsEqual("1100"));
@@ -2100,14 +2100,14 @@ TEST_F(EvalTest, TestCompositeAssignmentSub) {
   EXPECT_THAT(EvalWithContext("$i -= 1", vars_), IsEqual("0"));
   EXPECT_THAT(EvalWithContext("$i -= 2", vars_), IsEqual("-2"));
   EXPECT_THAT(EvalWithContext("$i -= -4", vars_), IsEqual("2"));
-  EXPECT_THAT(EvalWithContext("$i -= e", vars_), IsEqual("2"));
-  EXPECT_THAT(EvalWithContext("$i -= e2", vars_), IsEqual("1"));
+  EXPECT_THAT(EvalWithContext("$i -= eOne", vars_), IsEqual("2"));
+  EXPECT_THAT(EvalWithContext("$i -= eTwo", vars_), IsEqual("1"));
 
   ASSERT_TRUE(CreateContextVariable("$f", "1.5f"));
   EXPECT_THAT(EvalWithContext("$f -= 1", vars_), IsEqual("0.5"));
   EXPECT_THAT(EvalWithContext("$f -= -2", vars_), IsEqual("2.5"));
   EXPECT_THAT(EvalWithContext("$f -= -2.5", vars_), IsEqual("5"));
-  EXPECT_THAT(EvalWithContext("$f -= e2", vars_), IsEqual("4"));
+  EXPECT_THAT(EvalWithContext("$f -= eTwo", vars_), IsEqual("4"));
 
   ASSERT_TRUE(CreateContextVariable("$s", "(short)100"));
   EXPECT_THAT(EvalWithContext("$s -= 1000", vars_), IsEqual("-900"));
@@ -2124,13 +2124,13 @@ TEST_F(EvalTest, TestCompositeAssignmentMul) {
   EXPECT_THAT(EvalWithContext("$i *= 1", vars_), IsEqual("1"));
   EXPECT_THAT(EvalWithContext("$i *= 2", vars_), IsEqual("2"));
   EXPECT_THAT(EvalWithContext("$i *= -2.5", vars_), IsEqual("-5"));
-  EXPECT_THAT(EvalWithContext("$i *= e2", vars_), IsEqual("-5"));
+  EXPECT_THAT(EvalWithContext("$i *= eTwo", vars_), IsEqual("-5"));
 
   ASSERT_TRUE(CreateContextVariable("$f", "1.5f"));
   EXPECT_THAT(EvalWithContext("$f *= 1", vars_), IsEqual("1.5"));
   EXPECT_THAT(EvalWithContext("$f *= 2", vars_), IsEqual("3"));
   EXPECT_THAT(EvalWithContext("$f *= -2.5", vars_), IsEqual("-7.5"));
-  EXPECT_THAT(EvalWithContext("$f *= e2", vars_), IsEqual("-7.5"));
+  EXPECT_THAT(EvalWithContext("$f *= eTwo", vars_), IsEqual("-7.5"));
 
   ASSERT_TRUE(CreateContextVariable("$s", "(short)100"));
   EXPECT_THAT(EvalWithContext("$s *= 1000", vars_), IsEqual("-31072"));
@@ -2142,13 +2142,13 @@ TEST_F(EvalTest, TestCompositeAssignmentDiv) {
   EXPECT_THAT(EvalWithContext("$i /= 1", vars_), IsEqual("15"));
   EXPECT_THAT(EvalWithContext("$i /= 2", vars_), IsEqual("7"));
   EXPECT_THAT(EvalWithContext("$i /= -2", vars_), IsEqual("-3"));
-  EXPECT_THAT(EvalWithContext("$i /= e2", vars_), IsEqual("-3"));
+  EXPECT_THAT(EvalWithContext("$i /= eTwo", vars_), IsEqual("-3"));
 
   ASSERT_TRUE(CreateContextVariable("$f", "15.5f"));
   EXPECT_THAT(EvalWithContext("$f /= 1", vars_), IsEqual("15.5"));
   EXPECT_THAT(EvalWithContext("$f /= 2", vars_), IsEqual("7.75"));
   EXPECT_THAT(EvalWithContext("$f /= -2.5", vars_), IsEqual("-3.0999999"));
-  EXPECT_THAT(EvalWithContext("$f /= e2", vars_), IsEqual("-3.0999999"));
+  EXPECT_THAT(EvalWithContext("$f /= eTwo", vars_), IsEqual("-3.0999999"));
 
   ASSERT_TRUE(CreateContextVariable("$s", "(short)100"));
   EXPECT_THAT(EvalWithContext("$s /= 10", vars_), IsEqual("10"));
@@ -2159,7 +2159,7 @@ TEST_F(EvalTest, TestCompositeAssignmentRem) {
   ASSERT_TRUE(CreateContextVariable("$i", "15"));
   EXPECT_THAT(EvalWithContext("$i %= 8", vars_), IsEqual("7"));
   EXPECT_THAT(EvalWithContext("$i %= -3", vars_), IsEqual("1"));
-  EXPECT_THAT(EvalWithContext("$i %= e2", vars_), IsEqual("0"));
+  EXPECT_THAT(EvalWithContext("$i %= eTwo", vars_), IsEqual("0"));
 
   ASSERT_TRUE(CreateContextVariable("$f", "15.5f"));
   EXPECT_THAT(
