@@ -2016,22 +2016,30 @@ TEST_F(EvalTest, TestAssignment) {
 
   ASSERT_TRUE(CreateContextVariable("$i", "1"));
   EXPECT_THAT(EvalWithContext("$i = 2", vars_), IsEqual("2"));
+  EXPECT_THAT(EvalWithContext("$i", vars_), IsEqual("2"));
   EXPECT_THAT(EvalWithContext("$i = -2", vars_), IsEqual("-2"));
+  EXPECT_THAT(EvalWithContext("$i", vars_), IsEqual("-2"));
   EXPECT_THAT(EvalWithContext("$i = eOne", vars_), IsEqual("0"));
+  EXPECT_THAT(EvalWithContext("$i", vars_), IsEqual("0"));
   EXPECT_THAT(EvalWithContext("$i = eTwo", vars_), IsEqual("1"));
+  EXPECT_THAT(EvalWithContext("$i", vars_), IsEqual("1"));
 
   ASSERT_TRUE(CreateContextVariable("$f", "1.5f"));
   EXPECT_THAT(EvalWithContext("$f = 2.5", vars_), IsEqual("2.5"));
+  EXPECT_THAT(EvalWithContext("$f", vars_), IsEqual("2.5"));
   EXPECT_THAT(EvalWithContext("$f = 3.5f", vars_), IsEqual("3.5"));
+  EXPECT_THAT(EvalWithContext("$f", vars_), IsEqual("3.5"));
 
   ASSERT_TRUE(CreateContextVariable("$s", "(short)100"));
   EXPECT_THAT(EvalWithContext("$s = 100000", vars_), IsEqual("-31072"));
+  EXPECT_THAT(EvalWithContext("$s", vars_), IsEqual("-31072"));
 
   ASSERT_TRUE(CreateContextVariable("$p", "(int*)10"));
   EXPECT_THAT(EvalWithContext("$p = 1", vars_),
               IsError("no known conversion from 'int' to 'int *'"));
   EXPECT_THAT(EvalWithContext("$p = (int*)12", vars_),
               IsEqual("0x000000000000000c"));
+  EXPECT_THAT(EvalWithContext("$p", vars_), IsEqual("0x000000000000000c"));
 }
 
 TEST_F(EvalTest, TestCompositeAssignmentInvalid) {
@@ -2167,7 +2175,7 @@ TEST_F(EvalTest, TestCompositeAssignmentRem) {
       IsError("invalid operands to binary expression ('float' and 'int')"));
 
   ASSERT_TRUE(CreateContextVariable("$s", "(short)100"));
-  EXPECT_THAT(EvalWithContext("$s %= 0", vars_), IsEqual("0"));
+  EXPECT_THAT(EvalWithContext("$s %= 23", vars_), IsEqual("8"));
 }
 
 TEST_F(EvalTest, TestCompositeAssignmentBitwise) {
@@ -2175,8 +2183,8 @@ TEST_F(EvalTest, TestCompositeAssignmentBitwise) {
   EXPECT_THAT(EvalWithContext("$i &= 0b11110000", vars_), IsEqual("240"));
   EXPECT_THAT(EvalWithContext("$i |= 0b01100011", vars_), IsEqual("243"));
   EXPECT_THAT(EvalWithContext("$i ^= 0b00100010", vars_), IsEqual("209"));
-  EXPECT_THAT(EvalWithContext("$i << 2", vars_), IsEqual("836"));
-  EXPECT_THAT(EvalWithContext("$i >> 3", vars_), IsEqual("26"));
+  EXPECT_THAT(EvalWithContext("$i <<= 2", vars_), IsEqual("836"));
+  EXPECT_THAT(EvalWithContext("$i >>= 3", vars_), IsEqual("104"));
 
   ASSERT_TRUE(CreateContextVariable("$f", "1.5f"));
   EXPECT_THAT(

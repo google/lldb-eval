@@ -917,7 +917,7 @@ Value Interpreter::EvaluateBinaryBitwiseAssign(BinaryOpKind kind, Value lhs,
       break;
     default:
       assert(false &&
-             "invalid BinaryOpKind: must be a composite assigment operation");
+             "invalid BinaryOpKind: must be a composite assignment operation");
       break;
   }
   assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");

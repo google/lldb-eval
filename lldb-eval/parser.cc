@@ -51,7 +51,7 @@
 
 namespace {
 
-const lldb_eval::Type InvalidType = lldb_eval::Type();
+const lldb_eval::Type kInvalidType = lldb_eval::Type();
 
 const char* kInvalidOperandsToUnaryExpression =
     "invalid argument type '{0}' to unary expression";
@@ -382,7 +382,7 @@ static lldb::SBType UsualArithmeticConversions(lldb::SBTarget target,
 
   // If either of the operands is not arithmetic (e.g. pointer), we're done.
   if (!lhs_type.IsScalar() || !rhs_type.IsScalar()) {
-    return InvalidType;
+    return kInvalidType;
   }
 
   // Handle conversions for floating types (float, double).
@@ -660,7 +660,7 @@ void Parser::BailOut(ErrorCode code, const std::string& error,
 //
 ExprResult Parser::ParseExpression() { return ParseAssignmentExpression(); }
 
-// Parse an assigment_expression.
+// Parse an assingment_expression.
 //
 //  assignment_expression:
 //    conditional_expression
@@ -686,14 +686,14 @@ ExprResult Parser::ParseExpression() { return ParseAssignmentExpression(); }
 ExprResult Parser::ParseAssignmentExpression() {
   auto lhs = ParseLogicalOrExpression();
 
-  // Check if it's an assigment expression.
+  // Check if it's an assingment expression.
   if (token_.isOneOf(clang::tok::equal, clang::tok::starequal,
                      clang::tok::slashequal, clang::tok::percentequal,
                      clang::tok::plusequal, clang::tok::minusequal,
                      clang::tok::greatergreaterequal, clang::tok::lesslessequal,
                      clang::tok::ampequal, clang::tok::caretequal,
                      clang::tok::pipeequal)) {
-    // That's an assigment!
+    // That's an assingment!
     clang::Token token = token_;
     ConsumeToken();
     auto rhs = ParseAssignmentExpression();
@@ -1967,7 +1967,7 @@ ExprResult Parser::InsertImplicitConversion(ExprResult expr, Type type) {
 
   // Check if the implicit conversion is possible and insert a cast.
   if (ImplicitConversionIsAllowed(expr_type, type)) {
-    // TODO(werat): What about if the converion is not `kArithmetic`?
+    // TODO(werat): What about if the conversion is not `kArithmetic`?
     return std::make_unique<CStyleCastNode>(
         expr->location(), type, std::move(expr), CStyleCastKind::kArithmetic);
   }
@@ -2368,7 +2368,7 @@ ExprResult Parser::BuildBinaryOp(BinaryOpKind kind, ExprResult lhs,
       break;
 
     case BinaryOpKind::Assign:
-      // For plaing assignment try to implicitly convert RHS to the type of LHS.
+      // For plain assignment try to implicitly convert RHS to the type of LHS.
       // Later we'll check if the assignment is actually possible.
       rhs = InsertImplicitConversion(std::move(rhs), lhs->result_type_deref());
       // Shortcut for the case when the implicit conversion is not possible.
@@ -2464,13 +2464,13 @@ lldb::SBType Parser::PrepareBinaryAddition(ExprResult& lhs, ExprResult& rhs,
 
   if (!ptr_type || !integer_type.IsInteger()) {
     // Invalid operands.
-    return InvalidType;
+    return kInvalidType;
   }
 
   if (ptr_type.IsPointerToVoid()) {
     BailOut(ErrorCode::kInvalidOperandType, "arithmetic on a pointer to void",
             location);
-    return InvalidType;
+    return kInvalidType;
   }
 
   return ptr_type;
@@ -2499,7 +2499,7 @@ lldb::SBType Parser::PrepareBinarySubtraction(ExprResult& lhs, ExprResult& rhs,
     if (lhs_type.IsPointerToVoid()) {
       BailOut(ErrorCode::kInvalidOperandType, "arithmetic on a pointer to void",
               location);
-      return InvalidType;
+      return kInvalidType;
     }
 
     return lhs_type;
@@ -2509,7 +2509,7 @@ lldb::SBType Parser::PrepareBinarySubtraction(ExprResult& lhs, ExprResult& rhs,
     if (lhs_type.IsPointerToVoid() && rhs_type.IsPointerToVoid()) {
       BailOut(ErrorCode::kInvalidOperandType, "arithmetic on pointers to void",
               location);
-      return InvalidType;
+      return kInvalidType;
     }
 
     // Compare canonical unqualified pointer types.
@@ -2523,7 +2523,7 @@ lldb::SBType Parser::PrepareBinarySubtraction(ExprResult& lhs, ExprResult& rhs,
           llvm::formatv("'{0}' and '{1}' are not pointers to compatible types",
                         lhs_type.GetName(), rhs_type.GetName()),
           location);
-      return InvalidType;
+      return kInvalidType;
     }
 
     // Pointer difference is technically ptrdiff_t, but the important part is
@@ -2533,7 +2533,7 @@ lldb::SBType Parser::PrepareBinarySubtraction(ExprResult& lhs, ExprResult& rhs,
   }
 
   // Invalid operands.
-  return InvalidType;
+  return kInvalidType;
 }
 
 lldb::SBType Parser::PrepareBinaryMulDiv(ExprResult& lhs, ExprResult& rhs,
@@ -2552,7 +2552,7 @@ lldb::SBType Parser::PrepareBinaryMulDiv(ExprResult& lhs, ExprResult& rhs,
   }
 
   // Invalid operands.
-  return InvalidType;
+  return kInvalidType;
 }
 
 lldb::SBType Parser::PrepareBinaryRemainder(ExprResult& lhs, ExprResult& rhs,
@@ -2570,7 +2570,7 @@ lldb::SBType Parser::PrepareBinaryRemainder(ExprResult& lhs, ExprResult& rhs,
   }
 
   // Invalid operands.
-  return InvalidType;
+  return kInvalidType;
 }
 
 lldb::SBType Parser::PrepareBinaryBitwise(ExprResult& lhs, ExprResult& rhs,
@@ -2587,7 +2587,7 @@ lldb::SBType Parser::PrepareBinaryBitwise(ExprResult& lhs, ExprResult& rhs,
   }
 
   // Invalid operands.
-  return InvalidType;
+  return kInvalidType;
 }
 
 lldb::SBType Parser::PrepareBinaryComparison(BinaryOpKind kind, ExprResult& lhs,
@@ -2624,7 +2624,7 @@ lldb::SBType Parser::PrepareBinaryComparison(BinaryOpKind kind, ExprResult& lhs,
       return boolean_ty;
     }
     // Invalid operands.
-    return InvalidType;
+    return kInvalidType;
   }
 
   bool is_ordered = (kind == BinaryOpKind::LT || kind == BinaryOpKind::LE ||
@@ -2660,7 +2660,7 @@ lldb::SBType Parser::PrepareBinaryComparison(BinaryOpKind kind, ExprResult& lhs,
                     "comparison of distinct pointer types ('{0}' and '{1}')",
                     lhs_type.GetName(), rhs_type.GetName()),
                 location);
-        return InvalidType;
+        return kInvalidType;
       }
     }
 
@@ -2676,7 +2676,7 @@ lldb::SBType Parser::PrepareBinaryComparison(BinaryOpKind kind, ExprResult& lhs,
   }
 
   // Invalid operands.
-  return InvalidType;
+  return kInvalidType;
 }
 
 lldb::SBType Parser::PrepareBinaryLogical(const ExprResult& lhs,
@@ -2688,14 +2688,14 @@ lldb::SBType Parser::PrepareBinaryLogical(const ExprResult& lhs,
     BailOut(ErrorCode::kInvalidOperandType,
             llvm::formatv(kValueIsNotConvertibleToBool, lhs_type.GetName()),
             lhs->location());
-    return InvalidType;
+    return kInvalidType;
   }
 
   if (!rhs_type.IsContextuallyConvertibleToBool()) {
     BailOut(ErrorCode::kInvalidOperandType,
             llvm::formatv(kValueIsNotConvertibleToBool, rhs_type.GetName()),
             rhs->location());
-    return InvalidType;
+    return kInvalidType;
   }
 
   // The result of the logical operator is always bool.
@@ -2770,14 +2770,14 @@ lldb::SBType Parser::PrepareCompositeAssignment(
   if (lhs->is_rvalue()) {
     BailOut(ErrorCode::kInvalidOperandType,
             llvm::formatv("expression is not assignable"), location);
-    return InvalidType;
+    return kInvalidType;
   }
   if (!lhs->is_context_var()) {
     BailOut(ErrorCode::kInvalidOperandType,
             llvm::formatv("side effects are not supported in this context: "
                           "trying to modify data at the target process"),
             location);
-    return InvalidType;
+    return kInvalidType;
   }
 
   // Check if we can assign the result of the binary operation back to LHS.
@@ -2792,7 +2792,7 @@ lldb::SBType Parser::PrepareCompositeAssignment(
           llvm::formatv("no known conversion from '{0}' to '{1}'",
                         comp_assign_type.GetName(), lhs_type.GetName()),
           location);
-  return InvalidType;
+  return kInvalidType;
 }
 
 ExprResult Parser::BuildTernaryOp(ExprResult cond, ExprResult lhs,
