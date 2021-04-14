@@ -322,25 +322,16 @@ class ClassAnalyzer {
   std::unordered_map<std::string, ClassInfo> cached_types_;
 };
 
-}  // namespace
-
-// Creates a symbol table from the lldb context. It populates local and global
-// (static) variables of the following types: basic types, structs and pointers.
-// Reference variables are imported, but treated as non-references.
-SymbolTable SymbolTable::create_from_lldb_context(lldb::SBFrame& frame,
-                                                  bool ignore_qualified_types) {
-  SymbolTable symtab;
-
-  // Populate variables.
+void load_frame_variables(SymbolTable& symtab, lldb::SBFrame& frame,
+                          lldb::SBMemoryRegionInfoList& memory_regions,
+                          bool ignore_qualified_types,
+                          bool include_local_vars) {
   lldb::SBVariablesOptions options;
-  options.SetIncludeLocals(true);
+  options.SetIncludeLocals(include_local_vars);
   options.SetIncludeStatics(true);
 
   lldb::SBValueList variables = frame.GetVariables(options);
   uint32_t variables_size = variables.GetSize();
-
-  lldb::SBMemoryRegionInfoList memory_regions =
-      frame.GetThread().GetProcess().GetMemoryRegions();
 
   for (uint32_t i = 0; i < variables_size; ++i) {
     lldb::SBValue value = variables.GetValueAtIndex(i);
@@ -351,13 +342,15 @@ SymbolTable SymbolTable::create_from_lldb_context(lldb::SBFrame& frame,
                      calculate_freedom_index(value, memory_regions));
     }
   }
+}
 
-  // Populate struct/class fields.
+ClassAnalyzer load_tagged_types(SymbolTable& symtab, lldb::SBFrame& frame,
+                                bool ignore_qualified_types) {
+  ClassAnalyzer classes(ignore_qualified_types);
+
   lldb::SBTypeList types = frame.GetModule().GetTypes(lldb::eTypeClassStruct |
                                                       lldb::eTypeClassClass);
   uint32_t types_size = types.GetSize();
-
-  ClassAnalyzer classes(ignore_qualified_types);
 
   for (uint32_t i = 0; i < types_size; ++i) {
     lldb::SBType type = types.GetTypeAtIndex(i);
@@ -372,6 +365,72 @@ SymbolTable SymbolTable::create_from_lldb_context(lldb::SBFrame& frame,
       }
     }
   }
+
+  return classes;
+}
+
+}  // namespace
+
+// Creates a symbol table from the `frame`. It populates local and global
+// (static) variables of the following types: basic types, structs, classes
+// and pointers. Reference variables are imported, but treated as
+// non-references.
+SymbolTable SymbolTable::create_from_frame(lldb::SBFrame& frame,
+                                           bool ignore_qualified_types) {
+  SymbolTable symtab;
+
+  lldb::SBMemoryRegionInfoList memory_regions =
+      frame.GetThread().GetProcess().GetMemoryRegions();
+
+  load_frame_variables(symtab, frame, memory_regions, ignore_qualified_types,
+                       /*include_local_vars*/ true);
+  load_tagged_types(symtab, frame, ignore_qualified_types);
+
+  return symtab;
+}
+
+// Creates a symbol table from the `value`. The `value` has to be object of
+// a struct or class. It populates global (static) variables and fields of
+// the `value` of the following types: basic types, structs, classes and
+// pointers.
+SymbolTable SymbolTable::create_from_value(lldb::SBValue& value,
+                                           bool ignore_qualified_types) {
+  lldb::SBType value_type = value.GetType();
+  if (!is_tagged_type(value_type)) {
+    return SymbolTable();
+  }
+
+  SymbolTable symtab;
+
+  lldb::SBFrame frame = value.GetFrame();
+  lldb::SBMemoryRegionInfoList memory_regions =
+      frame.GetThread().GetProcess().GetMemoryRegions();
+
+  load_frame_variables(symtab, frame, memory_regions, ignore_qualified_types,
+                       /*include_local_vars*/ false);
+
+  ClassAnalyzer classes =
+      load_tagged_types(symtab, frame, ignore_qualified_types);
+
+  const auto tagged_type = TaggedType(value_type.GetName());
+  const auto& value_type_info = classes.get_class_info(value_type);
+
+  for (const auto& field : value_type_info.fields()) {
+    if (value_type_info.is_unique_field_name(field.name)) {
+      // TODO: `GetChildMemberWithName` may not work for virtually inherited
+      // fields. We should find another way of looking those fields up.
+      lldb::SBValue member = value.GetChildMemberWithName(field.name.c_str());
+      if (!member.IsValid()) {
+        continue;
+      }
+      symtab.add_var(field.type, VariableExpr(field.name),
+                     calculate_freedom_index(member, memory_regions));
+    }
+  }
+
+  // Add "this" as additional variable.
+  symtab.add_var(PointerType(QualifiedType(tagged_type)), VariableExpr("this"),
+                 /*freedom_index*/ 1);
 
   return symtab;
 }

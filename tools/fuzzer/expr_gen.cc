@@ -202,6 +202,10 @@ std::optional<Expr> ExprGenerator::gen_variable_expr(
   for (const auto& [k, v] : symtab_.vars()) {
     if (type_constraints.allows_type(k)) {
       for (const auto& var : v) {
+        if (var.expr.name() == "this" && constraints.must_be_lvalue()) {
+          // "this" is an rvalue.
+          continue;
+        }
         if (var.freedom_index >= memory_constraints.required_freedom_index()) {
           vars.emplace_back(var.expr);
         }

@@ -63,17 +63,36 @@ bool compare_types(lldb::SBType lhs, lldb::SBType rhs) {
   return strcmp(lhs.GetName(), rhs.GetName()) == 0;
 }
 
-void eval_and_print_expr(lldb::SBFrame& frame, const std::string& expr,
-                         Verbosity verbosity) {
+using EvaluationContext = std::variant<lldb::SBFrame, lldb::SBValue>;
+
+lldb::SBValue evaluate_expression_lldb(EvaluationContext eval_ctx,
+                                       const std::string& expr) {
   // Disable auto fix-its in LLDB evaluations.
   lldb::SBExpressionOptions options;
   options.SetAutoApplyFixIts(false);
-  auto lldb_value = frame.EvaluateExpression(expr.c_str(), options);
+  return std::visit(
+      [&](auto&& ctx) { return ctx.EvaluateExpression(expr.c_str(), options); },
+      eval_ctx);
+}
+
+lldb::SBValue evaluate_expression_lldb_eval(EvaluationContext eval_ctx,
+                                            const std::string& expr,
+                                            lldb::SBError& error) {
+  return std::visit(
+      [&](auto&& ctx) {
+        return lldb_eval::EvaluateExpression(ctx, expr.c_str(), error);
+      },
+      eval_ctx);
+}
+
+void eval_and_print_expr(EvaluationContext eval_ctx, const std::string& expr,
+                         Verbosity verbosity) {
+  auto lldb_value = evaluate_expression_lldb(eval_ctx, expr);
   auto lldb_err = lldb_value.GetError();
 
   lldb::SBError lldb_eval_err;
   auto lldb_eval_value =
-      lldb_eval::EvaluateExpression(frame, expr.c_str(), lldb_eval_err);
+      evaluate_expression_lldb_eval(eval_ctx, expr, lldb_eval_err);
 
   bool value_mismatch;
   if (lldb_value.GetValue() != nullptr &&
@@ -148,7 +167,7 @@ void eval_and_print_expr(lldb::SBFrame& frame, const std::string& expr,
   printf("============================================================\n");
 }
 
-void run_repl(lldb::SBFrame& frame) {
+void run_repl(EvaluationContext eval_ctx) {
   linenoise::SetMultiLine(true);
   std::string expr;
   for (;;) {
@@ -157,22 +176,36 @@ void run_repl(lldb::SBFrame& frame) {
       break;
     }
 
-    eval_and_print_expr(frame, expr, Verbosity::ShowEverything);
+    eval_and_print_expr(eval_ctx, expr, Verbosity::ShowEverything);
     linenoise::AddHistory(expr.c_str());
   }
 }
 
-fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame,
-                               bool cv_qualifiers_enabled) {
-  fuzzer::SymbolTable symtab = fuzzer::SymbolTable::create_from_lldb_context(
-      frame, /*ignore_qualified_types=*/!cv_qualifiers_enabled);
+fuzzer::SymbolTable gen_symtab(EvaluationContext& eval_ctx,
+                               bool ignore_qualified_types) {
+  fuzzer::SymbolTable symtab;
+
+  auto* frame = std::get_if<lldb::SBFrame>(&eval_ctx);
+  if (frame) {
+    symtab =
+        fuzzer::SymbolTable::create_from_frame(*frame, ignore_qualified_types);
+  }
+
+  auto* value = std::get_if<lldb::SBValue>(&eval_ctx);
+  if (value) {
+    symtab =
+        fuzzer::SymbolTable::create_from_value(*value, ignore_qualified_types);
+  }
 
   {
     fuzzer::EnumType type("CStyleEnum", /*scoped=*/false);
     symtab.add_enum_literal(type, "VALUE1");
     symtab.add_enum_literal(type, "VALUE2");
     symtab.add_enum_literal(type, "VALUE3");
-    symtab.add_var(type, fuzzer::VariableExpr("c_enum"));
+
+    if (frame) {
+      symtab.add_var(type, fuzzer::VariableExpr("c_enum"));
+    }
   }
 
   {
@@ -180,7 +213,10 @@ fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame,
     symtab.add_enum_literal(type, "V1");
     symtab.add_enum_literal(type, "V2");
     symtab.add_enum_literal(type, "V3");
-    symtab.add_var(type, fuzzer::VariableExpr("ns_enum"));
+
+    if (frame) {
+      symtab.add_var(type, fuzzer::VariableExpr("ns_enum"));
+    }
   }
 
   {
@@ -189,7 +225,10 @@ fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame,
     symtab.add_enum_literal(type, "ONE");
     symtab.add_enum_literal(type, "TWO");
     symtab.add_enum_literal(type, "THREE");
-    symtab.add_var(type, fuzzer::VariableExpr("enum_class"));
+
+    if (frame) {
+      symtab.add_var(type, fuzzer::VariableExpr("enum_class"));
+    }
   }
 
   {
@@ -198,7 +237,10 @@ fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame,
     symtab.add_enum_literal(type, "ONE");
     symtab.add_enum_literal(type, "TWO");
     symtab.add_enum_literal(type, "THREE");
-    symtab.add_var(type, fuzzer::VariableExpr("ns_enum_class"));
+
+    if (frame) {
+      symtab.add_var(type, fuzzer::VariableExpr("ns_enum_class"));
+    }
   }
 
   {
@@ -212,12 +254,14 @@ fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame,
         fuzzer::ArrayType(fuzzer::ScalarType::Float, 3), 2);
     fuzzer::ArrayType ts_array(fuzzer::TaggedType("TestStruct"), 2);
 
-    symtab.add_var(array33, fuzzer::VariableExpr("array33"), 2);
-    symtab.add_var(array23, fuzzer::VariableExpr("array23"), 2);
-    symtab.add_var(array32, fuzzer::VariableExpr("array32"), 2);
-    symtab.add_var(ptr_to_arr, fuzzer::VariableExpr("ptr_to_arr3"), 2);
-    symtab.add_var(flt_array23, fuzzer::VariableExpr("flt_array23"), 2);
-    symtab.add_var(ts_array, fuzzer::VariableExpr("ts_array"), 1);
+    if (frame) {
+      symtab.add_var(array33, fuzzer::VariableExpr("array33"), 2);
+      symtab.add_var(array23, fuzzer::VariableExpr("array23"), 2);
+      symtab.add_var(array32, fuzzer::VariableExpr("array32"), 2);
+      symtab.add_var(ptr_to_arr, fuzzer::VariableExpr("ptr_to_arr3"), 2);
+      symtab.add_var(flt_array23, fuzzer::VariableExpr("flt_array23"), 2);
+      symtab.add_var(ts_array, fuzzer::VariableExpr("ts_array"), 1);
+    }
   }
 
   // Add functions.
@@ -227,7 +271,7 @@ fuzzer::SymbolTable gen_symtab(lldb::SBFrame& frame,
   return symtab;
 }
 
-void run_fuzzer(lldb::SBFrame& frame, const unsigned* seed_ptr) {
+void run_fuzzer(EvaluationContext& eval_ctx, const unsigned* seed_ptr) {
   std::random_device rd;
   unsigned seed = seed_ptr ? *seed_ptr : rd();
   printf("==== Seed for this run is: %u ====\n", seed);
@@ -241,7 +285,8 @@ void run_fuzzer(lldb::SBFrame& frame, const unsigned* seed_ptr) {
   cfg.bin_op_mask[fuzzer::BinOp::Shr] = false;
 
   // Symbol table
-  fuzzer::SymbolTable symtab = gen_symtab(frame, cfg.cv_qualifiers_enabled);
+  fuzzer::SymbolTable symtab = gen_symtab(
+      eval_ctx, /*ignore_qualified_types*/ !cfg.cv_qualifiers_enabled);
 
   fuzzer::ExprGenerator gen(std::move(rng), std::move(cfg), std::move(symtab));
   std::vector<std::string> exprs;
@@ -262,7 +307,7 @@ void run_fuzzer(lldb::SBFrame& frame, const unsigned* seed_ptr) {
   }
 
   for (const auto& e : exprs) {
-    eval_and_print_expr(frame, e, Verbosity::ShowMismatchesOrErrors);
+    eval_and_print_expr(eval_ctx, e, Verbosity::ShowMismatchesOrErrors);
   }
 }
 
@@ -277,6 +322,7 @@ int main(int argc, char** argv) {
   bool repl_mode = false;
   bool custom_seed = false;
   bool print_help = false;
+  std::string value_expr;
 
   unsigned seed = 0;
   for (int i = 1; i < argc; i++) {
@@ -292,6 +338,10 @@ int main(int argc, char** argv) {
 
       i++;
       seed = std::stoul(argv[i]);
+    }
+    if (strcmp(argv[i], "--value") == 0 && i < argc - 1) {
+      i++;
+      value_expr = argv[i];
     }
   }
   if (print_help) {
@@ -316,11 +366,37 @@ int main(int argc, char** argv) {
     auto thread = proc.GetSelectedThread();
     auto frame = thread.GetSelectedFrame();
 
+    lldb::SBValue value;
+    if (value_expr != "") {
+      // We are going to evaluate in the value context!
+
+      value = frame.FindVariable(value_expr.c_str());
+      if (!value.IsValid()) {
+        fprintf(stderr, "Value `%s` isn't valid!", value_expr.c_str());
+        proc.Destroy();
+        lldb::SBDebugger::Terminate();
+        return 1;
+      }
+
+      lldb::TypeClass type_class = value.GetType().GetTypeClass();
+      if (type_class != lldb::eTypeClassStruct &&
+          type_class != lldb::eTypeClassClass) {
+        fprintf(stderr, "Value `%s` isn't a struct or class!",
+                value_expr.c_str());
+        proc.Destroy();
+        lldb::SBDebugger::Terminate();
+        return 1;
+      }
+    }
+
+    EvaluationContext eval_ctx =
+        value.IsValid() ? EvaluationContext(value) : EvaluationContext(frame);
+
     if (repl_mode) {
-      run_repl(frame);
+      run_repl(eval_ctx);
     } else {
       const unsigned* seed_ptr = custom_seed ? &seed : nullptr;
-      run_fuzzer(frame, seed_ptr);
+      run_fuzzer(eval_ctx, seed_ptr);
     }
 
     proc.Destroy();

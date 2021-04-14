@@ -70,8 +70,11 @@ class SymbolTable {
  public:
   SymbolTable() = default;
 
-  static SymbolTable create_from_lldb_context(
-      lldb::SBFrame& frame, bool ignore_qualified_types = false);
+  static SymbolTable create_from_frame(lldb::SBFrame& frame,
+                                       bool ignore_qualified_types = false);
+
+  static SymbolTable create_from_value(lldb::SBValue& value,
+                                       bool ignore_qualified_types = false);
 
   void add_var(Type type, VariableExpr var, int freedom_index = 0) {
     var_map_[type].emplace_back(std::move(var), freedom_index);

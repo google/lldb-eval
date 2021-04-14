@@ -51,7 +51,7 @@ class PopulateSymbolTableTest : public Test {
     process_ = lldb_eval::LaunchTestProgram(debugger, source_path, binary_path,
                                             "// BREAK HERE");
     auto frame = process_.GetSelectedThread().GetSelectedFrame();
-    symtab_ = SymbolTable::create_from_lldb_context(frame);
+    symtab_ = SymbolTable::create_from_frame(frame);
   }
 
   static void TearDownTestSuite() {
