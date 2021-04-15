@@ -2731,7 +2731,7 @@ ExprResult Parser::BuildBinarySubscript(ExprResult lhs, ExprResult rhs,
   Type index_type = index->get()->result_type_deref();
 
   // Check if the index is of an integral type.
-  if (!index_type.IsInteger()) {
+  if (!index_type.IsIntegerOrUnscopedEnum()) {
     BailOut(ErrorCode::kInvalidOperandType, "array subscript is not an integer",
             location);
     return std::make_unique<ErrorNode>();

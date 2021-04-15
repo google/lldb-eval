@@ -355,6 +355,11 @@ void Interpreter::Visit(const ArraySubscriptNode* node) {
     return;
   }
 
+  assert((base.type().IsPointerType() || base.type().IsArrayType()) &&
+         "array subscript: base must be pointer or array");
+  assert(index.type().IsIntegerOrUnscopedEnum() &&
+         "array subscript: index must be integer or unscoped enum");
+
   lldb::SBType item_type;
   lldb::addr_t base_addr;
 

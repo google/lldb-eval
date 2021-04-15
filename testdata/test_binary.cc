@@ -319,6 +319,9 @@ static void TestSubscript() {
   uint8_arr[255] = 0xAB;
   uint8_t* uint8_ptr = uint8_arr;
 
+  enum Enum { kZero, kOne } enum_one = kOne;
+  Enum& enum_ref = enum_one;
+
   // BREAK(TestSubscript)
 }
 

@@ -991,6 +991,10 @@ TEST_F(EvalTest, TestSubscript) {
   EXPECT_THAT(Eval("int_arr[false]"), IsEqual("1"));
   EXPECT_THAT(Eval("true[int_arr]"), IsEqual("2"));
 
+  // As well as unscoped enums.
+  EXPECT_THAT(Eval("int_arr[enum_one]"), IsEqual("2"));
+  EXPECT_THAT(Eval("enum_one[int_arr]"), IsEqual("2"));
+
   // But floats are not.
   EXPECT_THAT(Eval("int_arr[1.0]"),
               IsError("array subscript is not an integer"));
@@ -1004,8 +1008,10 @@ TEST_F(EvalTest, TestSubscript) {
   // Test when base and index are references.
   EXPECT_THAT(Eval("c_arr[0].field_"), IsEqual("0"));
   EXPECT_THAT(Eval("c_arr[idx_1_ref].field_"), IsEqual("1"));
+  EXPECT_THAT(Eval("c_arr[enum_ref].field_"), IsEqual("1"));
   EXPECT_THAT(Eval("c_arr_ref[0].field_"), IsEqual("0"));
   EXPECT_THAT(Eval("c_arr_ref[idx_1_ref].field_"), IsEqual("1"));
+  EXPECT_THAT(Eval("c_arr_ref[enum_ref].field_"), IsEqual("1"));
 
   // Test when base and index are typedefs.
   EXPECT_THAT(Eval("td_int_arr[0]"), IsEqual("1"));
