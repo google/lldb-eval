@@ -209,7 +209,8 @@ void run_fuzzer(EvaluationContext& eval_ctx, const unsigned* seed_ptr) {
   unsigned seed = seed_ptr ? *seed_ptr : rd();
   printf("==== Seed for this run is: %u ====\n", seed);
 
-  auto rng = std::make_unique<fuzzer::DefaultGeneratorRng>(seed);
+  auto rng = std::make_unique<fuzzer::DefaultGeneratorRng>(
+      std::make_unique<fuzzer::Mt19937>(seed));
   // Fuzzer configuration. Refer to `tools/fuzzer/expr_gen.h` to see what
   // parameters are available.
   auto cfg = fuzzer::GenConfig();

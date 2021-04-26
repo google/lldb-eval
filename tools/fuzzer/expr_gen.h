@@ -18,13 +18,18 @@
 #define INCLUDE_EXPR_GEN_H
 
 #include <array>
+#include <cassert>
 #include <cstdint>
+#include <memory>
 #include <optional>
+#include <queue>
 #include <random>
+#include <stack>
 #include <unordered_map>
 
 #include "tools/fuzzer/ast.h"
 #include "tools/fuzzer/enum_bitset.h"
+#include "tools/fuzzer/gen_node.h"
 #include "tools/fuzzer/symbol_table.h"
 
 namespace fuzzer {
@@ -178,6 +183,44 @@ struct GenConfig {
   }};
 };
 
+class BaseRng {
+ public:
+  virtual ~BaseRng() {}
+
+  using result_type = std::mt19937::result_type;
+  static constexpr result_type min() { return std::mt19937::min(); }
+  static constexpr result_type max() { return std::mt19937::max(); }
+  virtual result_type operator()() = 0;
+
+  class Listener {
+   public:
+    virtual void on_consume_random(result_type value) = 0;
+  };
+
+  void set_listener(Listener* listener) { listener_ = listener; }
+
+ protected:
+  result_type consume(result_type value) {
+    if (listener_ != nullptr) {
+      listener_->on_consume_random(value);
+    }
+    return value;
+  }
+
+ private:
+  Listener* listener_ = nullptr;
+};
+
+class Mt19937 : public BaseRng {
+ public:
+  explicit Mt19937(unsigned int seed) : rng_(seed) {}
+
+  BaseRng::result_type operator()() { return consume(rng_()); }
+
+ private:
+  std::mt19937 rng_;
+};
+
 class GeneratorRng {
  public:
   virtual ~GeneratorRng() {}
@@ -215,11 +258,14 @@ class GeneratorRng {
       const std::vector<std::reference_wrapper<const Function>>& functions) = 0;
   virtual ArrayType pick_array_type(
       const std::vector<std::reference_wrapper<const ArrayType>>& types) = 0;
+
+  virtual void set_rng_listener(BaseRng::Listener* listener) {}
 };
 
 class DefaultGeneratorRng : public GeneratorRng {
  public:
-  explicit DefaultGeneratorRng(uint32_t seed) : rng_(seed) {}
+  explicit DefaultGeneratorRng(std::unique_ptr<BaseRng> rng)
+      : rng_(std::move(rng)) {}
 
   BinOp gen_bin_op(BinOpMask mask) override;
   UnOp gen_un_op(UnOpMask mask) override;
@@ -261,19 +307,37 @@ class DefaultGeneratorRng : public GeneratorRng {
       const std::vector<std::reference_wrapper<const ArrayType>>& types)
       override;
 
+  void set_rng_listener(BaseRng::Listener* listener) override {
+    rng_->set_listener(listener);
+  }
+
  private:
-  std::mt19937 rng_;
+  std::unique_ptr<BaseRng> rng_;
 };
 
-class ExprGenerator {
+class ExprGenerator : public BaseRng::Listener {
  public:
   ExprGenerator(std::unique_ptr<GeneratorRng> rng, GenConfig cfg,
                 SymbolTable symtab)
-      : rng_(std::move(rng)),
-        cfg_(std::move(cfg)),
-        symtab_(std::move(symtab)) {}
+      : rng_(std::move(rng)), cfg_(std::move(cfg)), symtab_(std::move(symtab)) {
+    rng_->set_rng_listener(this);
+  }
+
+  // Copying and moving isn't possible right now. Defaults don't work because of
+  // `rng_->set_rng_listener(this)` set in the constructor above (`this` will
+  // refer to the old object).
+  // TODO: Implement copy/move constructors/assignments if needed.
+  ExprGenerator(const ExprGenerator&) = delete;
+  ExprGenerator(ExprGenerator&&) = delete;
+  ExprGenerator& operator=(const ExprGenerator&) = delete;
+  ExprGenerator& operator=(ExprGenerator&&) = delete;
 
   std::optional<Expr> generate();
+
+  std::shared_ptr<GenNode> node() const { return node_; }
+
+  const GenConfig& cfg() const { return cfg_; }
+  const SymbolTable& symtab() const { return symtab_; }
 
  private:
   Expr maybe_parenthesized(Expr expr);
@@ -307,6 +371,48 @@ class ExprGenerator {
   std::optional<Expr> gen_sizeof_expr(const Weights& weights,
                                       const ExprConstraints& constraints);
 
+  std::optional<Expr> gen_with_weights(const Weights& weights,
+                                       const ExprConstraints& constraints);
+
+  // Implementations of expression generation methods:
+  std::optional<Expr> gen_boolean_constant_impl(
+      const ExprConstraints& constraints);
+  std::optional<Expr> gen_integer_constant_impl(
+      const ExprConstraints& constraints);
+  std::optional<Expr> gen_double_constant_impl(
+      const ExprConstraints& constraints);
+  std::optional<Expr> gen_enum_constant_impl(
+      const ExprConstraints& constraints);
+  std::optional<Expr> gen_variable_expr_impl(
+      const ExprConstraints& constraints);
+  std::optional<Expr> gen_binary_expr_impl(const Weights& weights,
+                                           const ExprConstraints& constraints);
+  std::optional<Expr> gen_unary_expr_impl(const Weights& weights,
+                                          const ExprConstraints& constraints);
+  std::optional<Expr> gen_ternary_expr_impl(const Weights& weights,
+                                            const ExprConstraints& constraints);
+  std::optional<Expr> gen_cast_expr_impl(const Weights& weights,
+                                         const ExprConstraints& constraints);
+  std::optional<Expr> gen_dereference_expr_impl(
+      const Weights& weights, const ExprConstraints& constraints);
+  std::optional<Expr> gen_address_of_expr_impl(
+      const Weights& weights, const ExprConstraints& constraints);
+  std::optional<Expr> gen_member_of_expr_impl(
+      const Weights& weights, const ExprConstraints& constraints);
+  std::optional<Expr> gen_member_of_ptr_expr_impl(
+      const Weights& weights, const ExprConstraints& constraints);
+  std::optional<Expr> gen_array_index_expr_impl(
+      const Weights& weights, const ExprConstraints& constraints);
+  std::optional<Expr> gen_function_call_expr_impl(
+      const Weights& weights, const ExprConstraints& constraints);
+  std::optional<Expr> gen_with_weights_impl(const Weights& weights,
+                                            const ExprConstraints& constraints);
+
+  // Generates an expression using the `callback` method and constructs a
+  // generation node on top of the `stack_`.
+  std::optional<Expr> gen_expr(const GenerateMutateFn& callback,
+                               std::string name);
+
   std::optional<Type> gen_type(const Weights& weights,
                                const TypeConstraints& constraints,
                                bool allow_array_types = false);
@@ -323,13 +429,16 @@ class ExprGenerator {
   std::optional<Type> gen_array_type(const TypeConstraints& constraints);
   CvQualifiers gen_cv_qualifiers();
 
-  std::optional<Expr> gen_with_weights(const Weights& weights,
-                                       const ExprConstraints& constraints);
+  // BaseRng::Listener:
+  void on_consume_random(BaseRng::result_type value) override;
 
  private:
   std::unique_ptr<GeneratorRng> rng_;
   GenConfig cfg_;
   SymbolTable symtab_;
+
+  std::stack<std::shared_ptr<GenNode>> stack_;
+  std::shared_ptr<GenNode> node_;
 };
 
 }  // namespace fuzzer

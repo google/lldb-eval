@@ -107,7 +107,7 @@ static Expr make_binary_expr(Expr lhs, BinOp op, Expr rhs) {
   return BinaryExpr(std::move(lhs), op, std::move(rhs));
 }
 
-std::optional<Expr> ExprGenerator::gen_boolean_constant(
+std::optional<Expr> ExprGenerator::gen_boolean_constant_impl(
     const ExprConstraints& constraints) {
   const auto& type_constraints = constraints.type_constraints();
 
@@ -133,7 +133,7 @@ std::optional<Expr> ExprGenerator::gen_nullptr_constant(
   return NullptrConstant();
 }
 
-std::optional<Expr> ExprGenerator::gen_integer_constant(
+std::optional<Expr> ExprGenerator::gen_integer_constant_impl(
     const ExprConstraints& constraints) {
   if (constraints.must_be_lvalue() ||
       constraints.memory_constraints().must_be_valid()) {
@@ -154,7 +154,7 @@ std::optional<Expr> ExprGenerator::gen_integer_constant(
   return {};
 }
 
-std::optional<Expr> ExprGenerator::gen_double_constant(
+std::optional<Expr> ExprGenerator::gen_double_constant_impl(
     const ExprConstraints& constraints) {
   if (constraints.must_be_lvalue()) {
     return {};
@@ -173,7 +173,7 @@ std::optional<Expr> ExprGenerator::gen_double_constant(
   return {};
 }
 
-std::optional<Expr> ExprGenerator::gen_enum_constant(
+std::optional<Expr> ExprGenerator::gen_enum_constant_impl(
     const ExprConstraints& constraints) {
   if (constraints.must_be_lvalue()) {
     return {};
@@ -193,7 +193,7 @@ std::optional<Expr> ExprGenerator::gen_enum_constant(
   return rng_->pick_enum_literal(enums);
 }
 
-std::optional<Expr> ExprGenerator::gen_variable_expr(
+std::optional<Expr> ExprGenerator::gen_variable_expr_impl(
     const ExprConstraints& constraints) {
   const auto& type_constraints = constraints.type_constraints();
   const auto& memory_constraints = constraints.memory_constraints();
@@ -220,7 +220,7 @@ std::optional<Expr> ExprGenerator::gen_variable_expr(
   return rng_->pick_variable(vars);
 }
 
-std::optional<Expr> ExprGenerator::gen_binary_expr(
+std::optional<Expr> ExprGenerator::gen_binary_expr_impl(
     const Weights& weights, const ExprConstraints& constraints) {
   if (constraints.must_be_lvalue() ||
       constraints.memory_constraints().must_be_valid()) {
@@ -417,7 +417,7 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
   return {};
 }
 
-std::optional<Expr> ExprGenerator::gen_unary_expr(
+std::optional<Expr> ExprGenerator::gen_unary_expr_impl(
     const Weights& weights, const ExprConstraints& constraints) {
   if (constraints.must_be_lvalue() ||
       constraints.memory_constraints().must_be_valid()) {
@@ -481,7 +481,7 @@ std::optional<Expr> ExprGenerator::gen_unary_expr(
   return {};
 }
 
-std::optional<Expr> ExprGenerator::gen_ternary_expr(
+std::optional<Expr> ExprGenerator::gen_ternary_expr_impl(
     const Weights& weights, const ExprConstraints& constraints) {
   auto maybe_cond = gen_with_weights(
       weights, TypeConstraints(SpecificTypes::all_in_bool_ctx()));
@@ -556,7 +556,7 @@ std::optional<Expr> ExprGenerator::gen_ternary_expr(
   return TernaryExpr(std::move(cond), std::move(lhs), std::move(rhs));
 }
 
-std::optional<Expr> ExprGenerator::gen_cast_expr(
+std::optional<Expr> ExprGenerator::gen_cast_expr_impl(
     const Weights& weights, const ExprConstraints& constraints) {
   if (constraints.must_be_lvalue()) {
     return {};
@@ -617,7 +617,7 @@ std::optional<Expr> ExprGenerator::gen_cast_expr(
   return {};
 }
 
-std::optional<Expr> ExprGenerator::gen_address_of_expr(
+std::optional<Expr> ExprGenerator::gen_address_of_expr_impl(
     const Weights& weights, const ExprConstraints& constraints) {
   const auto& memory_constraints = constraints.memory_constraints();
 
@@ -649,7 +649,7 @@ std::optional<Expr> ExprGenerator::gen_address_of_expr(
   return AddressOf(std::move(expr));
 }
 
-std::optional<Expr> ExprGenerator::gen_member_of_expr(
+std::optional<Expr> ExprGenerator::gen_member_of_expr_impl(
     const Weights& weights, const ExprConstraints& constraints) {
   const auto& type_constraints = constraints.type_constraints();
   const auto& memory_constraints = constraints.memory_constraints();
@@ -690,7 +690,7 @@ std::optional<Expr> ExprGenerator::gen_member_of_expr(
   return MemberOf(std::move(expr), field.name());
 }
 
-std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
+std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr_impl(
     const Weights& weights, const ExprConstraints& constraints) {
   const auto& type_constraints = constraints.type_constraints();
   const auto& memory_constraints = constraints.memory_constraints();
@@ -731,7 +731,7 @@ std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
   return MemberOfPtr(std::move(expr), field.name());
 }
 
-std::optional<Expr> ExprGenerator::gen_array_index_expr(
+std::optional<Expr> ExprGenerator::gen_array_index_expr_impl(
     const Weights& weights, const ExprConstraints& constraints) {
   const auto& type_constraints = constraints.type_constraints();
 
@@ -817,7 +817,7 @@ std::optional<Expr> ExprGenerator::gen_array_index_expr(
   return ArrayIndex(std::move(lhs), std::move(rhs));
 }
 
-std::optional<Expr> ExprGenerator::gen_dereference_expr(
+std::optional<Expr> ExprGenerator::gen_dereference_expr_impl(
     const Weights& weights, const ExprConstraints& constraints) {
   ExprConstraints new_constraints =
       ExprConstraints(constraints.type_constraints().make_pointer_constraints(),
@@ -837,7 +837,7 @@ std::optional<Expr> ExprGenerator::gen_dereference_expr(
   return DereferenceExpr(std::move(expr));
 }
 
-std::optional<Expr> ExprGenerator::gen_function_call_expr(
+std::optional<Expr> ExprGenerator::gen_function_call_expr_impl(
     const Weights& weights, const ExprConstraints& constraints) {
   if (constraints.must_be_lvalue()) {
     return {};
@@ -917,7 +917,7 @@ std::optional<Expr> ExprGenerator::gen_sizeof_expr(
   return SizeofExpr(std::move(expr));
 }
 
-std::optional<Expr> ExprGenerator::gen_with_weights(
+std::optional<Expr> ExprGenerator::gen_with_weights_impl(
     const Weights& weights, const ExprConstraints& constraints) {
   Weights new_weights = weights;
   new_weights.increment_depth();
@@ -1019,6 +1019,69 @@ std::optional<Expr> ExprGenerator::gen_with_weights(
 
   return {};
 }
+
+std::optional<Expr> ExprGenerator::gen_expr(const GenerateMutateFn& callback,
+                                            std::string name) {
+  auto node =
+      std::make_shared<GenNode>(std::move(name), callback, cfg_, symtab_);
+  if (!stack_.empty()) {
+    auto stack_top = stack_.top();
+    stack_top->add_child(node);
+  }
+  stack_.push(node);
+  auto maybe_expr = callback(this, /*mutate*/ false);
+  node->set_valid(maybe_expr.has_value());
+  stack_.pop();
+  node_ = node;
+  return maybe_expr;
+}
+
+void ExprGenerator::on_consume_random(BaseRng::result_type value) {
+  assert(!stack_.empty());
+  auto stack_top = stack_.top();
+  stack_top->add_child(value);
+}
+
+#define DEFINE_GEN_METHOD_WEIGHTS_CONSTRAINTS(method)                         \
+  std::optional<Expr> ExprGenerator::method(                                  \
+      const Weights& weights, const ExprConstraints& constraints) {           \
+    auto callback = [weights, constraints](ExprGenerator* gen, bool mutate) { \
+      return mutate ? gen->method(weights, constraints)                       \
+                    : gen->method##_impl(weights, constraints);               \
+    };                                                                        \
+    return gen_expr(callback, __FUNCTION__);                                  \
+  }
+
+#define DEFINE_GEN_METHOD_CONSTRAINTS(method)                        \
+  std::optional<Expr> ExprGenerator::method(                         \
+      const ExprConstraints& constraints) {                          \
+    auto callback = [constraints](ExprGenerator* gen, bool mutate) { \
+      return mutate ? gen->method(constraints)                       \
+                    : gen->method##_impl(constraints);               \
+    };                                                               \
+    return gen_expr(callback, __FUNCTION__);                         \
+  }
+
+DEFINE_GEN_METHOD_CONSTRAINTS(gen_boolean_constant)
+DEFINE_GEN_METHOD_CONSTRAINTS(gen_integer_constant)
+DEFINE_GEN_METHOD_CONSTRAINTS(gen_double_constant)
+DEFINE_GEN_METHOD_CONSTRAINTS(gen_enum_constant)
+DEFINE_GEN_METHOD_CONSTRAINTS(gen_variable_expr)
+
+DEFINE_GEN_METHOD_WEIGHTS_CONSTRAINTS(gen_with_weights)
+DEFINE_GEN_METHOD_WEIGHTS_CONSTRAINTS(gen_binary_expr)
+DEFINE_GEN_METHOD_WEIGHTS_CONSTRAINTS(gen_unary_expr)
+DEFINE_GEN_METHOD_WEIGHTS_CONSTRAINTS(gen_ternary_expr)
+DEFINE_GEN_METHOD_WEIGHTS_CONSTRAINTS(gen_cast_expr)
+DEFINE_GEN_METHOD_WEIGHTS_CONSTRAINTS(gen_dereference_expr)
+DEFINE_GEN_METHOD_WEIGHTS_CONSTRAINTS(gen_address_of_expr)
+DEFINE_GEN_METHOD_WEIGHTS_CONSTRAINTS(gen_member_of_expr)
+DEFINE_GEN_METHOD_WEIGHTS_CONSTRAINTS(gen_member_of_ptr_expr)
+DEFINE_GEN_METHOD_WEIGHTS_CONSTRAINTS(gen_array_index_expr)
+DEFINE_GEN_METHOD_WEIGHTS_CONSTRAINTS(gen_function_call_expr)
+
+#undef DEFINE_GEN_METHOD_WEIGHTS_CONSTRAINTS
+#undef DEFINE_GEN_METHOD_CONSTRAINTS
 
 Expr ExprGenerator::maybe_parenthesized(Expr expr) {
   if (rng_->gen_parenthesize(cfg_.parenthesize_prob)) {
@@ -1301,11 +1364,11 @@ const T& pick_element(const std::vector<T>& vec, Rng& rng) {
 }
 
 BinOp DefaultGeneratorRng::gen_bin_op(BinOpMask mask) {
-  return pick_nth_set_bit(mask, rng_);
+  return pick_nth_set_bit(mask, *rng_);
 }
 
 UnOp DefaultGeneratorRng::gen_un_op(UnOpMask mask) {
-  return pick_nth_set_bit(mask, rng_);
+  return pick_nth_set_bit(mask, *rng_);
 }
 
 IntegerConstant DefaultGeneratorRng::gen_integer_constant(uint64_t min,
@@ -1315,19 +1378,19 @@ IntegerConstant DefaultGeneratorRng::gen_integer_constant(uint64_t min,
   using Signedness = IntegerConstant::Signedness;
 
   std::uniform_int_distribution<uint64_t> distr(min, max);
-  auto value = distr(rng_);
+  auto value = distr(*rng_);
 
   std::uniform_int_distribution<int> base_distr((int)Base::EnumFirst,
                                                 (int)Base::EnumLast);
-  auto base = (Base)base_distr(rng_);
+  auto base = (Base)base_distr(*rng_);
 
   std::uniform_int_distribution<int> length_distr((int)Length::EnumFirst,
                                                   (int)Length::EnumLast);
-  auto length = (Length)base_distr(rng_);
+  auto length = (Length)base_distr(*rng_);
 
   std::uniform_int_distribution<int> sign_distr((int)Signedness::EnumFirst,
                                                 (int)Signedness::EnumLast);
-  auto signedness = (Signedness)base_distr(rng_);
+  auto signedness = (Signedness)base_distr(*rng_);
 
   return IntegerConstant(value, base, length, signedness);
 }
@@ -1338,15 +1401,15 @@ DoubleConstant DefaultGeneratorRng::gen_double_constant(double min,
   using Length = DoubleConstant::Length;
 
   std::uniform_real_distribution<double> distr(min, max);
-  auto value = distr(rng_);
+  auto value = distr(*rng_);
 
   std::uniform_int_distribution<int> format_distr((int)Format::EnumFirst,
                                                   (int)Format::EnumLast);
-  auto format = (Format)format_distr(rng_);
+  auto format = (Format)format_distr(*rng_);
 
   std::uniform_int_distribution<int> length_distr((int)Length::EnumFirst,
                                                   (int)Length::EnumLast);
-  auto length = (Length)length_distr(rng_);
+  auto length = (Length)length_distr(*rng_);
 
   return DoubleConstant(value, format, length);
 }
@@ -1357,98 +1420,98 @@ CvQualifiers DefaultGeneratorRng::gen_cv_qualifiers(float const_prob,
   std::bernoulli_distribution volatile_distr(volatile_prob);
 
   CvQualifiers retval;
-  retval[CvQualifier::Const] = const_distr(rng_);
-  retval[CvQualifier::Volatile] = volatile_distr(rng_);
+  retval[CvQualifier::Const] = const_distr(*rng_);
+  retval[CvQualifier::Volatile] = volatile_distr(*rng_);
 
   return retval;
 }
 
 VariableExpr DefaultGeneratorRng::pick_variable(
     const std::vector<std::reference_wrapper<const VariableExpr>>& vars) {
-  return pick_element(vars, rng_);
+  return pick_element(vars, *rng_);
 }
 
 Field DefaultGeneratorRng::pick_field(
     const std::vector<std::reference_wrapper<const Field>>& fields) {
-  return pick_element(fields, rng_);
+  return pick_element(fields, *rng_);
 }
 
 TaggedType DefaultGeneratorRng::pick_tagged_type(
     const std::vector<std::reference_wrapper<const TaggedType>>& types) {
-  return pick_element(types, rng_);
+  return pick_element(types, *rng_);
 }
 
 EnumType DefaultGeneratorRng::pick_enum_type(
     const std::vector<std::reference_wrapper<const EnumType>>& types) {
-  return pick_element(types, rng_);
+  return pick_element(types, *rng_);
 }
 
 EnumConstant DefaultGeneratorRng::pick_enum_literal(
     const std::vector<std::reference_wrapper<const EnumConstant>>& enums) {
-  return pick_element(enums, rng_);
+  return pick_element(enums, *rng_);
 }
 
 Function DefaultGeneratorRng::pick_function(
     const std::vector<std::reference_wrapper<const Function>>& functions) {
-  return pick_element(functions, rng_);
+  return pick_element(functions, *rng_);
 }
 
 ArrayType DefaultGeneratorRng::pick_array_type(
     const std::vector<std::reference_wrapper<const ArrayType>>& types) {
-  return pick_element(types, rng_);
+  return pick_element(types, *rng_);
 }
 
 bool DefaultGeneratorRng::gen_binop_ptr_expr(float probability) {
   std::bernoulli_distribution distr(probability);
-  return distr(rng_);
+  return distr(*rng_);
 }
 
 bool DefaultGeneratorRng::gen_binop_flip_operands(float probability) {
   std::bernoulli_distribution distr(probability);
-  return distr(rng_);
+  return distr(*rng_);
 }
 
 bool DefaultGeneratorRng::gen_binop_ptrdiff_expr(float probability) {
   std::bernoulli_distribution distr(probability);
-  return distr(rng_);
+  return distr(*rng_);
 }
 
 bool DefaultGeneratorRng::gen_binop_ptr_or_enum(float probability) {
   std::bernoulli_distribution distr(probability);
-  return distr(rng_);
+  return distr(*rng_);
 }
 
 bool DefaultGeneratorRng::gen_sizeof_type(float probability) {
   std::bernoulli_distribution distr(probability);
-  return distr(rng_);
+  return distr(*rng_);
 }
 
 bool DefaultGeneratorRng::gen_parenthesize(float probability) {
   std::bernoulli_distribution distr(probability);
-  return distr(rng_);
+  return distr(*rng_);
 }
 
 bool DefaultGeneratorRng::gen_boolean() {
   std::bernoulli_distribution distr;
-  return distr(rng_);
+  return distr(*rng_);
 }
 
 ExprKind DefaultGeneratorRng::gen_expr_kind(const Weights& weights,
                                             const ExprKindMask& mask) {
-  return weighted_pick(weights.expr_weights(), mask, rng_);
+  return weighted_pick(weights.expr_weights(), mask, *rng_);
 }
 
 TypeKind DefaultGeneratorRng::gen_type_kind(const Weights& weights,
                                             const TypeKindMask& mask) {
-  return weighted_pick(weights.type_weights(), mask, rng_);
+  return weighted_pick(weights.type_weights(), mask, *rng_);
 }
 
 CastExpr::Kind DefaultGeneratorRng::gen_cast_kind(const CastKindMask& mask) {
-  return pick_nth_set_bit(mask, rng_);
+  return pick_nth_set_bit(mask, *rng_);
 }
 
 ScalarType DefaultGeneratorRng::gen_scalar_type(ScalarMask mask) {
-  return pick_nth_set_bit(mask, rng_);
+  return pick_nth_set_bit(mask, *rng_);
 }
 
 }  // namespace fuzzer
