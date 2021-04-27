@@ -121,7 +121,7 @@ bool compare_gen_nodes(const std::shared_ptr<GenNode>& lhs,
     const auto* lhs_child_node =
         std::get_if<std::shared_ptr<GenNode>>(&lhs_child);
     const auto* rhs_child_node =
-        std::get_if<std::shared_ptr<GenNode>>(&lhs_child);
+        std::get_if<std::shared_ptr<GenNode>>(&rhs_child);
     if ((lhs_child_node == nullptr) != (rhs_child_node == nullptr)) {
       return false;
     }
