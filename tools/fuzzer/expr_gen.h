@@ -21,7 +21,6 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <queue>
 #include <random>
 #include <stack>
 #include <unordered_map>
@@ -221,7 +220,7 @@ class GeneratorRng {
   virtual ArrayType pick_array_type(
       const std::vector<std::reference_wrapper<const ArrayType>>& types) = 0;
 
-  virtual void set_rng_listener(BaseRng::Listener* listener) {}
+  virtual void set_rng_listener(BaseRng::Listener*) {}
 };
 
 class DefaultGeneratorRng : public GeneratorRng {
