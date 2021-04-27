@@ -32,6 +32,7 @@
 #include "tools/cpp/runfiles/runfiles.h"
 #include "tools/fuzzer/expr_gen.h"
 #include "tools/fuzzer/gen_node.h"
+#include "tools/fuzzer/rng.h"
 
 using namespace fuzzer;
 using namespace testing;
@@ -40,41 +41,41 @@ using bazel::tools::cpp::runfiles::Runfiles;
 // Random number generator over fixed number sequence.
 class FixedRng : public BaseRng {
  public:
-  explicit FixedRng(std::queue<BaseRng::result_type> q)
-      : queue_(std::move(q)) {}
+  explicit FixedRng(std::queue<rand_t>* q) : queue_(q) {}
 
   BaseRng::result_type operator()() {
-    assert(!queue_.empty());
-    auto value = queue_.front();
-    queue_.pop();
+    assert(!queue_->empty());
+    auto value = queue_->front();
+    queue_->pop();
     return consume(value);
   }
 
  private:
-  std::queue<BaseRng::result_type> queue_;
+  std::queue<rand_t>* queue_;
 };
 
 // Generation tree visitor used to randomly pick nodes.
 class GenNodePicker : public GenTreeVisitor {
  public:
-  void visit_node(GenNodePtr node) {
+  void visit_node(std::shared_ptr<GenNode> node) {
     if (node->is_valid()) {
       options_.emplace_back(node);
     }
   }
 
   template <class Rng>
-  GenNodePtr pick(Rng& rng) {
+  std::shared_ptr<GenNode> pick(Rng& rng) {
     std::uniform_int_distribution<size_t> distr(0, options_.size() - 1);
     return options_[distr(rng)];
   }
 
  private:
-  std::vector<GenNodePtr> options_;
+  std::vector<std::shared_ptr<GenNode>> options_;
 };
 
 template <class Rng>
-GenNodePtr pick_random_node(GenNodePtr root, Rng& rng) {
+std::shared_ptr<GenNode> pick_random_node(std::shared_ptr<GenNode> root,
+                                          Rng& rng) {
   GenNodePicker picker;
   walk_gen_tree(root, &picker);
   return picker.pick(rng);
@@ -83,21 +84,22 @@ GenNodePtr pick_random_node(GenNodePtr root, Rng& rng) {
 // Generation tree visitor used to extract a sequence produced by RNG.
 class SequenceBuilder : public GenTreeVisitor {
  public:
-  void visit_random_value(unsigned int value) { queue_.push(value); }
+  void visit_random_value(rand_t value) { queue_.push(value); }
 
-  std::queue<unsigned int>& queue() { return queue_; }
+  std::queue<rand_t>& queue() { return queue_; }
 
  private:
-  std::queue<unsigned int> queue_;
+  std::queue<rand_t> queue_;
 };
 
-std::queue<BaseRng::result_type> make_rng_sequence(GenNodePtr root) {
+std::queue<rand_t> make_rng_sequence(std::shared_ptr<GenNode> root) {
   SequenceBuilder builder;
   walk_gen_tree(root, &builder);
   return builder.queue();
 }
 
-bool compare_gen_nodes(const GenNodePtr& lhs, const GenNodePtr& rhs) {
+bool compare_gen_nodes(const std::shared_ptr<GenNode>& lhs,
+                       const std::shared_ptr<GenNode>& rhs) {
   if (lhs->is_valid() != rhs->is_valid() || lhs->name() != rhs->name() ||
       lhs->children().size() != rhs->children().size()) {
     return false;
@@ -107,8 +109,8 @@ bool compare_gen_nodes(const GenNodePtr& lhs, const GenNodePtr& rhs) {
     const auto& lhs_child = lhs->children()[i];
     const auto& rhs_child = rhs->children()[i];
 
-    const auto* lhs_child_int = std::get_if<unsigned int>(&lhs_child);
-    const auto* rhs_child_int = std::get_if<unsigned int>(&rhs_child);
+    const auto* lhs_child_int = std::get_if<rand_t>(&lhs_child);
+    const auto* rhs_child_int = std::get_if<rand_t>(&rhs_child);
     if ((lhs_child_int == nullptr) != (rhs_child_int == nullptr)) {
       return false;
     }
@@ -116,8 +118,10 @@ bool compare_gen_nodes(const GenNodePtr& lhs, const GenNodePtr& rhs) {
       return false;
     }
 
-    const auto& lhs_child_node = std::get_if<GenNodePtr>(&lhs_child);
-    const auto& rhs_child_node = std::get_if<GenNodePtr>(&lhs_child);
+    const auto* lhs_child_node =
+        std::get_if<std::shared_ptr<GenNode>>(&lhs_child);
+    const auto* rhs_child_node =
+        std::get_if<std::shared_ptr<GenNode>>(&lhs_child);
     if ((lhs_child_node == nullptr) != (rhs_child_node == nullptr)) {
       return false;
     }
@@ -159,7 +163,7 @@ TEST(MutateTest, MutateMultipleTimes) {
   } while (!maybe_expr.has_value());
 
   // Get the root gen-node of created expression.
-  GenNodePtr root = random_generator.node();
+  std::shared_ptr<GenNode> root = random_generator.node();
 
   // Rng used for randomly selecting gen-nodes for mutation.
   std::mt19937 rng(1337);
@@ -167,22 +171,25 @@ TEST(MutateTest, MutateMultipleTimes) {
   // Perform mutation multiple times.
   for (int i = 0; i < 2000; ++i) {
     // Pick a random node.
-    GenNodePtr to_be_mutated = pick_random_node(root, rng);
+    std::shared_ptr<GenNode> to_be_mutated = pick_random_node(root, rng);
     ASSERT_NE(to_be_mutated, nullptr);
 
     // Re-evaluate the node.
     to_be_mutated->mutate(&random_generator);
 
     // Construct expression generator over the fixed rng sequence.
-    std::queue<unsigned int> rng_sequence = make_rng_sequence(root);
+    std::queue<rand_t> rng_sequence = make_rng_sequence(root);
     ExprGenerator fixed_generator(
         std::make_unique<DefaultGeneratorRng>(
-            std::make_unique<FixedRng>(std::move(rng_sequence))),
+            std::make_unique<FixedRng>(&rng_sequence)),
         cfg, symtab);
 
     // Fixed expression generator should be able to generate an expression.
     maybe_expr = fixed_generator.generate();
     ASSERT_NE(maybe_expr, std::nullopt);
+
+    // All random values should be used.
+    ASSERT_TRUE(rng_sequence.empty());
 
     // Compare mutated root gen-node with the root gen-node obtained by running
     // the expression generator over the fixed random sequence.

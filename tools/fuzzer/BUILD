@@ -15,6 +15,7 @@ cc_library(
         "enum_bitset.h",
         "expr_gen.h",
         "gen_node.h",
+        "rng.h",
         "symbol_table.h",
     ],
     deps = [
@@ -105,4 +106,3 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
-

@@ -19,6 +19,7 @@
 #include <variant>
 
 #include "tools/fuzzer/expr_gen.h"
+#include "tools/fuzzer/rng.h"
 
 namespace fuzzer {
 
@@ -28,7 +29,7 @@ bool GenNode::mutate(ExprGenerator* generator) {
     return false;
   }
 
-  fn_(generator, /*mutate*/ true);
+  callback_(generator, /*mutate*/ true);
 
   auto mutated_node = generator->node();
   if (mutated_node->is_valid()) {
@@ -39,16 +40,16 @@ bool GenNode::mutate(ExprGenerator* generator) {
   return false;
 }
 
-void walk_gen_tree(GenNodePtr node, GenTreeVisitor* visitor, int depth) {
+void walk_gen_tree(std::shared_ptr<GenNode> node, GenTreeVisitor* visitor) {
   visitor->visit_node(node);
   for (auto child : node->children()) {
-    auto* as_int = std::get_if<unsigned int>(&child);
+    auto* as_int = std::get_if<rand_t>(&child);
     if (as_int) {
       visitor->visit_random_value(*as_int);
     }
-    auto* as_node = std::get_if<GenNodePtr>(&child);
+    auto* as_node = std::get_if<std::shared_ptr<GenNode>>(&child);
     if (as_node) {
-      walk_gen_tree(*as_node, visitor, depth + 1);
+      walk_gen_tree(*as_node, visitor);
     }
   }
 }

@@ -18,7 +18,6 @@
 #define INCLUDE_EXPR_GEN_H
 
 #include <array>
-#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -30,6 +29,7 @@
 #include "tools/fuzzer/ast.h"
 #include "tools/fuzzer/enum_bitset.h"
 #include "tools/fuzzer/gen_node.h"
+#include "tools/fuzzer/rng.h"
 #include "tools/fuzzer/symbol_table.h"
 
 namespace fuzzer {
@@ -183,44 +183,6 @@ struct GenConfig {
   }};
 };
 
-class BaseRng {
- public:
-  virtual ~BaseRng() {}
-
-  using result_type = std::mt19937::result_type;
-  static constexpr result_type min() { return std::mt19937::min(); }
-  static constexpr result_type max() { return std::mt19937::max(); }
-  virtual result_type operator()() = 0;
-
-  class Listener {
-   public:
-    virtual void on_consume_random(result_type value) = 0;
-  };
-
-  void set_listener(Listener* listener) { listener_ = listener; }
-
- protected:
-  result_type consume(result_type value) {
-    if (listener_ != nullptr) {
-      listener_->on_consume_random(value);
-    }
-    return value;
-  }
-
- private:
-  Listener* listener_ = nullptr;
-};
-
-class Mt19937 : public BaseRng {
- public:
-  explicit Mt19937(unsigned int seed) : rng_(seed) {}
-
-  BaseRng::result_type operator()() { return consume(rng_()); }
-
- private:
-  std::mt19937 rng_;
-};
-
 class GeneratorRng {
  public:
   virtual ~GeneratorRng() {}
@@ -334,10 +296,9 @@ class ExprGenerator : public BaseRng::Listener {
 
   std::optional<Expr> generate();
 
+  // Method generation node. Note that this represents the last call to a
+  // expression generation method and will be rewritten after each such call.
   std::shared_ptr<GenNode> node() const { return node_; }
-
-  const GenConfig& cfg() const { return cfg_; }
-  const SymbolTable& symtab() const { return symtab_; }
 
  private:
   Expr maybe_parenthesized(Expr expr);
@@ -430,7 +391,7 @@ class ExprGenerator : public BaseRng::Listener {
   CvQualifiers gen_cv_qualifiers();
 
   // BaseRng::Listener:
-  void on_consume_random(BaseRng::result_type value) override;
+  void on_consume_random(rand_t value) override;
 
  private:
   std::unique_ptr<GeneratorRng> rng_;

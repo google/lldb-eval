@@ -1022,11 +1022,9 @@ std::optional<Expr> ExprGenerator::gen_with_weights_impl(
 
 std::optional<Expr> ExprGenerator::gen_expr(const GenerateMutateFn& callback,
                                             std::string name) {
-  auto node =
-      std::make_shared<GenNode>(std::move(name), callback, cfg_, symtab_);
+  auto node = std::make_shared<GenNode>(std::move(name), callback);
   if (!stack_.empty()) {
-    auto stack_top = stack_.top();
-    stack_top->add_child(node);
+    stack_.top()->add_child(node);
   }
   stack_.push(node);
   auto maybe_expr = callback(this, /*mutate*/ false);
@@ -1036,10 +1034,10 @@ std::optional<Expr> ExprGenerator::gen_expr(const GenerateMutateFn& callback,
   return maybe_expr;
 }
 
-void ExprGenerator::on_consume_random(BaseRng::result_type value) {
-  assert(!stack_.empty());
-  auto stack_top = stack_.top();
-  stack_top->add_child(value);
+void ExprGenerator::on_consume_random(rand_t value) {
+  assert(!stack_.empty() &&
+         "Stack shouldn't be empty when consuming random value!");
+  stack_.top()->add_child(value);
 }
 
 #define DEFINE_GEN_METHOD_WEIGHTS_CONSTRAINTS(method)                         \
