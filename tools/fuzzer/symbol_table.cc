@@ -20,6 +20,7 @@
 #include <optional>
 #include <string>
 
+#include "lldb-eval/traits.h"
 #include "lldb/API/SBError.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBMemoryRegionInfo.h"
@@ -28,6 +29,7 @@
 #include "lldb/API/SBProcess.h"
 #include "lldb/API/SBThread.h"
 #include "lldb/API/SBType.h"
+#include "lldb/API/SBTypeEnumMember.h"
 #include "lldb/API/SBValue.h"
 #include "lldb/API/SBVariablesOptions.h"
 #include "tools/fuzzer/ast.h"
@@ -66,6 +68,14 @@ bool is_tagged_type(lldb::SBType& type) {
          type.GetTypeClass() == lldb::eTypeClassClass;
 }
 
+template <typename T>
+bool is_scoped_enum(T type) {
+  if constexpr (HAS_METHOD(T, IsScopedEnumerationType())) {
+    return type.IsScopedEnumerationType();
+  }
+  return false;
+}
+
 std::optional<Type> convert_type(lldb::SBType type,
                                  bool ignore_qualified_types) {
   type = type.GetCanonicalType();
@@ -91,8 +101,23 @@ std::optional<Type> convert_type(lldb::SBType type,
                                      guess_cv_qualifiers(pointee_type)));
   }
 
+  if (type.IsArrayType()) {
+    auto element_type = type.GetArrayElementType();
+    const auto inner_type = convert_type(element_type, ignore_qualified_types);
+    if (!inner_type.has_value()) {
+      return {};
+    }
+    // We have to calculate the array size manually.
+    uint64_t size = type.GetByteSize() / element_type.GetByteSize();
+    return ArrayType(std::move(inner_type.value()), size);
+  }
+
   if (is_tagged_type(type)) {
     return TaggedType(type.GetName());
+  }
+
+  if (type.GetTypeClass() == lldb::eTypeClassEnumeration) {
+    return EnumType(type.GetName(), is_scoped_enum(type));
   }
 
   const lldb::BasicType basic_type = type.GetBasicType();
@@ -177,6 +202,17 @@ int calculate_freedom_index(lldb::SBValue value,
         static_cast<lldb::addr_t>(value.GetValueAsUnsigned());
     if (is_valid_address(address, memory_regions)) {
       return 1 + calculate_freedom_index(value.Dereference(), memory_regions);
+    }
+  }
+
+  if (type.IsArrayType()) {
+    lldb::addr_t address =
+        static_cast<lldb::addr_t>(value.AddressOf().GetValueAsUnsigned());
+    if (is_valid_address(address, memory_regions)) {
+      // The first array element.
+      lldb::SBValue element_value = value.CreateValueFromAddress(
+          "value", address, type.GetArrayElementType());
+      return 1 + calculate_freedom_index(element_value, memory_regions);
     }
   }
 
@@ -344,24 +380,37 @@ void load_frame_variables(SymbolTable& symtab, lldb::SBFrame& frame,
   }
 }
 
+// Loads structs, classes and enumerations.
 ClassAnalyzer load_tagged_types(SymbolTable& symtab, lldb::SBFrame& frame,
                                 bool ignore_qualified_types) {
   ClassAnalyzer classes(ignore_qualified_types);
 
-  lldb::SBTypeList types = frame.GetModule().GetTypes(lldb::eTypeClassStruct |
-                                                      lldb::eTypeClassClass);
+  lldb::SBTypeList types = frame.GetModule().GetTypes(
+      lldb::eTypeClassStruct | lldb::eTypeClassClass |
+      lldb::eTypeClassEnumeration);
   uint32_t types_size = types.GetSize();
 
   for (uint32_t i = 0; i < types_size; ++i) {
     lldb::SBType type = types.GetTypeAtIndex(i);
-    if (!is_tagged_type(type)) {
-      continue;
+
+    // Structs and classes
+    if (is_tagged_type(type)) {
+      const auto tagged_type = TaggedType(type.GetName());
+      const auto& info = classes.get_class_info(type);
+      for (const auto& field : info.fields()) {
+        if (info.is_unique_field_name(field.name)) {
+          symtab.add_field(tagged_type, field.name, field.type);
+        }
+      }
     }
-    const auto tagged_type = TaggedType(type.GetName());
-    const auto& info = classes.get_class_info(type);
-    for (const auto& field : info.fields()) {
-      if (info.is_unique_field_name(field.name)) {
-        symtab.add_field(tagged_type, field.name, field.type);
+
+    // Enumerations
+    if (type.GetTypeClass() == lldb::eTypeClassEnumeration) {
+      const auto enum_type = EnumType(type.GetName(), is_scoped_enum(type));
+      lldb::SBTypeEnumMemberList members = type.GetEnumMembers();
+      for (uint32_t i = 0; i < members.GetSize(); ++i) {
+        lldb::SBTypeEnumMember member = members.GetTypeEnumMemberAtIndex(i);
+        symtab.add_enum_literal(enum_type, member.GetName());
       }
     }
   }

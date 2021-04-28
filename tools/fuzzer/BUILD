@@ -16,7 +16,7 @@ cc_library(
         "symbol_table.h",
     ],
     deps = [
-        "//lldb-eval:defines",
+        "//lldb-eval",
         "@llvm_project//:lldb-api",
     ],
 )

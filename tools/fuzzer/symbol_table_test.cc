@@ -19,10 +19,12 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "lldb-eval/runner.h"
+#include "lldb-eval/traits.h"
 #include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBProcess.h"
 #include "lldb/API/SBThread.h"
+#include "lldb/API/SBType.h"
 #include "tools/cpp/runfiles/runfiles.h"
 
 using namespace fuzzer;
@@ -37,6 +39,9 @@ static std::string remove_leading_colons(const std::string& name) {
   }
   return name;
 }
+
+const bool kHasScopedEnums =
+    HAS_METHOD(lldb::SBType, IsScopedEnumerationType());
 
 class PopulateSymbolTableTest : public Test {
  protected:
@@ -129,6 +134,17 @@ TEST_F(PopulateSymbolTableTest, Variables) {
   expect_vars(TaggedType("MultiInheritDerived"), {"multi"});
   expect_vars(TaggedType("ClassWithNestedClass"), {"with_nested"});
   expect_vars(TaggedType("NonEmptyDerived"), {"empty_base"});
+  expect_vars(EnumType("CStyleEnum", /*scoped*/ false), {"c_enum"});
+  expect_vars(EnumType("ns::CStyleEnum", /*scoped*/ false), {"ns_enum"});
+  expect_vars(EnumType("EnumClass", kHasScopedEnums), {"enum_class"});
+  expect_vars(EnumType("ns::EnumClass", kHasScopedEnums), {"ns_enum_class"});
+  expect_vars(ArrayType(ArrayType(ScalarType::SignedInt, 3), 3), {"array33"});
+  expect_vars(ArrayType(ArrayType(ScalarType::SignedInt, 3), 2), {"array23"});
+  expect_vars(ArrayType(ArrayType(ScalarType::SignedInt, 2), 3), {"array32"});
+  expect_vars(ArrayType(ArrayType(ScalarType::Float, 3), 2), {"flt_array23"});
+  expect_vars(ArrayType(TaggedType("TestStruct"), 2), {"ts_array"});
+  expect_vars(PointerType(QualifiedType(ArrayType(ScalarType::SignedInt, 3))),
+              {"ptr_to_arr3"});
 
   // Make sure there isn't a type we forgot to check.
   EXPECT_EQ(count_checked_types, symtab_.vars().size());
@@ -145,6 +161,12 @@ TEST_F(PopulateSymbolTableTest, FreedomIndices) {
   freedom_indices["addr_null_char_ptr"] = 1;
   freedom_indices["global_ptr"] = 1;
   freedom_indices["ns::global_ptr"] = 1;
+  freedom_indices["array33"] = 2;
+  freedom_indices["array23"] = 2;
+  freedom_indices["array32"] = 2;
+  freedom_indices["flt_array23"] = 2;
+  freedom_indices["ts_array"] = 1;
+  freedom_indices["ptr_to_arr3"] = 2;
 
   size_t variable_count = 0;
   for (const auto& [type, vars] : symtab_.vars()) {
@@ -163,6 +185,10 @@ namespace fuzzer {
 bool operator==(const Field& lhs, const Field& rhs) {
   return lhs.containing_type() == rhs.containing_type() &&
          lhs.name() == rhs.name();
+}
+
+bool operator==(const EnumConstant& lhs, const EnumConstant& rhs) {
+  return lhs.type() == rhs.type() && lhs.literal() == lhs.literal();
 }
 }  // namespace fuzzer
 
@@ -294,5 +320,57 @@ TEST_F(PopulateSymbolTableTest, TaggedTypesAndFields) {
 
     expect_field(with_nested, "nested", nested);
     expect_field(nested, "f1", ScalarType::SignedInt);
+  }
+}
+
+TEST_F(PopulateSymbolTableTest, Enums) {
+  {
+    const EnumType type("CStyleEnum", false);
+    auto enum_it = symtab_.enums().find(type);
+    ASSERT_NE(enum_it, symtab_.enums().end());
+    const auto& literals = enum_it->second;
+
+    EXPECT_THAT(literals,
+                UnorderedElementsAre(EnumConstant(type, "CStyleEnum::VALUE1"),
+                                     EnumConstant(type, "CStyleEnum::VALUE2"),
+                                     EnumConstant(type, "CStyleEnum::VALUE3")));
+  }
+
+  {
+    const EnumType type("ns::CStyleEnum", false);
+    auto enum_it = symtab_.enums().find(type);
+    ASSERT_NE(enum_it, symtab_.enums().end());
+    const auto& literals = enum_it->second;
+
+    EXPECT_THAT(literals,
+                UnorderedElementsAre(EnumConstant(type, "ns::CStyleEnum::V1"),
+                                     EnumConstant(type, "ns::CStyleEnum::V2"),
+                                     EnumConstant(type, "ns::CStyleEnum::V3")));
+  }
+
+  {
+    const EnumType type("EnumClass", kHasScopedEnums);
+    auto enum_it = symtab_.enums().find(type);
+    ASSERT_NE(enum_it, symtab_.enums().end());
+    const auto& literals = enum_it->second;
+
+    EXPECT_THAT(literals,
+                UnorderedElementsAre(EnumConstant(type, "EnumClass::ZERO"),
+                                     EnumConstant(type, "EnumClass::ONE"),
+                                     EnumConstant(type, "EnumClass::TWO"),
+                                     EnumConstant(type, "EnumClass::THREE")));
+  }
+
+  {
+    const EnumType type("ns::EnumClass", kHasScopedEnums);
+    auto enum_it = symtab_.enums().find(type);
+    ASSERT_NE(enum_it, symtab_.enums().end());
+    const auto& literals = enum_it->second;
+
+    EXPECT_THAT(literals, UnorderedElementsAre(
+                              EnumConstant(type, "ns::EnumClass::ZERO"),
+                              EnumConstant(type, "ns::EnumClass::ONE"),
+                              EnumConstant(type, "ns::EnumClass::TWO"),
+                              EnumConstant(type, "ns::EnumClass::THREE")));
   }
 }
