@@ -805,6 +805,14 @@ void TestCompositeAssignment() {
   // BREAK(TestCompositeAssignmentBitwise)
 }
 
+void TestSideEffects() {
+  int x = 1;
+  int xa[] = {1, 2};
+  int* p = &x;
+
+  // BREAK(TestSideEffects)
+}
+
 namespace test_binary {
 
 void main() {
@@ -843,6 +851,7 @@ void main() {
   TestDereferencedType();
   TestMemberFunctionCall();
   TestCompositeAssignment();
+  TestSideEffects();
 
   // BREAK HERE
 }

@@ -69,28 +69,37 @@ static std::unordered_map<std::string, lldb::SBValue> ConvertToMap(
   return ret;
 }
 
-lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
-                                 lldb::SBError& error) {
-  return EvaluateExpressionImpl(Context::Create(expression, frame), error);
+template <typename T>
+static std::shared_ptr<Context> CreateContext(T frame_or_scope,
+                                              const char* expression,
+                                              Options opts) {
+  auto context = Context::Create(expression, frame_or_scope);
+  if (opts.context_vars.size > 0) {
+    context->SetContextVars(ConvertToMap(opts.context_vars));
+  }
+  context->SetAllowSideEffects(opts.allow_side_effects);
+
+  return context;
 }
 
 lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
-                                 ContextVariableList context_vars,
                                  lldb::SBError& error) {
-  return EvaluateExpressionImpl(
-      Context::Create(expression, frame, ConvertToMap(context_vars)), error);
+  return EvaluateExpression(frame, expression, Options{}, error);
+}
+
+lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
+                                 Options opts, lldb::SBError& error) {
+  return EvaluateExpressionImpl(CreateContext(frame, expression, opts), error);
 }
 
 lldb::SBValue EvaluateExpression(lldb::SBValue scope, const char* expression,
                                  lldb::SBError& error) {
-  return EvaluateExpressionImpl(Context::Create(expression, scope), error);
+  return EvaluateExpression(scope, expression, Options{}, error);
 }
 
 lldb::SBValue EvaluateExpression(lldb::SBValue scope, const char* expression,
-                                 ContextVariableList context_vars,
-                                 lldb::SBError& error) {
-  return EvaluateExpressionImpl(
-      Context::Create(expression, scope, ConvertToMap(context_vars)), error);
+                                 Options opts, lldb::SBError& error) {
+  return EvaluateExpressionImpl(CreateContext(scope, expression, opts), error);
 }
 
 }  // namespace lldb_eval

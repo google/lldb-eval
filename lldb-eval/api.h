@@ -52,14 +52,18 @@ struct ContextVariableList {
   size_t size;
 };
 
+struct Options {
+  bool allow_side_effects = false;
+  ContextVariableList context_vars = {};
+};
+
 LLDB_EVAL_API
 lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
                                  lldb::SBError& error);
 
 LLDB_EVAL_API
 lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
-                                 ContextVariableList context_vars,
-                                 lldb::SBError& error);
+                                 Options opts, lldb::SBError& error);
 
 LLDB_EVAL_API
 lldb::SBValue EvaluateExpression(lldb::SBValue scope, const char* expression,
@@ -67,8 +71,7 @@ lldb::SBValue EvaluateExpression(lldb::SBValue scope, const char* expression,
 
 LLDB_EVAL_API
 lldb::SBValue EvaluateExpression(lldb::SBValue scope, const char* expression,
-                                 ContextVariableList context_vars,
-                                 lldb::SBError& error);
+                                 Options opts, lldb::SBError& error);
 
 }  // namespace lldb_eval
 

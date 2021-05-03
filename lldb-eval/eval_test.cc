@@ -65,19 +65,22 @@ struct EvalResult {
 
 class EvaluatorHelper {
  public:
-  EvaluatorHelper(lldb::SBFrame frame, bool lldb)
-      : frame_(frame), lldb_(lldb) {}
-  EvaluatorHelper(lldb::SBValue scope, bool lldb)
-      : scope_(scope), lldb_(lldb) {}
+  EvaluatorHelper(lldb::SBFrame frame, bool lldb, bool side_effects)
+      : frame_(frame), lldb_(lldb), side_effects_(side_effects) {}
+  EvaluatorHelper(lldb::SBValue scope, bool lldb, bool side_effects)
+      : scope_(scope), lldb_(lldb), side_effects_(side_effects) {}
 
  public:
-  EvalResult Eval(std::string expr) {
+  EvalResult Eval(const std::string& expr) {
     EvalResult ret;
+
+    lldb_eval::Options opts;
+    opts.allow_side_effects = side_effects_;
 
     if (scope_) {
       // Evaluate in the variable context.
-      ret.lldb_eval_value = lldb_eval::EvaluateExpression(scope_, expr.c_str(),
-                                                          ret.lldb_eval_error);
+      ret.lldb_eval_value = lldb_eval::EvaluateExpression(
+          scope_, expr.c_str(), opts, ret.lldb_eval_error);
 
       if (lldb_) {
         ret.lldb_value = scope_.EvaluateExpression(expr.c_str());
@@ -85,8 +88,8 @@ class EvaluatorHelper {
 
     } else {
       // Evaluate in the frame context.
-      ret.lldb_eval_value = lldb_eval::EvaluateExpression(frame_, expr.c_str(),
-                                                          ret.lldb_eval_error);
+      ret.lldb_eval_value = lldb_eval::EvaluateExpression(
+          frame_, expr.c_str(), opts, ret.lldb_eval_error);
 
       if (lldb_) {
         ret.lldb_value = frame_.EvaluateExpression(expr.c_str());
@@ -106,12 +109,15 @@ class EvaluatorHelper {
     for (const auto& [name, value] : vars) {
       ctx_vec.push_back({name.c_str(), value});
     }
-    lldb_eval::ContextVariableList context_vars{ctx_vec.data(), ctx_vec.size()};
+
+    lldb_eval::Options opts;
+    opts.allow_side_effects = side_effects_;
+    opts.context_vars = {ctx_vec.data(), ctx_vec.size()};
 
     if (scope_) {
       // Evaluate in the variable context.
       ret.lldb_eval_value = lldb_eval::EvaluateExpression(
-          scope_, expr.c_str(), context_vars, ret.lldb_eval_error);
+          scope_, expr.c_str(), opts, ret.lldb_eval_error);
 
       if (lldb_) {
         ret.lldb_value = scope_.EvaluateExpression(expr.c_str());
@@ -119,7 +125,7 @@ class EvaluatorHelper {
     } else {
       // Evaluate in the frame context.
       ret.lldb_eval_value = lldb_eval::EvaluateExpression(
-          frame_, expr.c_str(), context_vars, ret.lldb_eval_error);
+          frame_, expr.c_str(), opts, ret.lldb_eval_error);
 
       if (lldb_) {
         ret.lldb_value = frame_.EvaluateExpression(expr.c_str());
@@ -133,6 +139,7 @@ class EvaluatorHelper {
   lldb::SBFrame frame_;
   lldb::SBValue scope_;
   bool lldb_;
+  bool side_effects_;
 };
 
 void PrintError(::testing::MatchResultListener* listener,
@@ -300,21 +307,22 @@ class EvalTest : public ::testing::Test {
     lldb::SBDebugger::Destroy(debugger_);
   }
 
-  EvalResult Eval(std::string expr) {
-    return EvaluatorHelper(frame_, compare_with_lldb_).Eval(std::move(expr));
+  EvalResult Eval(const std::string& expr) {
+    return EvaluatorHelper(frame_, compare_with_lldb_, allow_side_effects_)
+        .Eval(expr);
   }
 
   EvalResult EvalWithContext(
       const std::string& expr,
       const std::unordered_map<std::string, lldb::SBValue>& vars) {
-    return EvaluatorHelper(frame_, compare_with_lldb_)
+    return EvaluatorHelper(frame_, compare_with_lldb_, allow_side_effects_)
         .EvalWithContext(expr, vars);
   }
 
   EvaluatorHelper Scope(std::string scope) {
     // Resolve the scope variable (assume it's a local variable).
     lldb::SBValue scope_var = frame_.FindVariable(scope.c_str());
-    return EvaluatorHelper(scope_var, compare_with_lldb_);
+    return EvaluatorHelper(scope_var, compare_with_lldb_, allow_side_effects_);
   }
 
   bool CreateContextVariable(std::string type, std::string name, bool is_array,
@@ -345,6 +353,9 @@ class EvalTest : public ::testing::Test {
 
   // Evaluate with both lldb-eval and LLDB by default.
   bool compare_with_lldb_ = true;
+
+  // Allow the expressions to have side-effects.
+  bool allow_side_effects_ = false;
 
   // Context variables.
   std::unordered_map<std::string, lldb::SBValue> vars_;
@@ -1417,7 +1428,7 @@ TEST_F(EvalTest, TestValueScope) {
   EXPECT_TRUE(scope_var.IsValid());
   EXPECT_TRUE(error.Success());
 
-  EvaluatorHelper scope(scope_var, true);
+  EvaluatorHelper scope(scope_var, true, false);
   EXPECT_THAT(scope.Eval("this->y_"), IsEqual("2.5"));
   EXPECT_THAT(scope.Eval("(*this).y_"), IsEqual("2.5"));
 
@@ -1432,6 +1443,9 @@ TEST_F(EvalTest, TestValueScope) {
   EXPECT_THAT(
       Eval("(*this)->y_"),
       IsError("invalid use of 'this' outside of a non-static member function"));
+
+  EXPECT_THAT(Scope("var").Eval("this - (test_scope::Value*)this"),
+              IsEqual("0"));
 }
 
 TEST_F(EvalTest, TestBitField) {
@@ -2223,4 +2237,23 @@ TEST_F(EvalTest, TestCompositeAssignmentBitwise) {
   EXPECT_THAT(
       EvalWithContext("$p >> $p", vars_),
       IsError("invalid operands to binary expression ('int *' and 'int *')"));
+}
+
+TEST_F(EvalTest, TestSideEffects) {
+  // Comparing with LLDB is not possible with side effects enabled -- results
+  // will always be different (because the same expression is evaluated twice).
+  this->compare_with_lldb_ = false;
+  this->allow_side_effects_ = true;
+
+  EXPECT_THAT(Eval("x++"), IsEqual("1"));
+  EXPECT_THAT(Eval("x"), IsEqual("2"));
+  EXPECT_THAT(Eval("++x"), IsEqual("3"));
+
+  EXPECT_THAT(Eval("xa[0] = 4"), IsEqual("4"));
+  EXPECT_THAT(Eval("xa[0]"), IsEqual("4"));
+  EXPECT_THAT(Eval("xa[1] += xa[0]"), IsEqual("6"));
+
+  EXPECT_THAT(Eval("*p = 5.2"), IsEqual("5"));
+  EXPECT_THAT(Eval("*p"), IsEqual("5"));
+  EXPECT_THAT(Eval("x"), IsEqual("5"));  // `p` is `&x`
 }

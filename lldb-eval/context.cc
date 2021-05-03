@@ -48,13 +48,18 @@ lldb::SBValue CreateSBValue(lldb::SBTarget target, const void* bytes,
 
 namespace lldb_eval {
 
+void Context::SetContextVars(
+    std::unordered_map<std::string, lldb::SBValue> context_vars) {
+  context_vars_ = std::move(context_vars);
+}
+
+void Context::SetAllowSideEffects(bool allow_side_effects) {
+  allow_side_effects_ = allow_side_effects;
+}
+
 Context::Context(std::string expr, lldb::SBExecutionContext ctx,
-                 lldb::SBValue scope,
-                 std::unordered_map<std::string, lldb::SBValue> context_vars)
-    : expr_(std::move(expr)),
-      ctx_(ctx),
-      scope_(scope),
-      context_vars_(std::move(context_vars)) {
+                 lldb::SBValue scope)
+    : expr_(std::move(expr)), ctx_(std::move(ctx)), scope_(std::move(scope)) {
   // This holds a SourceManager and all of its dependencies.
   smff_ = std::make_unique<clang::SourceManagerForFile>("<expr>", expr_);
 
@@ -221,17 +226,16 @@ bool Context::IsContextVar(const std::string& name) const {
   return context_vars_.find(name) != context_vars_.end();
 }
 
-std::shared_ptr<Context> Context::Create(
-    std::string expr, lldb::SBFrame frame,
-    std::unordered_map<std::string, lldb::SBValue> context_vars) {
-  return std::shared_ptr<Context>(
-      new Context(std::move(expr), lldb::SBExecutionContext(frame),
-                  lldb::SBValue(), std::move(context_vars)));
+bool Context::AllowSideEffects() const { return allow_side_effects_; }
+
+std::shared_ptr<Context> Context::Create(std::string expr,
+                                         lldb::SBFrame frame) {
+  return std::shared_ptr<Context>(new Context(
+      std::move(expr), lldb::SBExecutionContext(frame), lldb::SBValue()));
 }
 
-std::shared_ptr<Context> Context::Create(
-    std::string expr, lldb::SBValue scope,
-    std::unordered_map<std::string, lldb::SBValue> context_vars) {
+std::shared_ptr<Context> Context::Create(std::string expr,
+                                         lldb::SBValue scope) {
   // SBValues created via SBTarget::CreateValueFromData don't have SBFrame
   // associated with them. But they still have a process/target, so use that
   // instead.
@@ -239,7 +243,7 @@ std::shared_ptr<Context> Context::Create(
       std::move(expr),
       lldb::SBExecutionContext(
           scope.GetProcess().GetSelectedThread().GetSelectedFrame()),
-      scope, std::move(context_vars)));
+      scope));
 }
 
 }  // namespace lldb_eval

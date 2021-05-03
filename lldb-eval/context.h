@@ -59,12 +59,8 @@ class Error {
 
 class Context {
  public:
-  static std::shared_ptr<Context> Create(
-      std::string expr, lldb::SBFrame frame,
-      std::unordered_map<std::string, lldb::SBValue> context_vars = {});
-  static std::shared_ptr<Context> Create(
-      std::string expr, lldb::SBValue scope,
-      std::unordered_map<std::string, lldb::SBValue> context_vars = {});
+  static std::shared_ptr<Context> Create(std::string expr, lldb::SBFrame frame);
+  static std::shared_ptr<Context> Create(std::string expr, lldb::SBValue scope);
 
   // This class cannot be safely moved because of the dependency between `expr_`
   // and `smff_`. Users are supposed to pass around the shared pointer.
@@ -75,14 +71,18 @@ class Context {
   clang::SourceManager& GetSourceManager() const { return smff_->get(); }
   lldb::SBExecutionContext GetExecutionContext() const { return ctx_; }
 
+  void SetContextVars(
+      std::unordered_map<std::string, lldb::SBValue> context_vars);
+  void SetAllowSideEffects(bool allow_side_effects);
+
  public:
   lldb::SBType ResolveTypeByName(const std::string& name) const;
   lldb::SBValue LookupIdentifier(const std::string& name) const;
   bool IsContextVar(const std::string& name) const;
+  bool AllowSideEffects() const;
 
  private:
-  Context(std::string expr, lldb::SBExecutionContext ctx, lldb::SBValue scope,
-          std::unordered_map<std::string, lldb::SBValue> context_vars);
+  Context(std::string expr, lldb::SBExecutionContext ctx, lldb::SBValue scope);
 
  public:
   // Store the expression, since SourceManager doesn't take the ownership.
@@ -101,6 +101,9 @@ class Context {
 
   // Context variables used for identifier lookup.
   std::unordered_map<std::string, lldb::SBValue> context_vars_;
+
+  // Whether side effects should be allowed.
+  bool allow_side_effects_;
 };
 
 }  // namespace lldb_eval

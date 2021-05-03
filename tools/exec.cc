@@ -38,12 +38,19 @@ int64_t timer(std::function<void()> func) {
   return total.count();
 }
 
+const char* maybe_null(const char* str) {
+  return str == nullptr ? "NULL" : str;
+};
+
 void EvalExpr(lldb::SBFrame frame, const std::string& expr) {
   lldb::SBError error;
   lldb::SBValue value;
 
+  lldb_eval::Options opts;
+  opts.allow_side_effects = true;
+
   auto elapsed = timer([&]() {
-    value = lldb_eval::EvaluateExpression(frame, expr.c_str(), error);
+    value = lldb_eval::EvaluateExpression(frame, expr.c_str(), opts, error);
   });
 
   if (error.GetError()) {
@@ -52,7 +59,7 @@ void EvalExpr(lldb::SBFrame frame, const std::string& expr) {
     // Due to various bugs result can still be NULL even though there was no
     // error reported. Printing NULL leads to segfault, so check and replace it.
     if (value.IsValid()) {
-      std::cerr << "value = " << value.GetValue() << std::endl;
+      std::cerr << "value = " << maybe_null(value.GetValue()) << std::endl;
       std::cerr << "type  = " << value.GetTypeName() << std::endl;
     } else {
       std::cerr << "Unknown error, result is invalid." << std::endl;
@@ -79,7 +86,7 @@ void EvalExprLLDB(lldb::SBFrame frame, const std::string& expr) {
   if (error.GetError()) {
     std::cerr << error.GetCString() << std::endl;
   } else {
-    std::cerr << "value = " << value.GetValue() << std::endl;
+    std::cerr << "value = " << maybe_null(value.GetValue()) << std::endl;
     std::cerr << "type  = " << value.GetTypeName() << std::endl;
   }
 

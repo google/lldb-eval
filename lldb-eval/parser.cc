@@ -2275,8 +2275,8 @@ ExprResult Parser::BuildIncrementDecrement(UnaryOpKind kind, ExprResult rhs,
             llvm::formatv("expression is not assignable"), location);
     return std::make_unique<ErrorNode>();
   }
-  if (!rhs->is_context_var()) {
-    BailOut(ErrorCode::kNotImplemented,
+  if (!rhs->is_context_var() && !ctx_->AllowSideEffects()) {
+    BailOut(ErrorCode::kInvalidOperandType,
             llvm::formatv("side effects are not supported in this context: "
                           "trying to modify data at the target process"),
             location);
@@ -2772,8 +2772,8 @@ lldb::SBType Parser::PrepareCompositeAssignment(
             llvm::formatv("expression is not assignable"), location);
     return kInvalidType;
   }
-  if (!lhs->is_context_var()) {
-    BailOut(ErrorCode::kNotImplemented,
+  if (!lhs->is_context_var() && !ctx_->AllowSideEffects()) {
+    BailOut(ErrorCode::kInvalidOperandType,
             llvm::formatv("side effects are not supported in this context: "
                           "trying to modify data at the target process"),
             location);
