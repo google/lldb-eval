@@ -40,7 +40,7 @@ int64_t timer(std::function<void()> func) {
 
 const char* maybe_null(const char* str) {
   return str == nullptr ? "NULL" : str;
-};
+}
 
 void EvalExpr(lldb::SBFrame frame, const std::string& expr) {
   lldb::SBError error;
