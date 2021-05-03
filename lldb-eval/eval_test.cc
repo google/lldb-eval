@@ -838,6 +838,10 @@ TEST_F(EvalTest, TestMemberOf) {
   EXPECT_THAT(Eval("sp->x"), IsEqual("1"));
   EXPECT_THAT(Eval("sp->r"), IsEqual("2"));
   EXPECT_THAT(Eval("sp->r + 1"), IsEqual("3"));
+  EXPECT_THAT(Eval("sarr->x"), IsEqual("5"));
+  EXPECT_THAT(Eval("sarr->r"), IsEqual("2"));
+  EXPECT_THAT(Eval("sarr->r + 1"), IsEqual("3"));
+  EXPECT_THAT(Eval("(sarr + 1)->x"), IsEqual("1"));
 
   EXPECT_THAT(
       Eval("sp->4"),
@@ -849,6 +853,13 @@ TEST_F(EvalTest, TestMemberOf) {
   EXPECT_THAT(
       Eval("sp->r / (void*)0"),
       IsError("invalid operands to binary expression ('int' and 'void *')"));
+
+  EXPECT_THAT(Eval("sp.x"), IsError("member reference type 'Sx *' is a "
+                                    "pointer; did you mean to use '->'"));
+  EXPECT_THAT(
+      Eval("sarr.x"),
+      IsError(
+          "member reference base type 'Sx [2]' is not a structure or union"));
 
   // Test for record typedefs.
   EXPECT_THAT(Eval("sa.x"), IsEqual("3"));

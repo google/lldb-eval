@@ -2893,7 +2893,7 @@ ExprResult Parser::BuildMemberOf(ExprResult lhs, std::string member_id,
   if (is_arrow) {
     // "member of pointer" operator, check that LHS is a pointer and
     // dereference it.
-    if (!lhs_type.IsPointerType()) {
+    if (!lhs_type.IsPointerType() && !lhs_type.IsArrayType()) {
       BailOut(ErrorCode::kInvalidOperandType,
               llvm::formatv("member reference type '{0}' is not a pointer; did "
                             "you mean to use '.'?",
@@ -2901,7 +2901,11 @@ ExprResult Parser::BuildMemberOf(ExprResult lhs, std::string member_id,
               location);
       return std::make_unique<ErrorNode>();
     }
-    lhs_type = lhs_type.GetPointeeType();
+    if (lhs_type.IsPointerType()) {
+      lhs_type = lhs_type.GetPointeeType();
+    } else {
+      lhs_type = lhs_type.GetArrayElementType();
+    }
 
   } else {
     // "member of object" operator, check that LHS is an object.

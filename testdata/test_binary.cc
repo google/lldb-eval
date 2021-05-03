@@ -133,6 +133,8 @@ static void TestMemberOf() {
   Sx& sr = s;
   Sx* sp = &s;
 
+  Sx sarr[2] = {{5, x, 2}, {1, x, 3}};
+
   using SxAlias = Sx;
   SxAlias sa{3, x, 4};
 
