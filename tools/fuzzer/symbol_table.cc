@@ -210,8 +210,7 @@ int calculate_freedom_index(lldb::SBValue value,
         static_cast<lldb::addr_t>(value.AddressOf().GetValueAsUnsigned());
     if (is_valid_address(address, memory_regions)) {
       // The first array element.
-      lldb::SBValue element_value = value.CreateValueFromAddress(
-          "value", address, type.GetArrayElementType());
+      lldb::SBValue element_value = value.GetChildAtIndex(0);
       return 1 + calculate_freedom_index(element_value, memory_regions);
     }
   }
