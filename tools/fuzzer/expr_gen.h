@@ -220,7 +220,7 @@ class GeneratorRng {
   virtual ArrayType pick_array_type(
       const std::vector<std::reference_wrapper<const ArrayType>>& types) = 0;
 
-  virtual void set_rng_callback(std::function<void(rand_t)> callback) {}
+  virtual void set_rng_callback(std::function<void(rand_t)>) {}
 };
 
 template <class Rng>
