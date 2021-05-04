@@ -392,7 +392,7 @@ ClassAnalyzer load_tagged_types(SymbolTable& symtab, lldb::SBFrame& frame,
   for (uint32_t i = 0; i < types_size; ++i) {
     lldb::SBType type = types.GetTypeAtIndex(i);
 
-    // Structs and classes
+    // Structs and classes.
     if (is_tagged_type(type)) {
       const auto tagged_type = TaggedType(type.GetName());
       const auto& info = classes.get_class_info(type);
@@ -403,7 +403,7 @@ ClassAnalyzer load_tagged_types(SymbolTable& symtab, lldb::SBFrame& frame,
       }
     }
 
-    // Enumerations
+    // Enumerations.
     if (type.GetTypeClass() == lldb::eTypeClassEnumeration) {
       const auto enum_type = EnumType(type.GetName(), is_scoped_enum(type));
       lldb::SBTypeEnumMemberList members = type.GetEnumMembers();
