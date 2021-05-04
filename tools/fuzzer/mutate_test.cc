@@ -38,22 +38,6 @@ using namespace fuzzer;
 using namespace testing;
 using bazel::tools::cpp::runfiles::Runfiles;
 
-// Random number generator over fixed number sequence.
-class FixedRng : public BaseRng {
- public:
-  explicit FixedRng(std::queue<rand_t>* q) : queue_(q) {}
-
-  BaseRng::result_type operator()() {
-    assert(!queue_->empty());
-    auto value = queue_->front();
-    queue_->pop();
-    return consume(value);
-  }
-
- private:
-  std::queue<rand_t>* queue_;
-};
-
 // Generation tree visitor used to randomly pick nodes.
 class GenNodePicker : public GenTreeVisitor {
  public:
@@ -153,8 +137,8 @@ TEST(MutateTest, MutateMultipleTimes) {
 
   // Create a random expression generator.
   ExprGenerator random_generator(
-      std::make_unique<DefaultGeneratorRng>(std::make_unique<Mt19937>(1337)),
-      cfg, symtab);
+      std::make_unique<DefaultGeneratorRng<Mt19937>>(Mt19937(1337)), cfg,
+      symtab);
 
   // Create an initial expression.
   std::optional<Expr> maybe_expr;
@@ -166,30 +150,27 @@ TEST(MutateTest, MutateMultipleTimes) {
   std::shared_ptr<GenNode> root = random_generator.node();
 
   // Rng used for randomly selecting gen-nodes for mutation.
-  std::mt19937 rng(1337);
+  std::mt19937 rng(12345);
 
   // Perform mutation multiple times.
-  for (int i = 0; i < 2000; ++i) {
+  for (int i = 0; i < 500; ++i) {
     // Pick a random node.
     std::shared_ptr<GenNode> to_be_mutated = pick_random_node(root, rng);
     ASSERT_NE(to_be_mutated, nullptr);
 
     // Re-evaluate the node.
-    to_be_mutated->mutate(&random_generator);
+    random_generator.mutate_gen_node(to_be_mutated);
 
     // Construct expression generator over the fixed rng sequence.
     std::queue<rand_t> rng_sequence = make_rng_sequence(root);
     ExprGenerator fixed_generator(
-        std::make_unique<DefaultGeneratorRng>(
-            std::make_unique<FixedRng>(&rng_sequence)),
+        std::make_unique<DefaultGeneratorRng<FixedRng>>(
+            FixedRng(std::move(rng_sequence))),
         cfg, symtab);
 
     // Fixed expression generator should be able to generate an expression.
     maybe_expr = fixed_generator.generate();
     ASSERT_NE(maybe_expr, std::nullopt);
-
-    // All random values should be used.
-    ASSERT_TRUE(rng_sequence.empty());
 
     // Compare mutated root gen-node with the root gen-node obtained by running
     // the expression generator over the fixed random sequence.

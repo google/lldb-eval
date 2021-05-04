@@ -220,13 +220,13 @@ class GeneratorRng {
   virtual ArrayType pick_array_type(
       const std::vector<std::reference_wrapper<const ArrayType>>& types) = 0;
 
-  virtual void set_rng_listener(BaseRng::Listener*) {}
+  virtual void set_rng_callback(std::function<void(rand_t)> callback) {}
 };
 
+template <class Rng>
 class DefaultGeneratorRng : public GeneratorRng {
  public:
-  explicit DefaultGeneratorRng(std::unique_ptr<BaseRng> rng)
-      : rng_(std::move(rng)) {}
+  explicit DefaultGeneratorRng(Rng rng) : rng_(std::move(rng)) {}
 
   BinOp gen_bin_op(BinOpMask mask) override;
   UnOp gen_un_op(UnOpMask mask) override;
@@ -268,25 +268,23 @@ class DefaultGeneratorRng : public GeneratorRng {
       const std::vector<std::reference_wrapper<const ArrayType>>& types)
       override;
 
-  void set_rng_listener(BaseRng::Listener* listener) override {
-    rng_->set_listener(listener);
+  void set_rng_callback(std::function<void(rand_t)> callback) override {
+    rng_.set_callback(std::move(callback));
   }
 
  private:
-  std::unique_ptr<BaseRng> rng_;
+  Rng rng_;
 };
 
-class ExprGenerator : public BaseRng::Listener {
+class ExprGenerator {
  public:
   ExprGenerator(std::unique_ptr<GeneratorRng> rng, GenConfig cfg,
                 SymbolTable symtab)
       : rng_(std::move(rng)), cfg_(std::move(cfg)), symtab_(std::move(symtab)) {
-    rng_->set_rng_listener(this);
+    rng_->set_rng_callback([this](rand_t value) { on_consume_random(value); });
   }
 
-  // Copying and moving isn't possible right now. Defaults don't work because of
-  // `rng_->set_rng_listener(this)` set in the constructor above (`this` will
-  // refer to the old object).
+  // Copying and moving isn't possible right now.
   // TODO: Implement copy/move constructors/assignments if needed.
   ExprGenerator(const ExprGenerator&) = delete;
   ExprGenerator(ExprGenerator&&) = delete;
@@ -294,6 +292,11 @@ class ExprGenerator : public BaseRng::Listener {
   ExprGenerator& operator=(ExprGenerator&&) = delete;
 
   std::optional<Expr> generate();
+
+  // Re-evaluates a method, resulting with a different subtree.
+  // Changes are applied only if the node is valid and the re-evaluation results
+  // with a valid expression.
+  bool mutate_gen_node(std::shared_ptr<GenNode>& node);
 
   // Method generation node. Note that this represents the last call to a
   // expression generation method and will be rewritten after each such call.
@@ -365,12 +368,14 @@ class ExprGenerator : public BaseRng::Listener {
       const Weights& weights, const ExprConstraints& constraints);
   std::optional<Expr> gen_function_call_expr_impl(
       const Weights& weights, const ExprConstraints& constraints);
+  std::optional<Expr> gen_sizeof_expr_impl(const Weights& weights,
+                                           const ExprConstraints& constraints);
   std::optional<Expr> gen_with_weights_impl(const Weights& weights,
                                             const ExprConstraints& constraints);
 
   // Generates an expression using the `callback` method and constructs a
   // generation node on top of the `stack_`.
-  std::optional<Expr> gen_expr(const GenerateMutateFn& callback,
+  std::optional<Expr> gen_expr(const GenerateExprFn& callback,
                                std::string name);
 
   std::optional<Type> gen_type(const Weights& weights,
@@ -389,8 +394,7 @@ class ExprGenerator : public BaseRng::Listener {
   std::optional<Type> gen_array_type(const TypeConstraints& constraints);
   CvQualifiers gen_cv_qualifiers();
 
-  // BaseRng::Listener:
-  void on_consume_random(rand_t value) override;
+  void on_consume_random(rand_t value);
 
  private:
   std::unique_ptr<GeneratorRng> rng_;

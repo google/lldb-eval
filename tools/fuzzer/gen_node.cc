@@ -23,23 +23,6 @@
 
 namespace fuzzer {
 
-bool GenNode::mutate(ExprGenerator* generator) {
-  // Don't mutate invalid nodes.
-  if (!valid_) {
-    return false;
-  }
-
-  callback_(generator, /*mutate*/ true);
-
-  auto mutated_node = generator->node();
-  if (mutated_node->is_valid()) {
-    children_.swap(mutated_node->children_);
-    return true;
-  }
-
-  return false;
-}
-
 void walk_gen_tree(std::shared_ptr<GenNode> node, GenTreeVisitor* visitor) {
   visitor->visit_node(node);
   for (auto child : node->children()) {

@@ -28,13 +28,11 @@
 
 namespace fuzzer {
 
-struct GenConfig;
 class GenNode;
 class ExprGenerator;
 
 using GenNodeOrRand = std::variant<std::shared_ptr<GenNode>, rand_t>;
-using GenerateMutateFn =
-    std::function<std::optional<Expr>(ExprGenerator*, bool /*mutate*/)>;
+using GenerateExprFn = std::function<std::optional<Expr>(ExprGenerator*)>;
 
 // A node that represents one expression generation method of `ExprGenerator`
 // class (e.g. `gen_integer_constant`, `gen_binary_expr`, `gen_with_weights`,
@@ -42,7 +40,7 @@ using GenerateMutateFn =
 // these nodes represents a call hierarchy starting from the root method.
 class GenNode {
  public:
-  GenNode(std::string name, GenerateMutateFn callback)
+  GenNode(std::string name, GenerateExprFn callback)
       : name_(std::move(name)), callback_(std::move(callback)) {}
 
   // Name of the method (e.g. "fuzzer::ExprGenerator::gen_binary_expr").
@@ -56,18 +54,11 @@ class GenNode {
   // Does the method result with a valid expression or a `std::nullopt`?
   bool is_valid() const { return valid_; }
 
-  void add_child(GenNodeOrRand child) { children_.push_back(child); }
-
-  void set_valid(bool valid) { valid_ = valid; }
-
-  // Re-evaluates the method, resulting with a different subtree.
-  // Changes are applied only if the node is valid and the re-evaluation results
-  // with a valid expression.
-  bool mutate(ExprGenerator* generator);
-
  private:
+  friend class ExprGenerator;
+
   std::string name_;
-  GenerateMutateFn callback_;  // Callback for re-evaluating the method.
+  GenerateExprFn callback_;  // Callback for re-evaluating the method.
   bool valid_ = false;
   std::vector<GenNodeOrRand> children_;
 };
