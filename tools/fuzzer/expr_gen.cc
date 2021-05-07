@@ -247,8 +247,8 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
   while (mask.any()) {
     auto op = rng_->gen_bin_op(mask);
 
-    SpecificTypes lhs_types;
-    SpecificTypes rhs_types;
+    TypeConstraints lhs_types;
+    TypeConstraints rhs_types;
 
     switch (op) {
       case BinOp::Mult:
@@ -269,8 +269,8 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
 
       case BinOp::LogicalAnd:
       case BinOp::LogicalOr:
-        lhs_types = SpecificTypes::all_in_bool_ctx();
-        rhs_types = SpecificTypes::all_in_bool_ctx();
+        lhs_types = TypeConstraints::all_in_bool_ctx();
+        rhs_types = TypeConstraints::all_in_bool_ctx();
         break;
 
       case BinOp::Eq:
@@ -287,14 +287,14 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
         bool gen_ptr_or_enum =
             rng_->gen_binop_ptr_or_enum(cfg_.binop_gen_ptr_or_enum_prob);
         if (gen_ptr_or_enum) {
-          SpecificTypes types = SpecificTypes::all_in_pointer_ctx();
+          TypeConstraints types = TypeConstraints::all_in_pointer_ctx();
           types.allow_scoped_enums();
           auto maybe_type =
               gen_type(weights, types, /*allow_array_types*/ true);
           if (maybe_type.has_value()) {
             const auto& type = maybe_type.value();
-            lhs_types = SpecificTypes(type);
-            rhs_types = SpecificTypes(type);
+            lhs_types = TypeConstraints(type);
+            rhs_types = TypeConstraints(type);
 
             // `nullptr` is only allowed with equality and ineqality operators.
             if (op != BinOp::Eq && op != BinOp::Ne) {
@@ -308,7 +308,7 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
       case BinOp::Plus:
       case BinOp::Minus: {
         bool allows_scalars = default_type_mask.any();
-        bool allows_pointers = type_constraints.allows_pointer();
+        bool allows_pointers = type_constraints.allows_non_void_pointer();
 
         if (allows_scalars && allows_pointers) {
           if (rng_->gen_binop_ptr_expr(cfg_.binop_gen_ptr_expr_prob)) {
@@ -342,7 +342,7 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
             continue;
           }
 
-          lhs_types = SpecificTypes(type);
+          lhs_types = TypeConstraints(type);
           rhs_types = INT_TYPES;
 
           if (op == BinOp::Plus &&
@@ -371,8 +371,8 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
               continue;
             }
 
-            lhs_types = SpecificTypes(type);
-            rhs_types = SpecificTypes(type);
+            lhs_types = TypeConstraints(type);
+            rhs_types = TypeConstraints(type);
           } else {
             lhs_types = default_type_mask;
             rhs_types = default_type_mask;
@@ -394,17 +394,14 @@ std::optional<Expr> ExprGenerator::gen_binary_expr(
       rhs_types.allow_unscoped_enums();
     }
 
-    TypeConstraints lhs_constraints = std::move(lhs_types);
-    TypeConstraints rhs_constraints = std::move(rhs_types);
-
-    auto maybe_lhs = gen_with_weights(weights, std::move(lhs_constraints));
+    auto maybe_lhs = gen_with_weights(weights, std::move(lhs_types));
     if (!maybe_lhs.has_value()) {
       mask[op] = false;
       continue;
     }
     Expr lhs = std::move(maybe_lhs.value());
 
-    auto maybe_rhs = gen_with_weights(weights, std::move(rhs_constraints));
+    auto maybe_rhs = gen_with_weights(weights, std::move(rhs_types));
     if (!maybe_rhs.has_value()) {
       mask[op] = false;
       continue;
@@ -442,7 +439,7 @@ std::optional<Expr> ExprGenerator::gen_unary_expr(
   while (mask.any()) {
     auto op = (UnOp)rng_->gen_un_op(mask);
 
-    SpecificTypes expr_types;
+    TypeConstraints expr_types;
     switch (op) {
       case UnOp::Plus:
       case UnOp::Neg:
@@ -454,7 +451,7 @@ std::optional<Expr> ExprGenerator::gen_unary_expr(
         break;
 
       case UnOp::LogicalNot:
-        expr_types = SpecificTypes::all_in_bool_ctx();
+        expr_types = TypeConstraints::all_in_bool_ctx();
         break;
 
       default:
@@ -463,8 +460,7 @@ std::optional<Expr> ExprGenerator::gen_unary_expr(
             "operator?");
     }
 
-    auto maybe_expr =
-        gen_with_weights(weights, TypeConstraints(std::move(expr_types)));
+    auto maybe_expr = gen_with_weights(weights, std::move(expr_types));
     if (!maybe_expr.has_value()) {
       mask[op] = false;
       continue;
@@ -483,8 +479,8 @@ std::optional<Expr> ExprGenerator::gen_unary_expr(
 
 std::optional<Expr> ExprGenerator::gen_ternary_expr(
     const Weights& weights, const ExprConstraints& constraints) {
-  auto maybe_cond = gen_with_weights(
-      weights, TypeConstraints(SpecificTypes::all_in_bool_ctx()));
+  auto maybe_cond =
+      gen_with_weights(weights, TypeConstraints::all_in_bool_ctx());
   if (!maybe_cond.has_value()) {
     return {};
   }
@@ -502,7 +498,7 @@ std::optional<Expr> ExprGenerator::gen_ternary_expr(
 
   if (constraints.must_be_lvalue()) {
     lhs_constraints =
-        ExprConstraints(SpecificTypes(type), constraints.memory_constraints(),
+        ExprConstraints(TypeConstraints(type), constraints.memory_constraints(),
                         ExprCategory::Lvalue);
     rhs_constraints = lhs_constraints;
   } else if (std::holds_alternative<ScalarType>(type)) {
@@ -511,7 +507,7 @@ std::optional<Expr> ExprGenerator::gen_ternary_expr(
       mask |= FLOAT_TYPES;
     }
 
-    SpecificTypes allowed_types = mask;
+    TypeConstraints allowed_types = mask;
     if (allowed_types.allows_any_of(INT_TYPES)) {
       allowed_types.allow_unscoped_enums();
     }
@@ -520,9 +516,9 @@ std::optional<Expr> ExprGenerator::gen_ternary_expr(
         ExprConstraints(allowed_types, constraints.memory_constraints());
     rhs_constraints = lhs_constraints;
   } else {
-    SpecificTypes allowed_types(type);
-    lhs_constraints = ExprConstraints(TypeConstraints(allowed_types),
-                                      constraints.memory_constraints());
+    TypeConstraints allowed_types(type);
+    lhs_constraints =
+        ExprConstraints(allowed_types, constraints.memory_constraints());
     if (std::holds_alternative<PointerType>(type) ||
         std::holds_alternative<NullptrType>(type)) {
       // Disallow `0` literal in pointer context in one child expression. This
@@ -530,8 +526,8 @@ std::optional<Expr> ExprGenerator::gen_ternary_expr(
       // `static_cast<int*>(cond ? 0 : 0)`.
       allowed_types.disallow_literal_zero();
     }
-    rhs_constraints = ExprConstraints(TypeConstraints(allowed_types),
-                                      constraints.memory_constraints());
+    rhs_constraints =
+        ExprConstraints(allowed_types, constraints.memory_constraints());
     if (rng_->gen_binop_flip_operands(cfg_.binop_flip_operands_prob)) {
       std::swap(lhs_constraints, rhs_constraints);
     }
@@ -577,17 +573,17 @@ std::optional<Expr> ExprGenerator::gen_cast_expr(
   }
 
   while (mask.any()) {
-    SpecificTypes expr_types;
+    TypeConstraints expr_types;
     auto kind = rng_->gen_cast_kind(mask);
     switch (kind) {
       case CastExpr::Kind::CStyleCast:
-        expr_types = SpecificTypes::cast_to(type);
+        expr_types = TypeConstraints::cast_to(type);
         break;
       case CastExpr::Kind::StaticCast:
-        expr_types = SpecificTypes::static_cast_to(type);
+        expr_types = TypeConstraints::static_cast_to(type);
         break;
       case CastExpr::Kind::ReinterpretCast:
-        expr_types = SpecificTypes::reinterpret_cast_to(type);
+        expr_types = TypeConstraints::reinterpret_cast_to(type);
         break;
     }
 
@@ -675,7 +671,7 @@ std::optional<Expr> ExprGenerator::gen_member_of_expr(
 
   Field field = rng_->pick_field(fields);
   ExprConstraints new_constraints = ExprConstraints(
-      SpecificTypes(field.containing_type()),
+      TypeConstraints(field.containing_type()),
       memory_constraints.from_member_of(constraints.must_be_lvalue(), 0));
   auto maybe_expr = gen_with_weights(weights, std::move(new_constraints));
   if (!maybe_expr.has_value()) {
@@ -714,7 +710,7 @@ std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr(
   }
 
   Field field = rng_->pick_field(fields);
-  TypeConstraints new_type_constraints = SpecificTypes(field.containing_type());
+  TypeConstraints new_type_constraints(field.containing_type());
   ExprConstraints new_constraints = ExprConstraints(
       new_type_constraints.make_pointer_constraints(),
       memory_constraints.from_member_of(constraints.must_be_lvalue(), 1));
@@ -760,9 +756,8 @@ std::optional<Expr> ExprGenerator::gen_array_index_expr(
         array_type->size(), IntegerConstant::Base::Dec,
         IntegerConstant::Length::Int, IntegerConstant::Signedness::Unsigned);
 
-    TypeConstraints lhs_constraints =
-        SpecificTypes(std::move(maybe_type.value()));
-    TypeConstraints rhs_constraints = SpecificTypes(INT_TYPES);
+    TypeConstraints lhs_constraints(std::move(maybe_type.value()));
+    TypeConstraints rhs_constraints = INT_TYPES;
 
     bool flip_operands =
         rng_->gen_binop_flip_operands(cfg_.binop_flip_operands_prob);
@@ -791,7 +786,7 @@ std::optional<Expr> ExprGenerator::gen_array_index_expr(
 
     TypeConstraints lhs_constraints =
         constraints.type_constraints().make_pointer_constraints();
-    TypeConstraints rhs_constraints = SpecificTypes(INT_TYPES);
+    TypeConstraints rhs_constraints = INT_TYPES;
 
     if (rng_->gen_binop_flip_operands(cfg_.binop_flip_operands_prob)) {
       std::swap(lhs_constraints, rhs_constraints);
@@ -861,7 +856,7 @@ std::optional<Expr> ExprGenerator::gen_function_call_expr(
   std::vector<std::shared_ptr<Expr>> args;
   for (const auto& argument_type : function.argument_types()) {
     TypeConstraints allowed_types =
-        SpecificTypes::implicit_cast_to(argument_type);
+        TypeConstraints::implicit_cast_to(argument_type);
     auto maybe_expr = gen_with_weights(weights, std::move(allowed_types));
     if (!maybe_expr.has_value()) {
       return {};
@@ -886,7 +881,7 @@ std::optional<Expr> ExprGenerator::gen_sizeof_expr(
     // explicitly specifying `struct` or `class` keyword, e.g.
     // `sizeof(struct StructType)`. Because of that, we limit generation of
     // types only to pointers, scalar types and unscoped enums.
-    SpecificTypes types = SpecificTypes::all_in_pointer_ctx();
+    TypeConstraints types = TypeConstraints::all_in_pointer_ctx();
     types.allow_scalar_types(INT_TYPES | FLOAT_TYPES);
     types.allow_unscoped_enums();
     auto maybe_type = gen_type(weights, types);
@@ -896,7 +891,7 @@ std::optional<Expr> ExprGenerator::gen_sizeof_expr(
     return SizeofExpr(std::move(maybe_type.value()));
   }
 
-  auto maybe_expr = gen_with_weights(weights, TypeConstraints(AnyType()));
+  auto maybe_expr = gen_with_weights(weights, TypeConstraints::all());
   if (!maybe_expr.has_value()) {
     return {};
   }
@@ -1049,7 +1044,7 @@ std::optional<Type> ExprGenerator::gen_type(
   if (!type_constraints.allows_tagged_types()) {
     mask[TypeKind::TaggedType] = false;
   }
-  if (!type_constraints.allows_pointer()) {
+  if (!type_constraints.allows_non_void_pointer()) {
     mask[TypeKind::PointerType] = false;
   }
   if (!type_constraints.allows_void_pointer()) {
@@ -1129,7 +1124,8 @@ std::optional<QualifiedType> ExprGenerator::gen_qualified_type(
 std::optional<Type> ExprGenerator::gen_pointer_type(
     const Weights& weights, const TypeConstraints& constraints,
     bool allow_array_types) {
-  if (!constraints.allows_pointer() && !constraints.allows_void_pointer()) {
+  if (!constraints.allows_non_void_pointer() &&
+      !constraints.allows_void_pointer()) {
     return {};
   }
 
@@ -1157,12 +1153,20 @@ std::optional<Type> ExprGenerator::gen_tagged_type(
     return {};
   }
 
-  const auto* constraint_tagged_types = constraints.allowed_tagged_types();
-  const auto& tagged_type_set = constraint_tagged_types != nullptr
-                                    ? *constraint_tagged_types
-                                    : symtab_.tagged_types();
-  std::vector<std::reference_wrapper<const TaggedType>> tagged_types(
-      tagged_type_set.begin(), tagged_type_set.end());
+  std::vector<std::reference_wrapper<const TaggedType>> tagged_types;
+
+  const auto& allowed_types = constraints.allowed_tagged_types();
+
+  const auto* tagged_type = std::get_if<TaggedType>(&allowed_types);
+  if (tagged_type != nullptr) {
+    tagged_types.push_back(*tagged_type);
+  }
+
+  if (std::holds_alternative<AnyType>(allowed_types)) {
+    std::vector<std::reference_wrapper<const TaggedType>> tt(
+        symtab_.tagged_types().begin(), symtab_.tagged_types().end());
+    tagged_types = tt;
+  }
 
   return rng_->pick_tagged_type(tagged_types);
 }
@@ -1232,10 +1236,10 @@ std::optional<Expr> ExprGenerator::generate() {
     type_weights[i] = cfg_.type_kind_weights[i].initial_weight;
   }
 
-  auto allowed_types = SpecificTypes::all_in_bool_ctx();
+  auto allowed_types = TypeConstraints::all_in_bool_ctx();
   allowed_types.allow_scoped_enums();
 
-  return gen_with_weights(weights, TypeConstraints(allowed_types));
+  return gen_with_weights(weights, allowed_types);
 }
 
 template <typename Enum, typename Rng>

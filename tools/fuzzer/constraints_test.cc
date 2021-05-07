@@ -22,13 +22,10 @@ using namespace fuzzer;
 using namespace testing;
 
 TEST(Constraints, ScalarValues) {
-  SpecificTypes float_only = FLOAT_TYPES;
-  SpecificTypes int_only = INT_TYPES;
+  TypeConstraints float_only = FLOAT_TYPES;
+  TypeConstraints int_only = INT_TYPES;
 
-  TypeConstraints float_constraints = float_only;
-  TypeConstraints int_constraints = int_only;
-
-  TypeConstraints any = AnyType();
+  TypeConstraints any = TypeConstraints::all();
   TypeConstraints none;
 
   PointerType void_ptr_type{QualifiedType(ScalarType::Void)};
@@ -42,8 +39,8 @@ TEST(Constraints, ScalarValues) {
   EXPECT_THAT(float_only.allows_any_of(ScalarType::SignedInt), IsFalse());
   EXPECT_THAT(float_only.allows_any_of(ScalarType::UnsignedLong), IsFalse());
 
-  EXPECT_THAT(int_only.allowed_tagged_types(), IsEmpty());
-  EXPECT_THAT(float_only.allowed_tagged_types(), IsEmpty());
+  // EXPECT_THAT(int_only.allowed_tagged_types(), IsEmpty());
+  // EXPECT_THAT(float_only.allowed_tagged_types(), IsEmpty());
 
   EXPECT_THAT(int_only.allows_non_void_pointer(), IsFalse());
   EXPECT_THAT(float_only.allows_non_void_pointer(), IsFalse());
@@ -60,15 +57,15 @@ TEST(Constraints, ScalarValues) {
   EXPECT_THAT(int_only.allows_any_of(ScalarType::SignedInt), IsTrue());
   EXPECT_THAT(int_only.allows_any_of(ScalarType::UnsignedLong), IsTrue());
 
-  EXPECT_THAT(float_constraints.allows_type(ScalarType::Float), IsTrue());
-  EXPECT_THAT(float_constraints.allows_type(ScalarType::SignedInt), IsFalse());
-  EXPECT_THAT(float_constraints.allows_type(TaggedType("Test")), IsFalse());
-  EXPECT_THAT(float_constraints.allows_type(void_ptr_type), IsFalse());
+  EXPECT_THAT(float_only.allows_type(ScalarType::Float), IsTrue());
+  EXPECT_THAT(float_only.allows_type(ScalarType::SignedInt), IsFalse());
+  EXPECT_THAT(float_only.allows_type(TaggedType("Test")), IsFalse());
+  EXPECT_THAT(float_only.allows_type(void_ptr_type), IsFalse());
 
-  EXPECT_THAT(int_constraints.allows_type(ScalarType::Float), IsFalse());
-  EXPECT_THAT(int_constraints.allows_type(ScalarType::SignedInt), IsTrue());
-  EXPECT_THAT(int_constraints.allows_type(TaggedType("Test")), IsFalse());
-  EXPECT_THAT(int_constraints.allows_type(void_ptr_type), IsFalse());
+  EXPECT_THAT(int_only.allows_type(ScalarType::Float), IsFalse());
+  EXPECT_THAT(int_only.allows_type(ScalarType::SignedInt), IsTrue());
+  EXPECT_THAT(int_only.allows_type(TaggedType("Test")), IsFalse());
+  EXPECT_THAT(int_only.allows_type(void_ptr_type), IsFalse());
 
   EXPECT_THAT(any.allows_type(ScalarType::Float), IsTrue());
   EXPECT_THAT(any.allows_type(ScalarType::SignedInt), IsTrue());
@@ -78,50 +75,49 @@ TEST(Constraints, ScalarValues) {
 }
 
 TEST(Constraints, TaggedTypes) {
-  SpecificTypes test_struct =
-      std::unordered_set<TaggedType>{{TaggedType("TestStruct")}};
+  TypeConstraints test_struct = TaggedType("TestStruct");
 
   EXPECT_THAT(test_struct.allows_any_of(ScalarMask::all_set()), IsFalse());
-  EXPECT_THAT(test_struct.allowed_tagged_types(),
-              UnorderedElementsAre(TaggedType("TestStruct")));
+  // EXPECT_THAT(test_struct.allowed_tagged_types(),
+  //            Eq(std::variant<NoType,AnyType,TaggedType>(TaggedType("TestStruct"))));
   EXPECT_THAT(test_struct.allows_non_void_pointer(), IsFalse());
   EXPECT_THAT(test_struct.allows_void_pointer(), IsFalse());
 
-  TypeConstraints any = AnyType();
+  TypeConstraints any = TypeConstraints::all();
   TypeConstraints none;
 
   EXPECT_THAT(any.allows_tagged_types(), IsTrue());
-  EXPECT_THAT(any.allowed_tagged_types(), IsNull());
+  // EXPECT_THAT(any.allowed_tagged_types(), IsNull());
   EXPECT_THAT(any.allows_type(TaggedType("TestStruct")), IsTrue());
 
   EXPECT_THAT(none.allows_tagged_types(), IsFalse());
-  EXPECT_THAT(none.allowed_tagged_types(), IsNull());
+  // EXPECT_THAT(none.allowed_tagged_types(), IsNull());
   EXPECT_THAT(none.allows_type(TaggedType("TestStruct")), IsFalse());
 }
 
 TEST(Constraints, PointerTypes) {
-  SpecificTypes int_ptr = SpecificTypes::make_pointer_constraints(
-      SpecificTypes(ScalarMask{ScalarType::SignedInt}));
-  SpecificTypes void_ptr = SpecificTypes::make_pointer_constraints(
-      SpecificTypes(), VoidPointerConstraint::Allow);
-  SpecificTypes null_ptr = SpecificTypes(NullptrType{});
-  // SpecificTypes array = SpecificTypes(ArrayType(ScalarTypes::SignedInt));
+  TypeConstraints int_ptr = TypeConstraints(ScalarMask{ScalarType::SignedInt})
+                                .make_pointer_constraints();
+  TypeConstraints void_ptr;
+  void_ptr.allow_void_pointer();
+  TypeConstraints null_ptr = TypeConstraints(NullptrType{});
+  // TypeConstraints array = TypeConstraints(ArrayType(ScalarTypes::SignedInt));
 
   EXPECT_THAT(int_ptr.allows_any_of(ScalarMask::all_set()), IsFalse());
-  EXPECT_THAT(int_ptr.allowed_tagged_types(), IsEmpty());
+  // EXPECT_THAT(int_ptr.allowed_tagged_types(), Eq(NoType()));
   EXPECT_THAT(int_ptr.allows_non_void_pointer(), IsTrue());
   EXPECT_THAT(int_ptr.allows_void_pointer(), IsFalse());
   EXPECT_THAT(int_ptr.allows_nullptr(), IsFalse());
 
   EXPECT_THAT(void_ptr.allows_any_of(ScalarMask::all_set()), IsFalse());
-  EXPECT_THAT(void_ptr.allowed_tagged_types(), IsEmpty());
+  // EXPECT_THAT(void_ptr.allowed_tagged_types(), Eq(NoType()));
   EXPECT_THAT(void_ptr.allows_non_void_pointer(), IsFalse());
   EXPECT_THAT(void_ptr.allows_void_pointer(), IsTrue());
   EXPECT_THAT(void_ptr.allows_nullptr(), IsFalse());
   EXPECT_THAT(void_ptr.allows_literal_zero(), IsTrue());
 
   EXPECT_THAT(null_ptr.allows_any_of(ScalarMask::all_set()), IsFalse());
-  EXPECT_THAT(null_ptr.allowed_tagged_types(), IsEmpty());
+  // EXPECT_THAT(null_ptr.allowed_tagged_types(), Eq(NoType()));
   EXPECT_THAT(null_ptr.allows_non_void_pointer(), IsFalse());
   EXPECT_THAT(null_ptr.allows_void_pointer(), IsFalse());
   EXPECT_THAT(null_ptr.allows_nullptr(), IsTrue());
@@ -160,7 +156,7 @@ TEST(Constraints, PointerTypes) {
   // void types :(
   EXPECT_THAT(void_constraints.allows_any_of(ScalarType::Void), IsFalse());
 
-  TypeConstraints any = AnyType();
+  TypeConstraints any = TypeConstraints::all();
   TypeConstraints none;
 
   EXPECT_THAT(any.allows_type(const_int_ptr), IsTrue());
@@ -177,12 +173,12 @@ TEST(Constraints, EnumTypes) {
   EnumType unscoped_enum("UnscopedEnum", false);
   EnumType specific_enum("SpecificEnum", true);
 
-  TypeConstraints any = AnyType();
+  TypeConstraints any = TypeConstraints::all();
   TypeConstraints none;
   TypeConstraints bool_ctx = TypeConstraints::all_in_bool_ctx();
-  TypeConstraints only_specific = SpecificTypes(specific_enum);
+  TypeConstraints only_specific = TypeConstraints(specific_enum);
 
-  SpecificTypes only_scoped_types, only_unscoped_types;
+  TypeConstraints only_scoped_types, only_unscoped_types;
   only_scoped_types.allow_scoped_enums();
   only_unscoped_types.allow_unscoped_enums();
   TypeConstraints only_scoped = std::move(only_scoped_types);
@@ -218,7 +214,7 @@ TEST(Constraints, ArrayTypes) {
   ArrayType array_of_ptrs = ArrayType(int_ptr, 3);
   PointerType ptr_to_array = PointerType(QualifiedType(array_of_three));
 
-  TypeConstraints any = AnyType();
+  TypeConstraints any = TypeConstraints::all();
   EXPECT_THAT(any.allows_type(array_of_three), IsTrue());
   EXPECT_THAT(any.allows_type(array_of_four), IsTrue());
   EXPECT_THAT(any.allows_type(array2d), IsTrue());
@@ -231,11 +227,11 @@ TEST(Constraints, ArrayTypes) {
   EXPECT_THAT(bool_ctx.allows_type(array_of_four), IsTrue());
   EXPECT_THAT(bool_ctx.allows_type(array2d), IsTrue());
 
-  TypeConstraints any_ptr = SpecificTypes::all_in_pointer_ctx();
+  TypeConstraints any_ptr = TypeConstraints::all_in_pointer_ctx();
   EXPECT_THAT(any_ptr.allows_type(array_of_three), IsTrue());
   EXPECT_THAT(any_ptr.allows_type(array2d), IsTrue());
 
-  TypeConstraints constraints_three = SpecificTypes(array_of_three);
+  TypeConstraints constraints_three = TypeConstraints(array_of_three);
   EXPECT_THAT(constraints_three.allows_type(array_of_three), IsTrue());
   EXPECT_THAT(constraints_three.allows_type(array_of_four), IsFalse());
   EXPECT_THAT(constraints_three.allows_type(array2d), IsFalse());
@@ -243,12 +239,12 @@ TEST(Constraints, ArrayTypes) {
   EXPECT_THAT(constraints_three.allows_type(array_of_ptrs), IsFalse());
 
   TypeConstraints double_ptr =
-      SpecificTypes(PointerType(QualifiedType(int_ptr)));
+      TypeConstraints(PointerType(QualifiedType(int_ptr)));
   EXPECT_THAT(double_ptr.allows_type(array_of_ptrs), IsTrue());
   EXPECT_THAT(double_ptr.allows_type(ptr_to_array), IsFalse());
   EXPECT_THAT(double_ptr.allows_type(array2d), IsFalse());
 
-  TypeConstraints constraints_2d = SpecificTypes(array2d);
+  TypeConstraints constraints_2d = TypeConstraints(array2d);
   EXPECT_THAT(constraints_2d.allows_type(array2d), IsTrue());
   EXPECT_THAT(constraints_2d.allows_type(array_of_ptrs), IsFalse());
   EXPECT_THAT(constraints_2d.allows_type(ptr_to_array), IsFalse());
@@ -257,7 +253,7 @@ TEST(Constraints, ArrayTypes) {
 
 TEST(Constraints, Unsatisfiability) {
   TypeConstraints default_ctor;
-  TypeConstraints default_specific_types = SpecificTypes();
+  TypeConstraints default_specific_types = TypeConstraints();
 
   EXPECT_THAT(default_ctor.satisfiable(), IsFalse());
   EXPECT_THAT(default_specific_types.satisfiable(), IsFalse());

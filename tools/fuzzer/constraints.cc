@@ -29,7 +29,7 @@ static bool is_void_pointer(const Type& type) {
   return inner == Type(ScalarType::Void);
 }
 
-SpecificTypes::SpecificTypes(const Type& type, bool allow_arrays_if_ptr) {
+TypeConstraints::TypeConstraints(const Type& type, bool allow_arrays_if_ptr) {
   const auto* scalar_type = std::get_if<ScalarType>(&type);
   if (scalar_type != nullptr) {
     if (*scalar_type != ScalarType::Void) {
@@ -40,7 +40,7 @@ SpecificTypes::SpecificTypes(const Type& type, bool allow_arrays_if_ptr) {
 
   const auto* tagged_type = std::get_if<TaggedType>(&type);
   if (tagged_type != nullptr) {
-    tagged_types_.insert(*tagged_type);
+    tagged_types_ = *tagged_type;
     return;
   }
 
@@ -53,7 +53,7 @@ SpecificTypes::SpecificTypes(const Type& type, bool allow_arrays_if_ptr) {
     }
 
     ptr_types_ =
-        std::make_shared<SpecificTypes>(inner, /*allow_arrays_if_ptr*/ false);
+        std::make_shared<TypeConstraints>(inner, /*allow_arrays_if_ptr*/ false);
 
     if (allow_arrays_if_ptr) {
       array_types_ = ptr_types_;
@@ -65,7 +65,7 @@ SpecificTypes::SpecificTypes(const Type& type, bool allow_arrays_if_ptr) {
   if (array_type != nullptr) {
     const auto& inner = array_type->type();
     array_types_ =
-        std::make_shared<SpecificTypes>(inner, /*allow_arrays_if_ptr*/ false);
+        std::make_shared<TypeConstraints>(inner, /*allow_arrays_if_ptr*/ false);
     array_size_ = array_type->size();
     return;
   }
@@ -89,47 +89,36 @@ SpecificTypes::SpecificTypes(const Type& type, bool allow_arrays_if_ptr) {
   assert(false && "Did you introduce a new alternative?");
 }
 
-SpecificTypes SpecificTypes::make_pointer_constraints(
-    SpecificTypes constraints, VoidPointerConstraint void_ptr_constraint) {
-  SpecificTypes retval;
-  if (constraints.scalar_types_[ScalarType::Void]) {
-    constraints.scalar_types_[ScalarType::Void] = false;
-    void_ptr_constraint = VoidPointerConstraint::Allow;
-  }
+TypeConstraints TypeConstraints::make_pointer_constraints() const {
+  TypeConstraints retval;
 
-  if (constraints.satisfiable()) {
-    auto specific_types =
-        std::make_shared<SpecificTypes>(std::move(constraints));
+  if (satisfiable()) {
+    auto specific_types = std::make_shared<TypeConstraints>(*this);
     retval.ptr_types_ = specific_types;
     retval.array_types_ = specific_types;
   }
-  retval.allows_void_pointer_ = (bool)void_ptr_constraint;
-  retval.allows_literal_zero_ = (bool)void_ptr_constraint;
-
-  // We should never allow `nullptr` because dereferencing it is illegal.
-  retval.allows_nullptr_ = false;
 
   return retval;
 }
 
-SpecificTypes SpecificTypes::cast_to(const Type& type) {
+TypeConstraints TypeConstraints::cast_to(const Type& type) {
   if (std::holds_alternative<TaggedType>(type) ||
       std::holds_alternative<ArrayType>(type)) {
-    return SpecificTypes();
+    return TypeConstraints();
   }
 
   if (std::holds_alternative<PointerType>(type)) {
-    return SpecificTypes::all_in_pointer_ctx();
+    return TypeConstraints::all_in_pointer_ctx();
   }
 
   if (std::holds_alternative<NullptrType>(type)) {
-    return SpecificTypes(type);
+    return TypeConstraints(type);
   }
 
   if (std::holds_alternative<EnumType>(type)) {
     // So far, casting other types to both (scoped and unscoped) enum types
     // didn't cause any problems. If it does, change this.
-    SpecificTypes retval = INT_TYPES | FLOAT_TYPES;
+    TypeConstraints retval = INT_TYPES | FLOAT_TYPES;
     retval.allow_unscoped_enums();
     retval.allow_scoped_enums();
     return retval;
@@ -137,7 +126,7 @@ SpecificTypes SpecificTypes::cast_to(const Type& type) {
 
   const auto* scalar_type = std::get_if<ScalarType>(&type);
   if (scalar_type != nullptr) {
-    SpecificTypes retval = INT_TYPES | FLOAT_TYPES;
+    TypeConstraints retval = INT_TYPES | FLOAT_TYPES;
     retval.allow_unscoped_enums();
     retval.allow_scoped_enums();
     // Pointers can be casted to 8-bytes integer types.
@@ -151,20 +140,20 @@ SpecificTypes SpecificTypes::cast_to(const Type& type) {
   }
 
   assert(false && "Did you introduce a new alternative?");
-  return SpecificTypes();
+  return TypeConstraints();
 }
 
-SpecificTypes SpecificTypes::static_cast_to(const Type& type) {
+TypeConstraints TypeConstraints::static_cast_to(const Type& type) {
   if (std::holds_alternative<TaggedType>(type) ||
       std::holds_alternative<ArrayType>(type)) {
-    return SpecificTypes();
+    return TypeConstraints();
   }
 
   if (std::holds_alternative<PointerType>(type)) {
     if (is_void_pointer(type)) {
-      return SpecificTypes::all_in_pointer_ctx();
+      return TypeConstraints::all_in_pointer_ctx();
     }
-    SpecificTypes retval = SpecificTypes(type);
+    TypeConstraints retval = TypeConstraints(type);
     retval.allows_nullptr_ = true;
     retval.allows_void_pointer_ = true;
     retval.allows_literal_zero_ = true;
@@ -172,78 +161,78 @@ SpecificTypes SpecificTypes::static_cast_to(const Type& type) {
   }
 
   if (std::holds_alternative<NullptrType>(type)) {
-    return SpecificTypes(type);
+    return TypeConstraints(type);
   }
 
   if (std::holds_alternative<EnumType>(type) ||
       std::holds_alternative<ScalarType>(type)) {
-    SpecificTypes retval = INT_TYPES | FLOAT_TYPES;
+    TypeConstraints retval = INT_TYPES | FLOAT_TYPES;
     retval.allow_unscoped_enums();
     retval.allow_scoped_enums();
     return retval;
   }
 
   assert(false && "Did you introduce a new alternative?");
-  return SpecificTypes();
+  return TypeConstraints();
 }
 
-SpecificTypes SpecificTypes::reinterpret_cast_to(const Type& type) {
+TypeConstraints TypeConstraints::reinterpret_cast_to(const Type& type) {
   if (std::holds_alternative<TaggedType>(type) ||
       std::holds_alternative<NullptrType>(type) ||
       std::holds_alternative<ScalarType>(type) ||
       std::holds_alternative<ArrayType>(type)) {
-    return SpecificTypes();
+    return TypeConstraints();
   }
 
   if (std::holds_alternative<PointerType>(type)) {
-    SpecificTypes retval = SpecificTypes::all_in_pointer_ctx();
+    TypeConstraints retval = TypeConstraints::all_in_pointer_ctx();
     retval.allows_nullptr_ = false;
     retval.allows_literal_zero_ = true;
     return retval;
   }
 
   if (std::holds_alternative<EnumType>(type)) {
-    return SpecificTypes(type);
+    return TypeConstraints(type);
   }
 
   assert(false && "Did you introduce a new alternative?");
-  return SpecificTypes();
+  return TypeConstraints();
 }
 
-SpecificTypes SpecificTypes::implicit_cast_to(const Type& type) {
+TypeConstraints TypeConstraints::implicit_cast_to(const Type& type) {
   if (std::holds_alternative<TaggedType>(type) ||
       std::holds_alternative<PointerType>(type) ||
       std::holds_alternative<NullptrType>(type) ||
       std::holds_alternative<EnumType>(type)) {
-    return SpecificTypes(type);
+    return TypeConstraints(type);
   }
 
   const auto* scalar_type = std::get_if<ScalarType>(&type);
   if (scalar_type != nullptr) {
     if (*scalar_type == ScalarType::Void) {
-      return SpecificTypes(type);
+      return TypeConstraints(type);
     }
 
-    SpecificTypes retval = INT_TYPES | FLOAT_TYPES;
+    TypeConstraints retval = INT_TYPES | FLOAT_TYPES;
     retval.allow_unscoped_enums();
     return retval;
   }
 
   assert(false && "Did you introduce a new alternative?");
-  return SpecificTypes();
+  return TypeConstraints();
 }
 
-TypeConstraints SpecificTypes::allowed_to_point_to() const {
+TypeConstraints TypeConstraints::allowed_to_point_to() const {
   if (std::holds_alternative<NoType>(ptr_types_)) {
-    return NoType();
+    return TypeConstraints();  // empty...
   }
 
   if (std::holds_alternative<AnyType>(ptr_types_)) {
-    return AnyType();
+    return TypeConstraints::all();
   }
 
   const auto* specific_types_ptr =
-      std::get_if<std::shared_ptr<SpecificTypes>>(&ptr_types_);
+      std::get_if<std::shared_ptr<TypeConstraints>>(&ptr_types_);
   assert(specific_types_ptr != nullptr &&
          "Should never be null, did you introduce a new alternative?");
 
@@ -254,7 +243,7 @@ TypeConstraints SpecificTypes::allowed_to_point_to() const {
   return **specific_types_ptr;
 }
 
-bool SpecificTypes::allows_array_type(const ArrayType& array_type) const {
+bool TypeConstraints::allows_array_type(const ArrayType& array_type) const {
   if (array_size_.has_value() && array_size_.value() != array_type.size()) {
     return false;
   }
@@ -268,49 +257,18 @@ bool SpecificTypes::allows_array_type(const ArrayType& array_type) const {
   }
 
   const auto* array_element_types =
-      std::get_if<std::shared_ptr<SpecificTypes>>(&array_types_);
+      std::get_if<std::shared_ptr<TypeConstraints>>(&array_types_);
   assert(array_element_types != nullptr &&
          "Should never be null, did you introduce a new alternative?");
   assert(
       *array_element_types != nullptr &&
       "Should never be null, did you accidentally create a null shared_ptr?");
 
-  return TypeConstraints(**array_element_types).allows_type(array_type.type());
+  return (*array_element_types)->allows_type(array_type.type());
 }
 
-TypeConstraints TypeConstraints::allowed_to_point_to() const {
-  if (!satisfiable()) {
-    return NoType();
-  }
-
-  if (allows_any()) {
-    return AnyType();
-  }
-
-  const auto* specific_types = as_specific_types();
-  assert(specific_types != nullptr &&
-         "Should never be null, did you introduce a new alternative?");
-
-  return specific_types->allowed_to_point_to();
-}
-
-TypeConstraints TypeConstraints::make_pointer_constraints() const {
-  if (!satisfiable()) {
-    return NoType();
-  }
-
-  if (allows_any()) {
-    return SpecificTypes::all_in_non_void_pointer_ctx();
-  }
-
-  const auto* specific_types = as_specific_types();
-  assert(specific_types != nullptr &&
-         "Should never be null, did you introduce a new alternative?");
-
-  return SpecificTypes::make_pointer_constraints(*specific_types);
-}
-
-static bool allows_enum_type(const SpecificTypes& types, const EnumType& type) {
+static bool allows_enum_type(const TypeConstraints& types,
+                             const EnumType& type) {
   std::variant<NoType, AnyType, EnumType> enum_types;
   if (type.is_scoped()) {
     enum_types = types.allowed_scoped_enum_types();
@@ -334,17 +292,6 @@ static bool allows_enum_type(const SpecificTypes& types, const EnumType& type) {
 }
 
 bool TypeConstraints::allows_type(const Type& type) const {
-  if (!satisfiable()) {
-    return false;
-  }
-
-  if (allows_any()) {
-    return true;
-  }
-
-  const auto* specific_types = as_specific_types();
-  assert(specific_types != nullptr && "Did you introduce a new alternative?");
-
   const auto* as_scalar = std::get_if<ScalarType>(&type);
   if (as_scalar != nullptr) {
     auto scalar_types = allowed_scalar_types();
@@ -353,16 +300,9 @@ bool TypeConstraints::allows_type(const Type& type) const {
 
   const auto* as_tagged = std::get_if<TaggedType>(&type);
   if (as_tagged != nullptr) {
-    if (!allows_tagged_types()) {
-      return false;
-    }
-
-    const auto* tagged_types = allowed_tagged_types();
-    if (tagged_types == nullptr) {
-      return true;
-    }
-
-    return tagged_types->find(*as_tagged) != tagged_types->end();
+    const auto allowd = allowed_tagged_types();
+    const auto* allowed_tagged_type = std::get_if<TaggedType>(&allowd);
+    return allowed_tagged_type != nullptr && *allowed_tagged_type == *as_tagged;
   }
 
   const auto* as_ptr = std::get_if<PointerType>(&type);
@@ -379,12 +319,12 @@ bool TypeConstraints::allows_type(const Type& type) const {
 
   const auto* as_enum = std::get_if<EnumType>(&type);
   if (as_enum != nullptr) {
-    return allows_enum_type(*specific_types, *as_enum);
+    return allows_enum_type(*this, *as_enum);
   }
 
   const auto* as_array = std::get_if<ArrayType>(&type);
   if (as_array != nullptr) {
-    return specific_types->allows_array_type(*as_array);
+    return allows_array_type(*as_array);
   }
 
   if (std::holds_alternative<NullptrType>(type)) {

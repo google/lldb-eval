@@ -34,9 +34,6 @@ using ScalarMask = EnumBitset<ScalarType>;
 class NoType {};
 class AnyType {};
 
-class TypeConstraints;
-
-enum class VoidPointerConstraint : bool { Deny, Allow };
 enum class ExprCategory : bool { LvalueOrRvalue, Lvalue };
 
 // The type constraints an expression can have. This class represents the fact
@@ -45,15 +42,11 @@ enum class ExprCategory : bool { LvalueOrRvalue, Lvalue };
 // - Of any type (AnyType)
 // - Of no type at all (NoType) aka unsatisfiable
 // - Of a specific type/specific set of types
-//
-// The reason we have both `SpecificTypes` and `TypeConstraints` is so that
-// most typical use cases (scalars, pointers to any type, pointers to void)
-// do not perform any sort of heap allocation at all.
-class SpecificTypes {
+class TypeConstraints {
  public:
-  SpecificTypes() = default;
-  SpecificTypes(ScalarMask scalar_types) : scalar_types_(scalar_types) {}
-  SpecificTypes(std::unordered_set<TaggedType> tagged_types)
+  TypeConstraints() = default;
+  TypeConstraints(ScalarMask scalar_types) : scalar_types_(scalar_types) {}
+  TypeConstraints(TaggedType tagged_types)
       : tagged_types_(std::move(tagged_types)) {}
 
   // Constraints that only allow type `type`.
@@ -62,7 +55,7 @@ class SpecificTypes {
   // be allowed. Note, however, that this apply only on the surface level and
   // won't be propagated further, i.e. if the `type` is of form `T**`, then
   // type `T*[]` will be allowed, but type `T[][]` will not be allowed.
-  explicit SpecificTypes(const Type& type, bool allow_arrays_if_ptr = true);
+  explicit TypeConstraints(const Type& type, bool allow_arrays_if_ptr = true);
 
   // Constraints corresponding to all types that can be used in a boolean
   // context, i.e. ternary expression condition, logical operators (`&&`, `||`,
@@ -72,8 +65,8 @@ class SpecificTypes {
   // - Void/non-void pointers or the null pointer constant `0`
   // - Unscoped enums
   // - Array types
-  static SpecificTypes all_in_bool_ctx() {
-    SpecificTypes retval;
+  static TypeConstraints all_in_bool_ctx() {
+    TypeConstraints retval;
     retval.scalar_types_ = ~ScalarMask(ScalarType::Void);
     retval.ptr_types_ = AnyType{};
     retval.array_types_ = AnyType{};
@@ -88,8 +81,8 @@ class SpecificTypes {
 
   // Return a set of constraints that allow any pointer type, including void
   // pointers, null pointers and array types.
-  static SpecificTypes all_in_pointer_ctx() {
-    SpecificTypes retval;
+  static TypeConstraints all_in_pointer_ctx() {
+    TypeConstraints retval;
     retval.ptr_types_ = AnyType{};
     retval.array_types_ = AnyType{};
     retval.allows_void_pointer_ = true;
@@ -99,59 +92,71 @@ class SpecificTypes {
     return retval;
   }
 
+  static TypeConstraints all() {
+    TypeConstraints retval;
+    retval.scalar_types_ = ScalarMask::all_set();
+    retval.tagged_types_ = AnyType{};
+    retval.ptr_types_ = AnyType{};
+    retval.array_types_ = AnyType{};
+    retval.unscoped_enum_types_ = AnyType{};
+    retval.scoped_enum_types_ = AnyType{};
+    retval.allows_void_pointer_ = true;
+    retval.allows_nullptr_ = true;
+    retval.allows_literal_zero_ = true;
+
+    return retval;
+  }
+
   // Return a set of constraints that allow any non-void pointer type,
   // including array types.
-  static SpecificTypes all_in_non_void_pointer_ctx() {
-    SpecificTypes retval;
+  static TypeConstraints all_in_non_void_pointer_ctx() {
+    TypeConstraints retval;
     retval.ptr_types_ = AnyType{};
     retval.array_types_ = AnyType{};
 
     return retval;
   }
 
-  // Make a new set of pointer constraints. If the original constraints permit
-  // type T, the new constraints will allow types `T*`, `const T*`, `volatile
-  // T*`, `const volatile T*` and the array type `T[]`.
-  static SpecificTypes make_pointer_constraints(
-      SpecificTypes constraints,
-      VoidPointerConstraint void_ptr_constraint = VoidPointerConstraint::Deny);
-
   // Types that can be cast to the `type`, using a C-style cast.
-  static SpecificTypes cast_to(const Type& type);
+  static TypeConstraints cast_to(const Type& type);
 
   // Types that can be cast to the `type`, using a `static_cast`.
-  static SpecificTypes static_cast_to(const Type& type);
+  static TypeConstraints static_cast_to(const Type& type);
 
   // Types that can be cast to the `type`, using a `reinterpret_cast`.
-  static SpecificTypes reinterpret_cast_to(const Type& type);
+  static TypeConstraints reinterpret_cast_to(const Type& type);
 
   // Types that can be implicitly cast to the `type`, e.g. when passing
   // arguments to function calls.
-  static SpecificTypes implicit_cast_to(const Type& type);
+  static TypeConstraints implicit_cast_to(const Type& type);
 
   // Is there any type that satisfies these constraints?
   bool satisfiable() const {
-    return scalar_types_.any() || !tagged_types_.empty() ||
-           !std::holds_alternative<NoType>(ptr_types_) ||
-           !std::holds_alternative<NoType>(array_types_) ||
+    return scalar_types_.any() ||
            !std::holds_alternative<NoType>(unscoped_enum_types_) ||
            !std::holds_alternative<NoType>(scoped_enum_types_) ||
+           !std::holds_alternative<NoType>(tagged_types_) ||
+           !std::holds_alternative<NoType>(ptr_types_) ||
+           !std::holds_alternative<NoType>(array_types_) ||
            allows_void_pointer_ || allows_nullptr_ || allows_literal_zero_;
   }
 
   // Scalar types allowed by these constraints.
   ScalarMask allowed_scalar_types() const { return scalar_types_; }
 
-  // Tagged types allowed by these constraints. An empty
-  const std::unordered_set<TaggedType>& allowed_tagged_types() const {
+  // Tagged types allowed by these constraints.
+  const std::variant<NoType, AnyType, TaggedType>& allowed_tagged_types()
+      const {
     return tagged_types_;
   }
 
+  // Scoped enum types allowed by these constraints.
   const std::variant<NoType, AnyType, EnumType>& allowed_scoped_enum_types()
       const {
     return scoped_enum_types_;
   }
 
+  // Unscoped enum types allowed by these constraints.
   const std::variant<NoType, AnyType, EnumType>& allowed_unscoped_enum_types()
       const {
     return unscoped_enum_types_;
@@ -160,6 +165,11 @@ class SpecificTypes {
   // Do these constraints allow any of the types in `mask`?
   bool allows_any_of(ScalarMask mask) const {
     return (scalar_types_ & mask).any();
+  }
+
+  // Do these constraints allow any kind of tagged types?
+  bool allows_tagged_types() const {
+    return !std::holds_alternative<NoType>(allowed_tagged_types());
   }
 
   // Do these constraints allow any kind of non-void pointer?
@@ -172,25 +182,27 @@ class SpecificTypes {
     return !std::holds_alternative<NoType>(array_types_);
   }
 
-  // Do these constraints allow void pointers or the null pointer constant `0`?
+  // Do these constraints allow void pointers?
   bool allows_void_pointer() const { return allows_void_pointer_; }
 
-  // Do these constraints allow `nullptr` or the null pointer constant `0`?
+  // Do these constraints allow `nullptr`?
   bool allows_nullptr() const { return allows_nullptr_; }
 
-  // Disallows `nullptr`s.
-  void disallow_nullptr() {
-    allows_nullptr_ = false;
-    if (!allows_void_pointer_) {
-      allows_literal_zero_ = false;
-    }
-  }
-
-  // Disallows `0` in pointer context.
-  void disallow_literal_zero() { allows_literal_zero_ = false; }
-
   // Do these constraints allow literal `0` in pointer context?
+  // Typically literal `0` is allowed whenever void pointers and nullptr are
+  // allowed, unless it is explicitly disallowed.
   bool allows_literal_zero() const { return allows_literal_zero_; }
+
+  // Do these constraints allow the `array_type`?
+  bool allows_array_type(const ArrayType& array_type) const;
+
+  // Do these constraints allow the `type`?
+  bool allows_type(const Type& type) const;
+
+  // Do these constraints allow the qualified `type`?
+  bool allows_type(const QualifiedType& type) const {
+    return allows_type(type.type());
+  }
 
   // Allows specific set of scalar types.
   void allow_scalar_types(ScalarMask scalar_types) {
@@ -203,231 +215,39 @@ class SpecificTypes {
   // Allows scoped enum types.
   void allow_scoped_enums() { scoped_enum_types_ = AnyType{}; }
 
+  // Allows `void *` type.
+  void allow_void_pointer() { allows_void_pointer_ = true; }
+
+  // Disallows `nullptr`s.
+  void disallow_nullptr() {
+    allows_nullptr_ = false;
+    if (!allows_void_pointer_) {
+      allows_literal_zero_ = false;
+    }
+  }
+
+  // Disallows `0` in pointer context.
+  void disallow_literal_zero() { allows_literal_zero_ = false; }
+
+  // Make a new set of pointer constraints. If the original constraints permit
+  // type T, the new constraints will allow types `T*`, `const T*`, `volatile
+  // T*`, `const volatile T*` and the array type `T[]`.
+  TypeConstraints make_pointer_constraints() const;
+
   // What kind of types do these constraints allow a pointer to?
   TypeConstraints allowed_to_point_to() const;
 
-  // Do these constraints allow the `array_type`?
-  bool allows_array_type(const ArrayType& array_type) const;
-
  private:
   ScalarMask scalar_types_;
-  std::unordered_set<TaggedType> tagged_types_;
-  std::variant<NoType, AnyType, std::shared_ptr<SpecificTypes>> ptr_types_;
-  std::variant<NoType, AnyType, std::shared_ptr<SpecificTypes>> array_types_;
   std::variant<NoType, AnyType, EnumType> unscoped_enum_types_;
   std::variant<NoType, AnyType, EnumType> scoped_enum_types_;
+  std::variant<NoType, AnyType, TaggedType> tagged_types_;
+  std::variant<NoType, AnyType, std::shared_ptr<TypeConstraints>> ptr_types_;
+  std::variant<NoType, AnyType, std::shared_ptr<TypeConstraints>> array_types_;
   bool allows_void_pointer_ = false;
   bool allows_nullptr_ = false;
   std::optional<size_t> array_size_ = std::nullopt;
   bool allows_literal_zero_ = false;
-};
-
-// The type constraints an expression can have. This class represents the fact
-// that an expression can be:
-//
-// - Of any type (AnyType)
-// - Of no type at all (NoType) aka unsatisfiable
-// - Of a specific type/specific set of types
-//
-// The reason we have both `SpecificTypes` and `TypeConstraints` is so that
-// most typical use cases (scalars, pointers to any type, pointers to void)
-// do not perform any sort of heap allocation at all.
-class TypeConstraints {
- public:
-  TypeConstraints() = default;
-  TypeConstraints(NoType) {}
-  TypeConstraints(AnyType) : constraints_(AnyType()) {}
-  TypeConstraints(SpecificTypes constraints) {
-    if (constraints.satisfiable()) {
-      constraints_ = std::move(constraints);
-    }
-  }
-
-  // Constraints corresponding to all types that can be used in a boolean
-  // context, i.e. ternary expression condition, logical operators (`&&`, `||`,
-  // `!`), etc. These types are:
-  // - Integers
-  // - Floats
-  // - Void/non-void pointers
-  // - Unscoped enums
-  static TypeConstraints all_in_bool_ctx() {
-    return SpecificTypes::all_in_bool_ctx();
-  }
-
-  // Do these constraints allow any type at all?
-  bool satisfiable() const {
-    return !std::holds_alternative<NoType>(constraints_);
-  }
-
-  // Do these constraints allow all kinds of types?
-  bool allows_any() const {
-    return std::holds_alternative<AnyType>(constraints_);
-  }
-
-  // Return the specific types allowed (if any) or `nullptr`.
-  const SpecificTypes* as_specific_types() const {
-    return std::get_if<SpecificTypes>(&constraints_);
-  }
-
-  // Do these constraints allow any of the scalar types specified in `mask`?
-  bool allows_any_of(ScalarMask mask) const {
-    if (!satisfiable()) {
-      return false;
-    }
-
-    if (allows_any()) {
-      return true;
-    }
-
-    const auto* specific_types = as_specific_types();
-    assert(specific_types != nullptr &&
-           "Should never be null, did you introduce a new alternative?");
-
-    return specific_types->allows_any_of(mask);
-  }
-
-  // Do these constraints allow any tagged type?
-  bool allows_tagged_types() const {
-    if (!satisfiable()) {
-      return false;
-    }
-
-    if (allows_any()) {
-      return true;
-    }
-
-    const auto* specific_types = as_specific_types();
-    assert(specific_types != nullptr && "Did you introduce a new alternative?");
-
-    return !specific_types->allowed_tagged_types().empty();
-  }
-
-  // Scalar types allowed by these constraints.
-  ScalarMask allowed_scalar_types() const {
-    if (!satisfiable()) {
-      return ScalarMask();
-    }
-
-    if (allows_any()) {
-      return ScalarMask::all_set();
-    }
-
-    const auto* specific_types = as_specific_types();
-    assert(specific_types != nullptr && "Did you introduce a new alternative?");
-
-    return specific_types->allowed_scalar_types();
-  }
-
-  // Tagged types allowed by these constraints. A null pointer return value
-  // indicates that any kind of tagged type is allowed.
-  //
-  // TODO: Returning a null pointer to indicate that any kind of tagged type
-  // is allowed is really confusing.
-  const std::unordered_set<TaggedType>* allowed_tagged_types() const {
-    const auto* specific_types = as_specific_types();
-    if (specific_types == nullptr) {
-      return nullptr;
-    }
-    return &specific_types->allowed_tagged_types();
-  }
-
-  // What kind of types do these constraints allow a pointer to?
-  TypeConstraints allowed_to_point_to() const;
-
-  // Make a new set of pointer constraints. If the original constraints permit
-  // type T, the new constraints will allow types `T*`, `const T*`, `volatile
-  // T*`, and `const volatile T*`.
-  TypeConstraints make_pointer_constraints() const;
-
-  // Do these constraints allow void pointers or the null pointer constant `0`?
-  bool allows_void_pointer() const {
-    if (!satisfiable()) {
-      return false;
-    }
-
-    if (allows_any()) {
-      return true;
-    }
-
-    const auto* specific_types = as_specific_types();
-    assert(specific_types != nullptr && "Did you introduce a new alternative?");
-
-    return specific_types->allows_void_pointer();
-  }
-
-  // Do these constraints allow `nullptr` or the null pointer constant `0`?
-  bool allows_nullptr() const {
-    if (!satisfiable()) {
-      return false;
-    }
-
-    if (allows_any()) {
-      return true;
-    }
-
-    const auto* specific_types = as_specific_types();
-    assert(specific_types != nullptr && "Did you introduce a new alternative?");
-
-    return specific_types->allows_nullptr();
-  }
-
-  // Do these constraints allow literal `0` in pointer context?
-  bool allows_literal_zero() const {
-    if (!satisfiable()) {
-      return false;
-    }
-
-    if (allows_any()) {
-      return true;
-    }
-
-    const auto* specific_types = as_specific_types();
-    assert(specific_types != nullptr && "Did you introduce a new alternative?");
-
-    return specific_types->allows_literal_zero();
-  }
-
-  // Do these constraints allow non-void pointers?
-  bool allows_pointer() const {
-    if (!satisfiable()) {
-      return false;
-    }
-
-    if (allows_any()) {
-      return true;
-    }
-
-    const auto* specific_types = as_specific_types();
-    assert(specific_types != nullptr && "Did you introduce a new alternative?");
-
-    return specific_types->allows_non_void_pointer();
-  }
-
-  // Do these constraints allow array types?
-  bool allows_array_types() const {
-    if (!satisfiable()) {
-      return false;
-    }
-
-    if (allows_any()) {
-      return true;
-    }
-
-    const auto* specific_types = as_specific_types();
-    assert(specific_types != nullptr && "Did you introduce a new alternative?");
-
-    return specific_types->allows_array_types();
-  }
-
-  bool allows_type(const Type& type) const;
-
-  // Do these constraints allow a specific type?
-  bool allows_type(const QualifiedType& type) const {
-    return allows_type(type.type());
-  }
-
- private:
-  std::variant<NoType, AnyType, SpecificTypes> constraints_;
 };
 
 // Constraints that regulate memory access as an expression is being
