@@ -184,6 +184,18 @@ static bool TokenEndsTemplateArgumentList(const clang::Token& token) {
                        clang::tok::greatergreater);
 }
 
+static ExprResult InsertArrayToPointerConversion(ExprResult expr) {
+  assert(expr->result_type_deref().IsArrayType() &&
+         "an argument to array-to-pointer conversion must be an array");
+
+  // TODO(werat): Make this an explicit array-to-pointer conversion instead of
+  // using a "generic" CStyleCastNode.
+  return std::make_unique<CStyleCastNode>(
+      expr->location(),
+      expr->result_type_deref().GetArrayElementType().GetPointerType(),
+      std::move(expr), CStyleCastKind::kPointer);
+}
+
 static lldb::SBType DoIntegralPromotion(lldb::SBTarget target, Type from) {
   assert((from.IsInteger() || from.IsUnscopedEnum()) &&
          "Integral promotion works only for integers and unscoped enums.");
@@ -255,10 +267,7 @@ static ExprResult UsualUnaryConversions(lldb::SBTarget target,
   // TODO(werat): Promote bitfields: e.g. uint32_t:10 -> int (not unsigned int).
 
   if (result_type.IsArrayType()) {
-    // TODO(werat): Make this an explicit array-to-pointer conversion.
-    expr = std::make_unique<CStyleCastNode>(
-        expr->location(), result_type.GetArrayElementType().GetPointerType(),
-        std::move(expr), CStyleCastKind::kPointer);
+    expr = InsertArrayToPointerConversion(std::move(expr));
   }
 
   if (result_type.IsInteger() || result_type.IsUnscopedEnum()) {
@@ -2826,14 +2835,12 @@ ExprResult Parser::BuildTernaryOp(ExprResult cond, ExprResult lhs,
 
   // Apply array-to-pointer implicit conversions.
   if (lhs_type.IsArrayType()) {
-    lhs_type = lhs_type.GetArrayElementType().GetPointerType();
-    lhs = std::make_unique<CStyleCastNode>(
-        lhs->location(), lhs_type, std::move(lhs), CStyleCastKind::kPointer);
+    lhs = InsertArrayToPointerConversion(std::move(lhs));
+    lhs_type = lhs->result_type_deref();
   }
   if (rhs_type.IsArrayType()) {
-    rhs_type = rhs_type.GetArrayElementType().GetPointerType();
-    rhs = std::make_unique<CStyleCastNode>(
-        rhs->location(), rhs_type, std::move(rhs), CStyleCastKind::kPointer);
+    rhs = InsertArrayToPointerConversion(std::move(rhs));
+    rhs_type = rhs->result_type_deref();
   }
 
   // Check if operands have the same pointer type.
@@ -2904,9 +2911,8 @@ ExprResult Parser::BuildMemberOf(ExprResult lhs, std::string member_id,
 
     // If LHS is an array, convert it to pointer.
     if (lhs_type.IsArrayType()) {
-      lhs_type = lhs_type.GetArrayElementType().GetPointerType();
-      lhs = std::make_unique<CStyleCastNode>(
-          lhs->location(), lhs_type, std::move(lhs), CStyleCastKind::kPointer);
+      lhs = InsertArrayToPointerConversion(std::move(lhs));
+      lhs_type = lhs->result_type_deref();
     }
 
     lhs_type = lhs_type.GetPointeeType();
