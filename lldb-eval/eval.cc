@@ -355,21 +355,13 @@ void Interpreter::Visit(const ArraySubscriptNode* node) {
     return;
   }
 
-  assert((base.type().IsPointerType() || base.type().IsArrayType()) &&
-         "array subscript: base must be pointer or array");
+  assert(base.type().IsPointerType() &&
+         "array subscript: base must be a pointer");
   assert(index.type().IsIntegerOrUnscopedEnum() &&
          "array subscript: index must be integer or unscoped enum");
 
-  lldb::SBType item_type;
-  lldb::addr_t base_addr;
-
-  if (node->is_pointer_base()) {
-    item_type = base.type().GetPointeeType();
-    base_addr = base.GetUInt64();
-  } else {
-    item_type = base.type().GetArrayElementType();
-    base_addr = base.AddressOf().GetUInt64();
-  }
+  lldb::SBType item_type = base.type().GetPointeeType();
+  lldb::addr_t base_addr = base.GetUInt64();
 
   // Create a pointer and add the index, i.e. "base + index".
   Value value = PointerAdd(
@@ -603,20 +595,10 @@ Value Interpreter::EvaluateComparison(BinaryOpKind kind, Value lhs, Value rhs) {
 }
 
 Value Interpreter::EvaluateDereference(Value rhs) {
-  assert((rhs.type().IsPointerType() || rhs.type().IsArrayType()) &&
-         "invalid ast: must be a pointer or an array type");
+  assert(rhs.type().IsPointerType() && "invalid ast: must be a pointer type");
 
-  lldb::SBType pointer_type;
-  lldb::addr_t base_addr;
-
-  if (rhs.type().IsPointerType()) {
-    pointer_type = rhs.type();
-    base_addr = rhs.GetUInt64();
-  } else {
-    // Convert array type to pointer type, e.g. `int [n][m]` to `int (*)[m]`.
-    pointer_type = rhs.type().GetArrayElementType().GetPointerType();
-    base_addr = rhs.AddressOf().GetUInt64();
-  }
+  lldb::SBType pointer_type = rhs.type();
+  lldb::addr_t base_addr = rhs.GetUInt64();
 
   Value value = CreateValueFromPointer(target_, base_addr, pointer_type);
 

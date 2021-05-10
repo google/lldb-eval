@@ -2181,7 +2181,8 @@ ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind token_kind,
       if (rhs_type.IsPointerType()) {
         result_type = rhs_type.GetPointeeType();
       } else if (rhs_type.IsArrayType()) {
-        result_type = rhs_type.GetArrayElementType();
+        rhs = InsertArrayToPointerConversion(std::move(rhs));
+        result_type = rhs->result_type_deref().GetPointeeType();
       } else {
         BailOut(ErrorCode::kInvalidOperandType,
                 llvm::formatv(
@@ -2717,18 +2718,24 @@ ExprResult Parser::BuildBinarySubscript(ExprResult lhs, ExprResult rhs,
   // equivalent to the expression *((e1)+(e2)).
   // We need to figure out which expression is "base" and which is "index".
 
-  ExprResult* base;
-  ExprResult* index;
+  ExprResult base;
+  ExprResult index;
 
   Type lhs_type = lhs->result_type_deref();
   Type rhs_type = rhs->result_type_deref();
 
-  if (lhs_type.IsArrayType() || lhs_type.IsPointerType()) {
-    base = &lhs;
-    index = &rhs;
-  } else if (rhs_type.IsArrayType() || rhs_type.IsPointerType()) {
-    base = &rhs;
-    index = &lhs;
+  if (lhs_type.IsArrayType()) {
+    base = InsertArrayToPointerConversion(std::move(lhs));
+    index = std::move(rhs);
+  } else if (lhs_type.IsPointerType()) {
+    base = std::move(lhs);
+    index = std::move(rhs);
+  } else if (rhs_type.IsArrayType()) {
+    base = InsertArrayToPointerConversion(std::move(rhs));
+    index = std::move(lhs);
+  } else if (rhs_type.IsPointerType()) {
+    base = std::move(rhs);
+    index = std::move(lhs);
   } else {
     BailOut(ErrorCode::kInvalidOperandType,
             "subscripted value is not an array or pointer", location);
@@ -2737,7 +2744,7 @@ ExprResult Parser::BuildBinarySubscript(ExprResult lhs, ExprResult rhs,
 
   // Index can be a typedef of a typedef of a typedef of a typedef...
   // Get canonical underlying type.
-  Type index_type = index->get()->result_type_deref();
+  Type index_type = index->result_type_deref();
 
   // Check if the index is of an integral type.
   if (!index_type.IsIntegerOrUnscopedEnum()) {
@@ -2746,24 +2753,9 @@ ExprResult Parser::BuildBinarySubscript(ExprResult lhs, ExprResult rhs,
     return std::make_unique<ErrorNode>();
   }
 
-  Type base_type = base->get()->result_type_deref();
-
-  lldb::SBType result_type;
-  bool is_pointer_base;
-
-  if (base_type.IsPointerType()) {
-    result_type = base_type.GetPointeeType();
-    is_pointer_base = true;
-  } else if (base_type.IsArrayType()) {
-    result_type = base_type.GetArrayElementType();
-    is_pointer_base = false;
-  } else {
-    lldb_eval_unreachable("Subscripted value must be either array or pointer.");
-  }
-
   return std::make_unique<ArraySubscriptNode>(
-      location, result_type, std::move(*base), std::move(*index),
-      is_pointer_base);
+      location, base->result_type_deref().GetPointeeType(), std::move(base),
+      std::move(index));
 }
 
 lldb::SBType Parser::PrepareCompositeAssignment(

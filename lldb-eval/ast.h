@@ -215,12 +215,11 @@ class MemberOfNode : public AstNode {
 class ArraySubscriptNode : public AstNode {
  public:
   ArraySubscriptNode(clang::SourceLocation location, lldb::SBType result_type,
-                     ExprResult base, ExprResult index, bool is_pointer_base)
+                     ExprResult base, ExprResult index)
       : AstNode(location),
         result_type_(result_type),
         base_(std::move(base)),
-        index_(std::move(index)),
-        is_pointer_base_(is_pointer_base) {}
+        index_(std::move(index)) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return false; }
@@ -228,13 +227,11 @@ class ArraySubscriptNode : public AstNode {
 
   AstNode* base() const { return base_.get(); }
   AstNode* index() const { return index_.get(); }
-  bool is_pointer_base() const { return is_pointer_base_; }
 
  private:
   lldb::SBType result_type_;
   ExprResult base_;
   ExprResult index_;
-  bool is_pointer_base_;
 };
 
 enum class BinaryOpKind {
