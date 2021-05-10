@@ -193,7 +193,13 @@ class TypeConstraints {
   // allowed, unless it is explicitly disallowed.
   bool allows_literal_zero() const { return allows_literal_zero_; }
 
-  // Do these constraints allow the `array_type`?
+  // Do these constraints allow a tagged type?
+  bool allows_tagged_type(const TaggedType& tagged_type) const;
+
+  // Do these constraints allow an enum type?
+  bool allows_enum_type(const EnumType& enum_type) const;
+
+  // Do these constraints allow an array type?
   bool allows_array_type(const ArrayType& array_type) const;
 
   // Do these constraints allow the `type`?
@@ -215,8 +221,11 @@ class TypeConstraints {
   // Allows scoped enum types.
   void allow_scoped_enums() { scoped_enum_types_ = AnyType{}; }
 
-  // Allows `void *` type.
-  void allow_void_pointer() { allows_void_pointer_ = true; }
+  // Allows `void *` type and literal `0`.
+  void allow_void_pointer() {
+    allows_void_pointer_ = true;
+    allows_literal_zero_ = true;
+  }
 
   // Disallows `nullptr`s.
   void disallow_nullptr() {

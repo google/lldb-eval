@@ -526,8 +526,8 @@ std::optional<Expr> ExprGenerator::gen_ternary_expr(
       // `static_cast<int*>(cond ? 0 : 0)`.
       allowed_types.disallow_literal_zero();
     }
-    rhs_constraints =
-        ExprConstraints(allowed_types, constraints.memory_constraints());
+    rhs_constraints = ExprConstraints(std::move(allowed_types),
+                                      constraints.memory_constraints());
     if (rng_->gen_binop_flip_operands(cfg_.binop_flip_operands_prob)) {
       std::swap(lhs_constraints, rhs_constraints);
     }
@@ -1163,9 +1163,10 @@ std::optional<Type> ExprGenerator::gen_tagged_type(
   }
 
   if (std::holds_alternative<AnyType>(allowed_types)) {
-    std::vector<std::reference_wrapper<const TaggedType>> tt(
-        symtab_.tagged_types().begin(), symtab_.tagged_types().end());
-    tagged_types = tt;
+    tagged_types.reserve(symtab_.tagged_types().size());
+    for (const auto& tagged_type : symtab_.tagged_types()) {
+      tagged_types.emplace_back(tagged_type);
+    }
   }
 
   return rng_->pick_tagged_type(tagged_types);
@@ -1239,7 +1240,7 @@ std::optional<Expr> ExprGenerator::generate() {
   auto allowed_types = TypeConstraints::all_in_bool_ctx();
   allowed_types.allow_scoped_enums();
 
-  return gen_with_weights(weights, allowed_types);
+  return gen_with_weights(weights, std::move(allowed_types));
 }
 
 template <typename Enum, typename Rng>

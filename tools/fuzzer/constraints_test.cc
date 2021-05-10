@@ -39,8 +39,8 @@ TEST(Constraints, ScalarValues) {
   EXPECT_THAT(float_only.allows_any_of(ScalarType::SignedInt), IsFalse());
   EXPECT_THAT(float_only.allows_any_of(ScalarType::UnsignedLong), IsFalse());
 
-  // EXPECT_THAT(int_only.allowed_tagged_types(), IsEmpty());
-  // EXPECT_THAT(float_only.allowed_tagged_types(), IsEmpty());
+  EXPECT_THAT(int_only.allows_tagged_types(), IsFalse());
+  EXPECT_THAT(float_only.allows_tagged_types(), IsFalse());
 
   EXPECT_THAT(int_only.allows_non_void_pointer(), IsFalse());
   EXPECT_THAT(float_only.allows_non_void_pointer(), IsFalse());
@@ -78,8 +78,10 @@ TEST(Constraints, TaggedTypes) {
   TypeConstraints test_struct = TaggedType("TestStruct");
 
   EXPECT_THAT(test_struct.allows_any_of(ScalarMask::all_set()), IsFalse());
-  // EXPECT_THAT(test_struct.allowed_tagged_types(),
-  //            Eq(std::variant<NoType,AnyType,TaggedType>(TaggedType("TestStruct"))));
+  const auto* allowed_tagged_type =
+      std::get_if<TaggedType>(&test_struct.allowed_tagged_types());
+  ASSERT_NE(allowed_tagged_type, nullptr);
+  EXPECT_THAT(*allowed_tagged_type, Eq(TaggedType("TestStruct")));
   EXPECT_THAT(test_struct.allows_non_void_pointer(), IsFalse());
   EXPECT_THAT(test_struct.allows_void_pointer(), IsFalse());
 
@@ -87,11 +89,12 @@ TEST(Constraints, TaggedTypes) {
   TypeConstraints none;
 
   EXPECT_THAT(any.allows_tagged_types(), IsTrue());
-  // EXPECT_THAT(any.allowed_tagged_types(), IsNull());
   EXPECT_THAT(any.allows_type(TaggedType("TestStruct")), IsTrue());
 
   EXPECT_THAT(none.allows_tagged_types(), IsFalse());
-  // EXPECT_THAT(none.allowed_tagged_types(), IsNull());
+  EXPECT_THAT(std::holds_alternative<NoType>(none.allowed_tagged_types()),
+              Eq(true));
+
   EXPECT_THAT(none.allows_type(TaggedType("TestStruct")), IsFalse());
 }
 
@@ -104,20 +107,20 @@ TEST(Constraints, PointerTypes) {
   // TypeConstraints array = TypeConstraints(ArrayType(ScalarTypes::SignedInt));
 
   EXPECT_THAT(int_ptr.allows_any_of(ScalarMask::all_set()), IsFalse());
-  // EXPECT_THAT(int_ptr.allowed_tagged_types(), Eq(NoType()));
+  EXPECT_THAT(int_ptr.allows_tagged_types(), IsFalse());
   EXPECT_THAT(int_ptr.allows_non_void_pointer(), IsTrue());
   EXPECT_THAT(int_ptr.allows_void_pointer(), IsFalse());
   EXPECT_THAT(int_ptr.allows_nullptr(), IsFalse());
 
   EXPECT_THAT(void_ptr.allows_any_of(ScalarMask::all_set()), IsFalse());
-  // EXPECT_THAT(void_ptr.allowed_tagged_types(), Eq(NoType()));
+  EXPECT_THAT(void_ptr.allows_tagged_types(), IsFalse());
   EXPECT_THAT(void_ptr.allows_non_void_pointer(), IsFalse());
   EXPECT_THAT(void_ptr.allows_void_pointer(), IsTrue());
   EXPECT_THAT(void_ptr.allows_nullptr(), IsFalse());
   EXPECT_THAT(void_ptr.allows_literal_zero(), IsTrue());
 
   EXPECT_THAT(null_ptr.allows_any_of(ScalarMask::all_set()), IsFalse());
-  // EXPECT_THAT(null_ptr.allowed_tagged_types(), Eq(NoType()));
+  EXPECT_THAT(null_ptr.allows_tagged_types(), IsFalse());
   EXPECT_THAT(null_ptr.allows_non_void_pointer(), IsFalse());
   EXPECT_THAT(null_ptr.allows_void_pointer(), IsFalse());
   EXPECT_THAT(null_ptr.allows_nullptr(), IsTrue());

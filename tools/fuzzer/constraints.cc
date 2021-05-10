@@ -224,7 +224,7 @@ TypeConstraints TypeConstraints::implicit_cast_to(const Type& type) {
 
 TypeConstraints TypeConstraints::allowed_to_point_to() const {
   if (std::holds_alternative<NoType>(ptr_types_)) {
-    return TypeConstraints();  // empty...
+    return TypeConstraints();
   }
 
   if (std::holds_alternative<AnyType>(ptr_types_)) {
@@ -241,6 +241,22 @@ TypeConstraints TypeConstraints::allowed_to_point_to() const {
       "Should never be null, did you accidentally create a null shared_ptr?");
 
   return **specific_types_ptr;
+}
+
+bool TypeConstraints::allows_tagged_type(const TaggedType& tagged_type) const {
+  if (std::holds_alternative<NoType>(tagged_types_)) {
+    return false;
+  }
+
+  if (std::holds_alternative<AnyType>(tagged_types_)) {
+    return true;
+  }
+
+  const auto* as_tagged = std::get_if<TaggedType>(&tagged_types_);
+  assert(as_tagged != nullptr &&
+         "Should never be null, did you introduce a new alternative?");
+
+  return *as_tagged == tagged_type;
 }
 
 bool TypeConstraints::allows_array_type(const ArrayType& array_type) const {
@@ -267,14 +283,9 @@ bool TypeConstraints::allows_array_type(const ArrayType& array_type) const {
   return (*array_element_types)->allows_type(array_type.type());
 }
 
-static bool allows_enum_type(const TypeConstraints& types,
-                             const EnumType& type) {
-  std::variant<NoType, AnyType, EnumType> enum_types;
-  if (type.is_scoped()) {
-    enum_types = types.allowed_scoped_enum_types();
-  } else {
-    enum_types = types.allowed_unscoped_enum_types();
-  }
+bool TypeConstraints::allows_enum_type(const EnumType& enum_type) const {
+  const auto& enum_types =
+      enum_type.is_scoped() ? scoped_enum_types_ : unscoped_enum_types_;
 
   if (std::holds_alternative<NoType>(enum_types)) {
     return false;
@@ -288,21 +299,18 @@ static bool allows_enum_type(const TypeConstraints& types,
   assert(as_enum != nullptr &&
          "Should never be null, did you introduce a new alternative?");
 
-  return *as_enum == type;
+  return *as_enum == enum_type;
 }
 
 bool TypeConstraints::allows_type(const Type& type) const {
   const auto* as_scalar = std::get_if<ScalarType>(&type);
   if (as_scalar != nullptr) {
-    auto scalar_types = allowed_scalar_types();
-    return scalar_types[*as_scalar];
+    return scalar_types_[*as_scalar];
   }
 
   const auto* as_tagged = std::get_if<TaggedType>(&type);
   if (as_tagged != nullptr) {
-    const auto allowd = allowed_tagged_types();
-    const auto* allowed_tagged_type = std::get_if<TaggedType>(&allowd);
-    return allowed_tagged_type != nullptr && *allowed_tagged_type == *as_tagged;
+    return allows_tagged_type(*as_tagged);
   }
 
   const auto* as_ptr = std::get_if<PointerType>(&type);
@@ -310,7 +318,7 @@ bool TypeConstraints::allows_type(const Type& type) const {
     const auto& inner = as_ptr->type().type();
     const auto* as_scalar = std::get_if<ScalarType>(&inner);
     if (as_scalar != nullptr && *as_scalar == ScalarType::Void) {
-      return allows_void_pointer();
+      return allows_void_pointer_;
     }
 
     const auto can_point_to = allowed_to_point_to();
@@ -319,7 +327,7 @@ bool TypeConstraints::allows_type(const Type& type) const {
 
   const auto* as_enum = std::get_if<EnumType>(&type);
   if (as_enum != nullptr) {
-    return allows_enum_type(*this, *as_enum);
+    return allows_enum_type(*as_enum);
   }
 
   const auto* as_array = std::get_if<ArrayType>(&type);
@@ -328,7 +336,7 @@ bool TypeConstraints::allows_type(const Type& type) const {
   }
 
   if (std::holds_alternative<NullptrType>(type)) {
-    return allows_nullptr();
+    return allows_nullptr_;
   }
 
   return false;
