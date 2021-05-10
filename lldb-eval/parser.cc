@@ -2901,12 +2901,15 @@ ExprResult Parser::BuildMemberOf(ExprResult lhs, std::string member_id,
               location);
       return std::make_unique<ErrorNode>();
     }
-    if (lhs_type.IsPointerType()) {
-      lhs_type = lhs_type.GetPointeeType();
-    } else {
-      lhs_type = lhs_type.GetArrayElementType();
+
+    // If LHS is an array, convert it to pointer.
+    if (lhs_type.IsArrayType()) {
+      lhs_type = lhs_type.GetArrayElementType().GetPointerType();
+      lhs = std::make_unique<CStyleCastNode>(
+          lhs->location(), lhs_type, std::move(lhs), CStyleCastKind::kPointer);
     }
 
+    lhs_type = lhs_type.GetPointeeType();
   } else {
     // "member of object" operator, check that LHS is an object.
     if (lhs_type.IsPointerType()) {

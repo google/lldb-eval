@@ -325,14 +325,6 @@ void Interpreter::Visit(const MemberOfNode* node) {
     return;
   }
 
-  // If LHS is an array, convert it to pointer type.
-  if (lhs.type().IsArrayType()) {
-    lldb::SBType item_type = lhs.type().GetArrayElementType();
-    lldb::addr_t base_addr = lhs.AddressOf().GetUInt64();
-    lhs =
-        CreateValueFromPointer(target_, base_addr, item_type.GetPointerType());
-  }
-
   // LHS can be a pointer to value, but GetChildAtIndex works for pointers too,
   // so we don't need to dereference it explicitely. This also avoid having an
   // "ephemeral" parent Value, representing the dereferenced LHS.
