@@ -228,7 +228,9 @@ TypeConstraints TypeConstraints::allowed_to_point_to() const {
   }
 
   if (std::holds_alternative<AnyType>(ptr_types_)) {
-    return TypeConstraints::all();
+    TypeConstraints retval = TypeConstraints::all();
+    retval.scalar_types_[ScalarType::Void] = false;
+    return retval;
   }
 
   const auto* specific_types_ptr =

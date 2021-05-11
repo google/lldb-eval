@@ -289,18 +289,16 @@ std::optional<Expr> ExprGenerator::gen_binary_expr_impl(
         if (gen_ptr_or_enum) {
           TypeConstraints types = TypeConstraints::all_in_pointer_ctx();
           types.allow_scoped_enums();
+          // `nullptr` is only allowed with equality and ineqality operators.
+          if (op != BinOp::Eq && op != BinOp::Ne) {
+            types.disallow_nullptr();
+          }
           auto maybe_type =
               gen_type(weights, types, /*allow_array_types*/ true);
           if (maybe_type.has_value()) {
             const auto& type = maybe_type.value();
             lhs_types = TypeConstraints(type);
             rhs_types = TypeConstraints(type);
-
-            // `nullptr` is only allowed with equality and ineqality operators.
-            if (op != BinOp::Eq && op != BinOp::Ne) {
-              lhs_types.disallow_nullptr();
-              rhs_types.disallow_nullptr();
-            }
           }
         }
       } break;
@@ -628,6 +626,14 @@ std::optional<Expr> ExprGenerator::gen_address_of_expr_impl(
 
   TypeConstraints new_type_constraints =
       constraints.type_constraints().allowed_to_point_to();
+
+  if (!new_type_constraints.satisfiable()) {
+    // It is possible that type constraints become unsatisfiable after the
+    // `allowed_to_point_to()` is performed (e.g. `void*` can't become `void`
+    // since `void` expressions are invalid).
+    return {};
+  }
+
   ExprConstraints new_constraints(std::move(new_type_constraints),
                                   memory_constraints.from_address_of(),
                                   ExprCategory::Lvalue);
@@ -914,13 +920,21 @@ std::optional<Expr> ExprGenerator::gen_sizeof_expr_impl(
 
 std::optional<Expr> ExprGenerator::gen_with_weights_impl(
     const Weights& weights, const ExprConstraints& constraints) {
+  // If type constraints can't be satisfied, expression generation won't be able
+  // to generate any expression. In that case, the generator shouldn't continue
+  // trying to generate expressions. This also means that there's probably a bug
+  // somewhere else in the fuzzer.
+  assert(constraints.type_constraints().satisfiable() &&
+         "Type constraints are unsatisfiable!");
+
   Weights new_weights = weights;
   new_weights.increment_depth();
-  if (new_weights.depth() == cfg_.max_depth) {
-    return {};
-  }
 
   ExprKindMask mask = cfg_.expr_kind_mask;
+  if (new_weights.depth() == cfg_.max_depth) {
+    mask &= LEAF_EXPR_KINDS;
+  }
+
   while (mask.any()) {
     auto kind = rng_->gen_expr_kind(new_weights, mask);
     auto idx = (size_t)kind;

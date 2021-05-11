@@ -90,6 +90,13 @@ struct TypeKindWeightInfo {
 using BinOpMask = EnumBitset<BinOp>;
 using UnOpMask = EnumBitset<UnOp>;
 
+// Set of expression kinds that don't have any children.
+inline constexpr ExprKindMask LEAF_EXPR_KINDS = {
+    ExprKind::IntegerConstant, ExprKind::DoubleConstant,
+    ExprKind::VariableExpr,    ExprKind::BooleanConstant,
+    ExprKind::NullptrConstant, ExprKind::EnumConstant,
+};
+
 /*
  * Fuzzer configuration, specifies the various parameters (e.g. expression
  * weights, min/max values for integer and double constants, etc).
