@@ -242,7 +242,9 @@ TypeConstraints TypeConstraints::allowed_to_point_to() const {
       *specific_types_ptr != nullptr &&
       "Should never be null, did you accidentally create a null shared_ptr?");
 
-  return **specific_types_ptr;
+  TypeConstraints retval = **specific_types_ptr;
+  retval.scalar_types_[ScalarType::Void] = false;
+  return retval;
 }
 
 bool TypeConstraints::allows_tagged_type(const TaggedType& tagged_type) const {

@@ -629,8 +629,9 @@ std::optional<Expr> ExprGenerator::gen_address_of_expr_impl(
 
   if (!new_type_constraints.satisfiable()) {
     // It is possible that type constraints become unsatisfiable after the
-    // `allowed_to_point_to()` is performed (e.g. `void*` can't become `void`
-    // since `void` expressions are invalid).
+    // `allowed_to_point_to()` is performed (e.g. when called on non-pointer
+    // type constraints, or `void*` constraint since `void` expressions are
+    // invalid).
     return {};
   }
 
