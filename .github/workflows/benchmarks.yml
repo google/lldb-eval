@@ -36,9 +36,6 @@ jobs:
       - name: Run benchmarks
         working-directory: ./lldb-eval
         run: |
-          echo "BASELINE_JSON=${mktemp}" >> $GITHUB_ENV
-          echo "CONTENDER_JSON=${mktemp}" >> $GITHUB_ENV
-
           git checkout ${{ github.event.pull_request.base.sha }}
           bazel run -c opt lldb-eval:eval_benchmark -- --benchmark_format=json > ${{ env.BASELINE_JSON }}
 
