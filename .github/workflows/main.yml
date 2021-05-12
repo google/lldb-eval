@@ -42,8 +42,14 @@ jobs:
           7z x -y "${{ matrix.llvm_archive }}.7z"
           echo "LLVM_INSTALL_PATH=$pwd/${{ matrix.llvm_archive }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
 
-      - name: Build
+      - name: Build (fastbuild)
         run: bazel build -c opt ...:all
 
-      - name: Test
+      - name: Test (fastbuild)
+        run: bazel test -c opt --test_output=errors ...:all
+
+      - name: Build (opt)
+        run: bazel build -c opt ...:all
+
+      - name: Test (opt)
         run: bazel test -c opt --test_output=errors ...:all
