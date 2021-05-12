@@ -1003,9 +1003,31 @@ ExprResult Parser::ParseUnaryExpression() {
                      clang::tok::minus, clang::tok::exclaim,
                      clang::tok::tilde)) {
     clang::Token token = token_;
+    clang::SourceLocation loc = token.getLocation();
     ConsumeToken();
     auto rhs = ParseCastExpression();
-    return BuildUnaryOp(token.getKind(), std::move(rhs), token.getLocation());
+
+    switch (token.getKind()) {
+      case clang::tok::plusplus:
+        return BuildUnaryOp(UnaryOpKind::PreInc, std::move(rhs), loc);
+      case clang::tok::minusminus:
+        return BuildUnaryOp(UnaryOpKind::PreDec, std::move(rhs), loc);
+      case clang::tok::star:
+        return BuildUnaryOp(UnaryOpKind::Deref, std::move(rhs), loc);
+      case clang::tok::amp:
+        return BuildUnaryOp(UnaryOpKind::AddrOf, std::move(rhs), loc);
+      case clang::tok::plus:
+        return BuildUnaryOp(UnaryOpKind::Plus, std::move(rhs), loc);
+      case clang::tok::minus:
+        return BuildUnaryOp(UnaryOpKind::Minus, std::move(rhs), loc);
+      case clang::tok::tilde:
+        return BuildUnaryOp(UnaryOpKind::Not, std::move(rhs), loc);
+      case clang::tok::exclaim:
+        return BuildUnaryOp(UnaryOpKind::LNot, std::move(rhs), loc);
+
+      default:
+        lldb_eval_unreachable("invalid token kind");
+    }
   }
 
   if (token_.is(clang::tok::kw_sizeof)) {
@@ -1150,13 +1172,13 @@ ExprResult Parser::ParsePostfixExpression() {
       }
       case clang::tok::plusplus: {
         ConsumeToken();
-        return BuildIncrementDecrement(UnaryOpKind::PostInc, std::move(lhs),
-                                       token.getLocation());
+        return BuildUnaryOp(UnaryOpKind::PostInc, std::move(lhs),
+                            token.getLocation());
       }
       case clang::tok::minusminus: {
         ConsumeToken();
-        return BuildIncrementDecrement(UnaryOpKind::PostDec, std::move(lhs),
-                                       token.getLocation());
+        return BuildUnaryOp(UnaryOpKind::PostDec, std::move(lhs),
+                            token.getLocation());
       }
       case clang::tok::l_square: {
         ConsumeToken();
@@ -1169,7 +1191,7 @@ ExprResult Parser::ParsePostfixExpression() {
       }
 
       default:
-        lldb_eval_unreachable("Invalid token");
+        lldb_eval_unreachable("invalid token");
     }
   }
 
@@ -2169,15 +2191,13 @@ ExprResult Parser::BuildCxxDynamicCast(Type type, ExprResult rhs,
   return std::make_unique<ErrorNode>();
 }
 
-ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind token_kind,
-                                ExprResult rhs,
+ExprResult Parser::BuildUnaryOp(UnaryOpKind kind, ExprResult rhs,
                                 clang::SourceLocation location) {
   lldb::SBType result_type;
-  UnaryOpKind kind;
   Type rhs_type = rhs->result_type_deref();
 
-  switch (token_kind) {
-    case clang::tok::star: {
+  switch (kind) {
+    case UnaryOpKind::Deref: {
       if (rhs_type.IsPointerType()) {
         result_type = rhs_type.GetPointeeType();
       } else if (rhs_type.IsArrayType()) {
@@ -2191,10 +2211,9 @@ ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind token_kind,
                 location);
         return std::make_unique<ErrorNode>();
       }
-      kind = UnaryOpKind::Deref;
       break;
     }
-    case clang::tok::amp: {
+    case UnaryOpKind::AddrOf: {
       if (rhs->is_rvalue()) {
         BailOut(
             ErrorCode::kInvalidOperandType,
@@ -2209,48 +2228,42 @@ ExprResult Parser::BuildUnaryOp(clang::tok::TokenKind token_kind,
         return std::make_unique<ErrorNode>();
       }
       result_type = rhs_type.GetPointerType();
-      kind = UnaryOpKind::AddrOf;
       break;
     }
-    case clang::tok::plus:
-    case clang::tok::minus: {
+    case UnaryOpKind::Plus:
+    case UnaryOpKind::Minus: {
       rhs = UsualUnaryConversions(target_, std::move(rhs));
       rhs_type = rhs->result_type_deref();
       if (rhs_type.IsScalar() ||
           // Unary plus is allowed for pointers.
-          (token_kind == clang::tok::plus && rhs_type.IsPointerType())) {
+          (kind == UnaryOpKind::Plus && rhs_type.IsPointerType())) {
         result_type = rhs->result_type();
-        kind = (token_kind == clang::tok::plus) ? UnaryOpKind::Plus
-                                                : UnaryOpKind::Minus;
       }
       break;
     }
-    case clang::tok::tilde: {
+    case UnaryOpKind::Not: {
       rhs = UsualUnaryConversions(target_, std::move(rhs));
       rhs_type = rhs->result_type_deref();
       if (rhs_type.IsInteger()) {
         result_type = rhs->result_type();
-        kind = UnaryOpKind::Not;
       }
       break;
     }
-    case clang::tok::exclaim: {
+    case UnaryOpKind::LNot: {
       if (rhs_type.IsContextuallyConvertibleToBool()) {
         result_type = target_.GetBasicType(lldb::eBasicTypeBool);
-        kind = UnaryOpKind::LNot;
       }
       break;
     }
-    case clang::tok::plusplus: {
-      return BuildIncrementDecrement(UnaryOpKind::PreInc, std::move(rhs),
-                                     location);
+    case UnaryOpKind::PostInc:
+    case UnaryOpKind::PostDec:
+    case UnaryOpKind::PreInc:
+    case UnaryOpKind::PreDec: {
+      return BuildIncrementDecrement(kind, std::move(rhs), location);
     }
-    case clang::tok::minusminus:
-      return BuildIncrementDecrement(UnaryOpKind::PreDec, std::move(rhs),
-                                     location);
 
     default:
-      break;
+      lldb_eval_unreachable("invalid unary op kind");
   }
 
   if (!result_type) {
@@ -2419,7 +2432,7 @@ ExprResult Parser::BuildBinaryOp(BinaryOpKind kind, ExprResult lhs,
       break;
 
     default:
-      break;
+      lldb_eval_unreachable("invalid binary op kind");
   }
 
   // If we're building a composite assignment, check for composite assignments
