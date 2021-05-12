@@ -1,4 +1,4 @@
-load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -37,6 +37,28 @@ cc_library(
     ],
 )
 
+cc_binary(
+    name = "eval_benchmark",
+    srcs = ["eval_benchmark.cc"],
+    data = [
+        "//testdata:benchmark_binary_gen",
+        "//testdata:benchmark_binary_srcs",
+    ],
+    tags = [
+        # On Linux lldb-server behaves funny in a sandbox ¯\_(ツ)_/¯. This is
+        # not necessary on Windows, but "tags" attribute is not configurable
+        # with select -- https://github.com/bazelbuild/bazel/issues/2971.
+        "no-sandbox",
+    ],
+    deps = [
+        ":lldb-eval",
+        ":runner",
+        "@bazel_tools//tools/cpp/runfiles",
+        "@com_google_benchmark//:benchmark_main",
+        "@llvm_project//:lldb-api",
+    ],
+)
+
 cc_test(
     name = "eval_test",
     srcs = ["eval_test.cc"],
@@ -53,6 +75,7 @@ cc_test(
     deps = [
         ":lldb-eval",
         ":runner",
+        "@bazel_tools//tools/cpp/runfiles",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@llvm_project//:lldb-api",

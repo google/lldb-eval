@@ -19,6 +19,13 @@ http_archive(
 )
 
 http_archive(
+    name = "com_google_benchmark",
+    sha256 = "bdefa4b03c32d1a27bd50e37ca466d8127c1688d834800c38f3c587a396188ee",
+    strip_prefix = "benchmark-1.5.3",
+    urls = ["https://github.com/google/benchmark/archive/v1.5.3.zip"],
+)
+
+http_archive(
     name = "io_github_yhirose_cpplinenoise",
     build_file = "//build_defs:cpp_linenoise.BUILD",
     sha256 = "9afbfd1da0e7bd48c06a6d08ef2a1c259b2edf3f6488b75a54025ab4e64b523f",
