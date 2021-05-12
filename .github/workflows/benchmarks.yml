@@ -30,8 +30,8 @@ jobs:
 
       - name: Setup benchmarks
         run: |
-          echo "BASELINE_JSON=${mktemp}" >> $GITHUB_ENV
-          echo "CONTENDER_JSON=${mktemp}" >> $GITHUB_ENV
+          echo "BASELINE_JSON=`${mktemp}`" >> $GITHUB_ENV
+          echo "CONTENDER_JSON=`${mktemp}`" >> $GITHUB_ENV
 
       - name: Run benchmarks
         working-directory: ./lldb-eval
