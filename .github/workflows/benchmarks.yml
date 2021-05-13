@@ -59,11 +59,11 @@ jobs:
           # https://github.com/numpy/numpy/blob/6d7b8aaed5ae9f0435764675ebac8c9ada06738f/numpy/__init__.py#L292
           sed -i 's/PY2/PY3/g' tools/BUILD.bazel
 
-          bazel run //tools:compare -- benchmarks ${{ env.BASELINE_JSON }} ${{ env.CONTENDER_JSON }} | tee cmp_results
+          bazel run //tools:compare -- benchmarks --no-color ${{ env.BASELINE_JSON }} ${{ env.CONTENDER_JSON }} | tee cmp_results
 
           echo 'Benchmark comparison for [${{ env.BASE_SHA }}](${{ github.event.repository.html_url }}/commit/${{ github.event.pull_request.base.sha }}) (base) vs [${{ env.HEAD_SHA }}](${{ github.event.repository.html_url }}/commit/${{ github.event.pull_request.head.sha }}) (pr)' >> pr_comment
           echo '```' >> pr_comment
-          cat cmp_results >> pr_comment
+          tail -n +2 cmp_results >> pr_comment  # Skip the first line saying "Comparing XX to YY"
           echo '```' >> pr_comment
           cat pr_comment > ${{ env.PR_COMMENT }}
 
