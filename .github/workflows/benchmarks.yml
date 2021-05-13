@@ -30,6 +30,9 @@ jobs:
 
       - name: Setup benchmarks
         run: |
+          echo "BASE_SHA=$(${{ github.event.pull_request.base.sha }} | cut -c1-8)" >> $GITHUB_ENV
+          echo "HEAD_SHA=$(${{ github.event.pull_request.head.sha }} | cut -c1-8)" >> $GITHUB_ENV
+
           echo "BASELINE_JSON=$(mktemp)" >> $GITHUB_ENV
           echo "CONTENDER_JSON=$(mktemp)" >> $GITHUB_ENV
           echo "PR_COMMENT=$(mktemp)" >> $GITHUB_ENV
@@ -45,6 +48,8 @@ jobs:
 
       - name: Compare results
         run: |
+          set -x
+
           git clone --depth 1 --branch "v1.5.3" https://github.com/google/benchmark google_benchmark
           cd google_benchmark
 
@@ -56,7 +61,7 @@ jobs:
 
           bazel run //tools:compare -- benchmarks ${{ env.BASELINE_JSON }} ${{ env.CONTENDER_JSON }} | tee cmp_results
 
-          echo 'Benchmark comparison for [${{ github.event.pull_request.base.sha }}](${{ github.event.repository.html_url }}/commits/${{ github.event.pull_request.base.sha }})(base) vs [${{ github.event.pull_request.head.sha }}](${{ github.event.repository.html_url }}/commits/${{ github.event.pull_request.head.sha }})(pr)' >> pr_comment
+          echo 'Benchmark comparison for [${{ env.BASE_SHA }}](${{ github.event.repository.html_url }}/commits/${{ github.event.pull_request.base.sha }}) (base) vs [${{ env.HEAD_SHA }}](${{ github.event.repository.html_url }}/commits/${{ github.event.pull_request.head.sha }}) (pr)' >> pr_comment
           echo '```' >> pr_comment
           cat cmp_results >> pr_comment
           echo '```' >> pr_comment
