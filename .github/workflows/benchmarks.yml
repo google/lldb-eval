@@ -72,6 +72,9 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const { issue: { number: issue_number }, repo: { owner, repo }  } = context;
-            const { stdout } = require('fs').readFileSync('${{ env.PR_COMMENT }}')
-            github.issues.createComment({ issue_number, owner, repo, body: stdout });
+            github.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: require('fs').readFileSync('${{ env.PR_COMMENT }}').toString()
+            });
