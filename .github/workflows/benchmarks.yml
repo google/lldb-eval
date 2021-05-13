@@ -61,7 +61,7 @@ jobs:
 
           bazel run //tools:compare -- benchmarks --no-color ${{ env.BASELINE_JSON }} ${{ env.CONTENDER_JSON }} | tee cmp_results
 
-          echo 'Benchmark comparison for [${{ env.BASE_SHA }}](${{ github.event.repository.html_url }}/commit/${{ github.event.pull_request.base.sha }}) (base) vs [${{ env.HEAD_SHA }}](${{ github.event.repository.html_url }}/commit/${{ github.event.pull_request.head.sha }}) (pr)' >> pr_comment
+          echo 'Benchmark comparison for [`${{ env.BASE_SHA }}`](${{ github.event.repository.html_url }}/commit/${{ github.event.pull_request.base.sha }}) (base) vs [`${{ env.HEAD_SHA }}`](${{ github.event.repository.html_url }}/commit/${{ github.event.pull_request.head.sha }}) (pr)' >> pr_comment
           echo '```' >> pr_comment
           tail -n +2 cmp_results >> pr_comment  # Skip the first line saying "Comparing XX to YY"
           echo '```' >> pr_comment
