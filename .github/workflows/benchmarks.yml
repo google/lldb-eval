@@ -44,7 +44,13 @@ jobs:
 
       - name: Compare results
         run: |
-          git clone https://github.com/google/benchmark google_benchmark
+          git clone --depth 1 --branch "v1.5.3" https://github.com/google/benchmark google_benchmark
           cd google_benchmark
+
+          # Use python3 to run the compare script, because numpy already dropped
+          # support for python2. The compare script fails with the current
+          # version of numpy because of the non-ASCII symbol in the source code:
+          # https://github.com/numpy/numpy/blob/6d7b8aaed5ae9f0435764675ebac8c9ada06738f/numpy/__init__.py#L292
+          sed -i 's/PY2/PY3/g' tools/BUILD.bazel
 
           bazel run //tools:compare -- benchmarks ${{ env.BASELINE_JSON }} ${{ env.CONTENDER_JSON }}
