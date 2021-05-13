@@ -35,7 +35,7 @@ jobs:
 
           echo "BASELINE_JSON=$(mktemp)" >> $GITHUB_ENV
           echo "CONTENDER_JSON=$(mktemp)" >> $GITHUB_ENV
-          echo "PR_COMMENT=$(mktemp)" >> $HOME/pr_comment
+          echo "PR_COMMENT=$(mktemp)" >>  $GITHUB_ENV
 
       - name: Run benchmarks
         working-directory: ./lldb-eval
@@ -67,9 +67,11 @@ jobs:
           echo '```' >> pr_comment
           cat pr_comment > ${{ env.PR_COMMENT }}
 
-      - name: Comment on PR
-        uses: machine-learning-apps/pr-comment@1.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: 'Comment PR'
+        uses: actions/github-script@v4.0.2
         with:
-          path: ${{ env.PR_COMMENT }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { issue: { number: issue_number }, repo: { owner, repo }  } = context;
+            const { stdout } = await require('execa')('cat', ['${{ env.PR_COMMENT }}'])
+            github.issues.createComment({ issue_number, owner, repo, body: stdout });
