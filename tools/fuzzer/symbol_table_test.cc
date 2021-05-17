@@ -166,11 +166,11 @@ TEST_F(PopulateSymbolTableTest, Variables) {
   using ss = std::unordered_set<std::string>;
   expect_vars(
       EnumType("CStyleEnum", /*scoped*/ false),
-      (has_patch_for_enum_values ? ss{"c_enum", "VALUE3", "VALUE2", "VALUE1"}
+      (has_patch_for_enum_values ? ss{"c_enum", "VALUE1", "VALUE2", "VALUE3"}
                                  : ss{"c_enum"}));
   expect_vars(
       EnumType("ns::CStyleEnum", /*scoped*/ false),
-      (has_patch_for_enum_values ? ss{"ns::V2", "ns_enum", "ns::V1", "ns::V3"}
+      (has_patch_for_enum_values ? ss{"ns_enum", "ns::V1", "ns::V2", "ns::V3"}
                                  : ss{"ns_enum"}));
 
   EXPECT_THAT(unchecked_symtab_types, IsEmpty());
