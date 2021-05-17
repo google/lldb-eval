@@ -16,6 +16,8 @@
 
 #include "tools/fuzzer/symbol_table.h"
 
+#include <unordered_set>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "lldb-eval/runner.h"
@@ -77,18 +79,35 @@ lldb::SBProcess PopulateSymbolTableTest::process_;
 SymbolTable PopulateSymbolTableTest::symtab_;
 
 TEST_F(PopulateSymbolTableTest, Variables) {
-  size_t count_checked_types = 0;
+  // Make sure there isn't a type we forgot to check.
+  std::unordered_set<fuzzer::Type> unchecked_symtab_types;
+  for (const auto& kv : symtab_.vars()) {
+    unchecked_symtab_types.insert(kv.first);
+  }
 
-  auto expect_vars = [this, &count_checked_types](
-                         Type type, const std::set<std::string>& names) {
+  // Check if LLDB can find enum values as global variables:
+  // https://reviews.llvm.org/D94077
+  const bool has_patch_for_enum_values = unchecked_symtab_types.count(
+      EnumType("std::float_denorm_style", /*scoped*/ false));
+
+  if (has_patch_for_enum_values) {
+    unchecked_symtab_types.erase(
+        EnumType("std::float_denorm_style", /*scoped*/ false));
+    unchecked_symtab_types.erase(
+        EnumType("std::float_round_style", /*scoped*/ false));
+  }
+
+  auto expect_vars = [this, &unchecked_symtab_types](
+                         Type type,
+                         const std::unordered_set<std::string>& names) {
     auto var_it = symtab_.vars().find(type);
     ASSERT_NE(var_it, symtab_.vars().end());
-    std::set<std::string> names_from_symtab;
+    std::unordered_set<std::string> names_from_symtab;
     for (const auto& var : var_it->second) {
       names_from_symtab.insert(remove_leading_colons(var.expr.name()));
     }
     EXPECT_EQ(names, names_from_symtab);
-    count_checked_types++;
+    unchecked_symtab_types.erase(type);
   };
 
   // Check contents of the symbol table.
@@ -134,8 +153,6 @@ TEST_F(PopulateSymbolTableTest, Variables) {
   expect_vars(TaggedType("MultiInheritDerived"), {"multi"});
   expect_vars(TaggedType("ClassWithNestedClass"), {"with_nested"});
   expect_vars(TaggedType("NonEmptyDerived"), {"empty_base"});
-  expect_vars(EnumType("CStyleEnum", /*scoped*/ false), {"c_enum"});
-  expect_vars(EnumType("ns::CStyleEnum", /*scoped*/ false), {"ns_enum"});
   expect_vars(EnumType("EnumClass", kHasScopedEnums), {"enum_class"});
   expect_vars(EnumType("ns::EnumClass", kHasScopedEnums), {"ns_enum_class"});
   expect_vars(ArrayType(ArrayType(ScalarType::SignedInt, 3), 3), {"array33"});
@@ -146,8 +163,17 @@ TEST_F(PopulateSymbolTableTest, Variables) {
   expect_vars(PointerType(QualifiedType(ArrayType(ScalarType::SignedInt, 3))),
               {"ptr_to_arr3"});
 
-  // Make sure there isn't a type we forgot to check.
-  EXPECT_EQ(count_checked_types, symtab_.vars().size());
+  using ss = std::unordered_set<std::string>;
+  expect_vars(
+      EnumType("CStyleEnum", /*scoped*/ false),
+      (has_patch_for_enum_values ? ss{"c_enum", "VALUE3", "VALUE2", "VALUE1"}
+                                 : ss{"c_enum"}));
+  expect_vars(
+      EnumType("ns::CStyleEnum", /*scoped*/ false),
+      (has_patch_for_enum_values ? ss{"ns::V2", "ns_enum", "ns::V1", "ns::V3"}
+                                 : ss{"ns_enum"}));
+
+  EXPECT_THAT(unchecked_symtab_types, IsEmpty());
 }
 
 TEST_F(PopulateSymbolTableTest, FreedomIndices) {
