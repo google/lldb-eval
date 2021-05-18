@@ -24,43 +24,6 @@
 namespace lldb_eval {
 
 template <typename T>
-static T ReadValue(lldb::SBValue value) {
-  static_assert(std::is_scalar_v<T>, "T must be scalar");
-
-  // For integral type just use GetValueAsUnsigned, it will get the correct
-  // value regardless of the value byte size (and it also handles bitfields).
-  if constexpr (std::is_integral_v<T>) {
-    return static_cast<T>(value.GetValueAsUnsigned());
-  }
-
-  // For floating point type read raw bytes directly.
-  if constexpr (std::is_floating_point_v<T>) {
-    lldb::SBError ignore;
-    T ret = 0;
-    value.GetData().ReadRawData(ignore, 0, &ret, sizeof(T));
-    return ret;
-  }
-}
-
-template <typename T>
-static T ConvertTo(lldb::SBValue value) {
-  static_assert(std::is_scalar_v<T>, "T must be scalar");
-
-  switch (value.GetType().GetCanonicalType().GetBasicType()) {
-#define CASE(basic_type, builtin_type)                     \
-  case basic_type: {                                       \
-    return static_cast<T>(ReadValue<builtin_type>(value)); \
-  }
-
-    LLDB_TYPE_BUILTIN(CASE)
-#undef CASE
-
-    default:
-      return T();
-  }
-}
-
-template <typename T>
 bool IsScopedEnum_V(T type) {
   // SBType::IsScopedEnumerationType was introduced in
   // https://reviews.llvm.org/D93690. If it's not available yet, fallback to the
@@ -82,6 +45,32 @@ lldb::SBType GetEnumerationIntegerType_V(T type, lldb::SBTarget target) {
     // Assume "int" by default and hope for the best.
     return target.GetBasicType(lldb::eBasicTypeInt);
   }
+}
+
+template <typename T>
+bool IsEnumerationIntegerTypeSigned_V(T type) {
+  // SBType::GetEnumerationIntegerType was introduced in
+  // https://reviews.llvm.org/D93696. If it's not available yet, fallback to the
+  // "default" implementation.
+  if constexpr (HAS_METHOD(T, GetEnumerationIntegerType())) {
+    return type.GetEnumerationIntegerType().GetTypeFlags() &
+           lldb::eTypeIsSigned;
+  } else {
+    // Assume "int" by default and hope for the best.
+    return true;
+  }
+}
+
+static uint64_t GetValueAsUnsigned(lldb::SBValue& value) {
+  uint64_t ret = value.GetValueAsUnsigned();
+
+  // Workaround for reading values of boolean bitfields. Not necessary if
+  // https://reviews.llvm.org/D102685 is available.
+  if (value.GetType().GetCanonicalType().GetBasicType() ==
+      lldb::eBasicTypeBool) {
+    return ret > 0 ? 1 : 0;
+  }
+  return ret;
 }
 
 Type::Type() {}
@@ -195,7 +184,12 @@ bool Value::IsPointer() { return type_.IsPointerType(); }
 
 bool Value::IsNullPtrType() { return type_.IsNullPtrType(); }
 
-bool Value::IsSigned() { return type_.GetTypeFlags() & lldb::eTypeIsSigned; }
+bool Value::IsSigned() {
+  if (IsEnum()) {
+    return IsEnumerationIntegerTypeSigned_V<lldb::SBType>(type_);
+  }
+  return type_.GetTypeFlags() & lldb::eTypeIsSigned;
+}
 
 bool Value::IsEnum() { return type_.GetTypeFlags() & lldb::eTypeIsEnumeration; }
 
@@ -221,7 +215,7 @@ uint64_t Value::GetUInt64() {
   // GetValueAsUnsigned performs overflow according to the underlying type. For
   // example, if the underlying type is `int32_t` and the value is `-1`,
   // GetValueAsUnsigned will return 4294967295.
-  return IsSigned() ? value_.GetValueAsSigned() : value_.GetValueAsUnsigned();
+  return IsSigned() ? value_.GetValueAsSigned() : GetValueAsUnsigned(value_);
 }
 
 Value Value::AddressOf() { return Value(value_.AddressOf()); }
@@ -230,7 +224,7 @@ Value Value::Dereference() { return Value(value_.Dereference()); }
 
 llvm::APSInt Value::GetInteger() {
   unsigned bit_width = static_cast<unsigned>(type_.GetByteSize() * CHAR_BIT);
-  uint64_t value = value_.GetValueAsUnsigned();
+  uint64_t value = GetValueAsUnsigned(value_);
   bool is_signed = IsSigned();
 
   return llvm::APSInt(llvm::APInt(bit_width, value, is_signed), !is_signed);
@@ -238,14 +232,21 @@ llvm::APSInt Value::GetInteger() {
 
 llvm::APFloat Value::GetFloat() {
   lldb::BasicType basic_type = type_.GetCanonicalType().GetBasicType();
+  lldb::SBError ignore;
 
   switch (basic_type) {
-    case lldb::eBasicTypeFloat:
-      return llvm::APFloat(ReadValue<float>(value_));
+    case lldb::eBasicTypeFloat: {
+      float v = 0;
+      value_.GetData().ReadRawData(ignore, 0, &v, sizeof(float));
+      return llvm::APFloat(v);
+    }
     case lldb::eBasicTypeDouble:
-      return llvm::APFloat(ReadValue<double>(value_));
-    case lldb::eBasicTypeLongDouble:
-      return llvm::APFloat(ReadValue<double>(value_));
+      // No way to get more precision at the moment.
+    case lldb::eBasicTypeLongDouble: {
+      double v = 0;
+      value_.GetData().ReadRawData(ignore, 0, &v, sizeof(double));
+      return llvm::APFloat(v);
+    }
     default:
       return llvm::APFloat(NAN);
   }
@@ -285,72 +286,107 @@ void Value::Update(Value v) {
   }
 }
 
-Value CastScalarToBasicType(lldb::SBTarget target, Value val,
-                            lldb::SBType type) {
-  Value ret;
-
-  switch (type.GetCanonicalType().GetBasicType()) {
-#define CASE(basic_type, builtin_type)                   \
-  case basic_type: {                                     \
-    auto v = ConvertTo<builtin_type>(val.inner_value()); \
-    ret = CreateValueFromBytes(target, &v, type);        \
-    break;                                               \
-  }
-
-    LLDB_TYPE_BUILTIN(CASE)
-#undef CASE
-
+static llvm::APFloat CreateAPFloatFromAPSInt(const llvm::APSInt& value,
+                                             lldb::BasicType basic_type) {
+  switch (basic_type) {
+    case lldb::eBasicTypeFloat:
+      return llvm::APFloat(value.isSigned()
+                               ? llvm::APIntOps::RoundSignedAPIntToFloat(value)
+                               : llvm::APIntOps::RoundAPIntToFloat(value));
+    case lldb::eBasicTypeDouble:
+      // No way to get more precision at the moment.
+    case lldb::eBasicTypeLongDouble:
+      return llvm::APFloat(value.isSigned()
+                               ? llvm::APIntOps::RoundSignedAPIntToDouble(value)
+                               : llvm::APIntOps::RoundAPIntToDouble(value));
     default:
-      // Invalid basic type, can't cast to it.
-      break;
+      return llvm::APFloat(NAN);
   }
-
-  return ret;
 }
 
-Value CastEnumToBasicType(lldb::SBTarget target, Value val, lldb::SBType type) {
-  Value ret;
-
-  switch (type.GetCanonicalType().GetBasicType()) {
-#define CASE(basic_type, builtin_type)                   \
-  case basic_type: {                                     \
-    auto v = static_cast<builtin_type>(val.GetUInt64()); \
-    ret = CreateValueFromBytes(target, &v, type);        \
-    break;                                               \
-  }
-
-    LLDB_TYPE_BUILTIN(CASE)
-#undef CASE
-
+static llvm::APFloat CreateAPFloatFromAPFloat(llvm::APFloat value,
+                                              lldb::BasicType basic_type) {
+  switch (basic_type) {
+    case lldb::eBasicTypeFloat: {
+      bool loses_info;
+      value.convert(llvm::APFloat::IEEEsingle(),
+                    llvm::APFloat::rmNearestTiesToEven, &loses_info);
+      return value;
+    }
+    case lldb::eBasicTypeDouble:
+      // No way to get more precision at the moment.
+    case lldb::eBasicTypeLongDouble: {
+      bool loses_info;
+      value.convert(llvm::APFloat::IEEEdouble(),
+                    llvm::APFloat::rmNearestTiesToEven, &loses_info);
+      return value;
+    }
     default:
-      // Invalid basic type, can't cast to it.
-      break;
+      return llvm::APFloat(NAN);
   }
-
-  return ret;
 }
 
-Value CastPointerToBasicType(lldb::SBTarget target, Value val,
-                             lldb::SBType type) {
-  Value ret;
+Value CastScalarToBasicType(lldb::SBTarget target, Value val, Type type) {
+  assert(type.IsScalar() && "target type must be an scalar");
+  assert(val.type().IsScalar() && "argument must be a scalar");
 
-  switch (type.GetCanonicalType().GetBasicType()) {
-#define CASE(basic_type, builtin_type)                   \
-  case basic_type: {                                     \
-    auto v = static_cast<builtin_type>(val.GetUInt64()); \
-    ret = CreateValueFromBytes(target, &v, type);        \
-    break;                                               \
+  if (type.IsInteger()) {
+    if (val.type().IsInteger()) {
+      llvm::APSInt ext =
+          val.GetInteger().extOrTrunc(type.GetByteSize() * CHAR_BIT);
+      return CreateValueFromAPInt(target, ext, type);
+    }
+    if (val.type().IsFloat()) {
+      llvm::APSInt integer(type.GetByteSize() * CHAR_BIT, !type.IsSigned());
+      bool is_exact;
+      val.GetFloat().convertToInteger(integer, llvm::APFloat::rmTowardZero,
+                                      &is_exact);
+      return CreateValueFromAPInt(target, integer, type);
+    }
   }
-
-    LLDB_TYPE_BUILTIN_INTEGRAL(CASE)
-#undef CASE
-
-    default:
-      // Invalid basic type, can't cast to it.
-      break;
+  if (type.IsFloat()) {
+    if (val.type().IsInteger()) {
+      llvm::APFloat f = CreateAPFloatFromAPSInt(
+          val.GetInteger(), type.GetCanonicalType().GetBasicType());
+      return CreateValueFromAPFloat(target, f, type);
+    }
+    if (val.type().IsFloat()) {
+      llvm::APFloat f = CreateAPFloatFromAPFloat(
+          val.GetFloat(), type.GetCanonicalType().GetBasicType());
+      return CreateValueFromAPFloat(target, f, type);
+    }
   }
+  assert(false && "invalid target type: must be a scalar");
+  return Value();
+}
 
-  return ret;
+Value CastEnumToBasicType(lldb::SBTarget target, Value val, Type type) {
+  assert(type.IsScalar() && "target type must be an scalar");
+  assert(val.type().IsEnum() && "argument must be an enum");
+
+  // Get the value as APSInt and extend or truncate it to the requested size.
+  llvm::APSInt ext = val.GetInteger().extOrTrunc(type.GetByteSize() * CHAR_BIT);
+
+  if (type.IsInteger()) {
+    return CreateValueFromAPInt(target, ext, type);
+  }
+  if (type.IsFloat()) {
+    llvm::APFloat f =
+        CreateAPFloatFromAPSInt(ext, type.GetCanonicalType().GetBasicType());
+    return CreateValueFromAPFloat(target, f, type);
+  }
+  assert(false && "invalid target type: must be a scalar");
+  return Value();
+}
+
+Value CastPointerToBasicType(lldb::SBTarget target, Value val, Type type) {
+  assert(type.IsInteger() && "target type must be an integer");
+  assert((type.GetByteSize() >= val.type().GetByteSize()) &&
+         "target type cannot be smaller than the pointer type");
+
+  // Get the value as APSInt and extend or truncate it to the requested size.
+  llvm::APSInt ext = val.GetInteger().extOrTrunc(type.GetByteSize() * CHAR_BIT);
+  return CreateValueFromAPInt(target, ext, type);
 }
 
 Value CreateValueFromBytes(lldb::SBTarget target, const void* bytes,

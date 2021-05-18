@@ -98,13 +98,11 @@ class Value {
   Type type_;
 };
 
-Value CastScalarToBasicType(lldb::SBTarget target, Value val,
-                            lldb::SBType type);
+Value CastScalarToBasicType(lldb::SBTarget target, Value val, Type type);
 
-Value CastEnumToBasicType(lldb::SBTarget target, Value val, lldb::SBType type);
+Value CastEnumToBasicType(lldb::SBTarget target, Value val, Type type);
 
-Value CastPointerToBasicType(lldb::SBTarget target, Value val,
-                             lldb::SBType type);
+Value CastPointerToBasicType(lldb::SBTarget target, Value val, Type type);
 
 Value CreateValueFromBytes(lldb::SBTarget target, const void* bytes,
                            lldb::SBType type);

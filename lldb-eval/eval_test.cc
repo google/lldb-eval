@@ -1152,6 +1152,13 @@ TEST_F(EvalTest, TestCStyleCastBasicType) {
   EXPECT_THAT(
       Eval("(char)ap"),
       IsError("cast from pointer to smaller type 'char' loses information"));
+
+#ifdef _WIN32
+  EXPECT_THAT(
+      Eval("(long)ap"),
+      IsError("cast from pointer to smaller type 'long' loses information"));
+#endif
+
   EXPECT_THAT(Eval("(float)ap"),
               IsError("C-style cast from 'int *' to 'float' is not allowed"));
 }
@@ -1605,10 +1612,15 @@ TEST_F(EvalTest, TestScopedEnum) {
   EXPECT_THAT(Eval("(ScopedEnum)257"), IsOk());
 
   EXPECT_THAT(Eval("(int)enum_foo"), IsEqual("0"));
+  EXPECT_THAT(Eval("(int)enum_neg"), IsEqual("-1"));
+  EXPECT_THAT(Eval("(unsigned short)enum_neg"), IsEqual("65535"));
   EXPECT_THAT(Eval("(short)ScopedEnum::kBar"), IsEqual("1"));
+  EXPECT_THAT(Eval("(short*)enum_neg"), IsEqual("0xffffffffffffffff"));
   EXPECT_THAT(Eval("(char*)enum_u8_bar"), IsEqual("0x0000000000000001"));
   EXPECT_THAT(Eval("(float)enum_bar"), IsEqual("1"));
   EXPECT_THAT(Eval("(float)enum_foo"), IsEqual("0"));
+  EXPECT_THAT(Eval("(float)enum_neg"), IsEqual("-1"));
+  EXPECT_THAT(Eval("(double)enum_neg"), IsEqual("-1"));
   EXPECT_THAT(Eval("(double)ScopedEnumUInt8::kBar"), IsEqual("1"));
   EXPECT_THAT(Eval("(ScopedEnum)ScopedEnum::kBar"), IsEqual("kBar"));
 }
@@ -1865,9 +1877,6 @@ TEST_F(EvalTest, TestBuiltinFunction_Log2) {
   //
   EXPECT_THAT(Eval("__log2(0)"), IsEqual("4294967295"));
   EXPECT_THAT(Eval("__log2(1LL << 32)"), IsEqual("4294967295"));
-  EXPECT_THAT(Eval("__log2(1 / +0.0)"), IsEqual("4294967295"));    // +Inf
-  EXPECT_THAT(Eval("__log2(1 / -0.0)"), IsEqual("4294967295"));    // -Inf
-  EXPECT_THAT(Eval("__log2(0.0 / -0.0)"), IsEqual("4294967295"));  // NaN
 
   EXPECT_THAT(Eval("__log2(1)"), IsEqual("0"));
   EXPECT_THAT(Eval("__log2(8)"), IsEqual("3"));
@@ -1877,8 +1886,6 @@ TEST_F(EvalTest, TestBuiltinFunction_Log2) {
 
   EXPECT_THAT(Eval("__log2(32.3f)"), IsEqual("5"));
   EXPECT_THAT(Eval("__log2(12345.12345)"), IsEqual("13"));
-  EXPECT_THAT(Eval("__log2(-1.0)"), IsEqual("31"));
-  EXPECT_THAT(Eval("__log2(-1.0f)"), IsEqual("31"));
 
   EXPECT_THAT(Eval("__log2(c_enum)"), IsEqual("7"));
   EXPECT_THAT(Eval("__log2(cxx_enum)"), IsEqual("7"));

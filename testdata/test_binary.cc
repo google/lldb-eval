@@ -685,6 +685,7 @@ enum class ScopedEnumUInt8 : uint8_t { kFoo, kBar };
 void TestScopedEnum() {
   auto enum_foo = ScopedEnum::kFoo;
   auto enum_bar = ScopedEnum::kBar;
+  auto enum_neg = (ScopedEnum)-1;
 
   auto enum_u8_foo = ScopedEnumUInt8::kFoo;
   auto enum_u8_bar = ScopedEnumUInt8::kBar;
