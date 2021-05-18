@@ -103,6 +103,19 @@ BENCHMARK_F(BM, ArraySubscript)(benchmark::State& state) {
   }
 }
 
+BENCHMARK_F(BM, TypeCasting)(benchmark::State& state) {
+  for (auto _ : state) {
+    lldb::SBError error;
+    lldb_eval::EvaluateExpression(
+        frame, "(char)1 + (short)1.1f + (long long)1.1 + (double)(char)2",
+        error);
+
+    if (error.Fail()) {
+      state.SkipWithError("Failed to evaluate the expression!");
+    }
+  }
+}
+
 int main(int argc, char** argv) {
   lldb::SBDebugger::Initialize();
 
