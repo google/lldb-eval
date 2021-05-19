@@ -9,6 +9,10 @@ build:linux --copt=-Wpedantic
 build:linux --copt=-Werror
 build:linux --cxxopt=-fno-exceptions
 build:linux --cxxopt=-fno-rtti
+build:linux --copt=-Wno-gcc-compat
+# Force clang on Linux (this is to support libFuzzer).
+build:linux --action_env=CC=clang
+build:linux --action_env=CXX=clang++
 
 # Windows-specific configuration.
 build:windows --cxxopt=/std:c++17
@@ -82,3 +86,13 @@ build:valgrind --copt=-DCONFIG_VALGRIND
 
 # Try loading per-user configuration.
 try-import %workspace%/user.bazelrc
+
+# Configuration for running libFuzzer locally.
+build:libfuzzer --@rules_fuzzing//fuzzing:cc_engine=@rules_fuzzing//fuzzing/engines:libfuzzer
+build:libfuzzer --@rules_fuzzing//fuzzing:cc_engine_instrumentation=libfuzzer
+# A target in rules_fuzzing doesn't use parameter.
+build:libfuzzer --copt=-Wno-unused-parameter
+
+build:asan-libfuzzer --config=libfuzzer
+build:asan-libfuzzer --@rules_fuzzing//fuzzing:cc_engine_sanitizer=asan
+

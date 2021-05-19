@@ -1325,7 +1325,7 @@ std::optional<Expr> ExprGenerator::generate() {
 
 bool ExprGenerator::mutate_gen_node(std::shared_ptr<GenNode>& node) {
   // Don't mutate invalid nodes.
-  if (node->is_valid()) {
+  if (!node->is_valid()) {
     return false;
   }
 
@@ -1581,5 +1581,6 @@ ScalarType DefaultGeneratorRng<Rng>::gen_scalar_type(ScalarMask mask) {
 
 template class DefaultGeneratorRng<Mt19937>;
 template class DefaultGeneratorRng<FixedRng>;
+template class DefaultGeneratorRng<LibfuzzerRng>;
 
 }  // namespace fuzzer

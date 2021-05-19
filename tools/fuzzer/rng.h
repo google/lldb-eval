@@ -77,6 +77,76 @@ class FixedRng : public RngCallbackNotifier {
   std::queue<rand_t> queue_;
 };
 
+// Generates a sequence of `rand_t` values from a byte sequence provided by
+// libFuzzer. It assumes that the byte sequence is infinite with all bytes
+// after the specified size being equal to zero.
+class LibfuzzerReader {
+ public:
+  LibfuzzerReader(const uint8_t* data, size_t size)
+      : data_(data), size_(size), cursor_(0) {}
+
+  rand_t read() {
+    rand_t result = next_byte();
+    result <<= 8;
+    result |= next_byte();
+    result <<= 8;
+    result |= next_byte();
+    result <<= 8;
+    result |= next_byte();
+    return result;
+  }
+
+ private:
+  uint8_t next_byte() { return cursor_ < size_ ? data_[cursor_++] : 0; }
+
+ private:
+  const uint8_t* data_;
+  size_t size_;
+  size_t cursor_;
+};
+
+// Converts a sequence of `rand_t` values to byte sequence.
+class LibfuzzerWriter {
+ public:
+  LibfuzzerWriter(uint8_t* data, size_t max_size)
+      : data_(data), max_size_(max_size), size_(0) {}
+
+  void write(rand_t value) {
+    write_byte((value >> 24) & 0xff);
+    write_byte((value >> 16) & 0xff);
+    write_byte((value >> 8) & 0xff);
+    write_byte(value & 0xff);
+  }
+
+  size_t size() const { return size_; }
+
+ private:
+  void write_byte(uint8_t byte) {
+    if (size_ < max_size_) {
+      data_[size_++] = byte;
+    }
+  }
+
+ private:
+  uint8_t* data_;
+  size_t max_size_;
+  size_t size_;
+};
+
+class LibfuzzerRng : public RngCallbackNotifier {
+ public:
+  explicit LibfuzzerRng(LibfuzzerReader reader) : reader_(std::move(reader)) {}
+
+  using result_type = rand_t;
+  static constexpr result_type min() { return std::mt19937::min(); }
+  static constexpr result_type max() { return std::mt19937::max(); }
+
+  result_type operator()() { return consume(reader_.read()); }
+
+ private:
+  LibfuzzerReader reader_;
+};
+
 }  // namespace fuzzer
 
 #endif  // INCLUDE_RNG_H

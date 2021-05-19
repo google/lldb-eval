@@ -97,7 +97,7 @@ TEST_F(PopulateSymbolTableTest, Variables) {
         EnumType("std::float_round_style", /*scoped*/ false));
   }
 
-  auto expect_vars = [this, &unchecked_symtab_types](
+  auto expect_vars = [&unchecked_symtab_types](
                          Type type,
                          const std::unordered_set<std::string>& names) {
     auto var_it = symtab_.vars().find(type);
@@ -219,9 +219,9 @@ bool operator==(const EnumConstant& lhs, const EnumConstant& rhs) {
 }  // namespace fuzzer
 
 TEST_F(PopulateSymbolTableTest, TaggedTypesAndFields) {
-  auto expect_field = [this](const TaggedType& containing_type,
-                             std::string field_name, const Type& field_type,
-                             bool exists = true) {
+  auto expect_field = [](const TaggedType& containing_type,
+                         std::string field_name, const Type& field_type,
+                         bool exists = true) {
     const fuzzer::Field field(containing_type, std::move(field_name));
     const auto fields_it = symtab_.fields_by_type().find(field_type);
     ASSERT_NE(fields_it, symtab_.fields_by_type().end());

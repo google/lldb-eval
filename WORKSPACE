@@ -33,6 +33,19 @@ http_archive(
     urls = ["https://github.com/yhirose/cpp-linenoise/archive/bc523e4b03a690cebe3b5f80a6396bcc50215a03.zip"],
 )
 
+http_archive(
+    name = "rules_fuzzing",
+    sha256 = "71fa2724c9802c597199a86111a0499fc4fb22426d322334d3f191dadeff5132",
+    strip_prefix = "rules_fuzzing-0.1.0",
+    urls = ["https://github.com/bazelbuild/rules_fuzzing/archive/v0.1.0.zip"],
+)
+
+
+load("@rules_fuzzing//fuzzing:repositories.bzl", "rules_fuzzing_dependencies")
+rules_fuzzing_dependencies()
+load("@rules_fuzzing//fuzzing:init.bzl", "rules_fuzzing_init")
+rules_fuzzing_init()
+
 load("//build_defs:repo_rules.bzl", "llvm_project_configure")
 
 llvm_project_configure(name = "llvm_project")

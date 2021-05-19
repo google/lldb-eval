@@ -1,0 +1,145 @@
+#include <cassert>
+#include <cstdint>
+#include <cstdio>
+#include <iostream>
+#include <memory>
+#include <sstream>
+
+#include "lldb-eval/api.h"
+#include "lldb-eval/runner.h"
+#include "lldb/API/SBDebugger.h"
+#include "lldb/API/SBFrame.h"
+#include "lldb/API/SBProcess.h"
+#include "lldb/API/SBTarget.h"
+#include "lldb/API/SBThread.h"
+#include "tools/cpp/runfiles/runfiles.h"
+#include "tools/fuzzer/ast.h"
+#include "tools/fuzzer/expr_gen.h"
+#include "tools/fuzzer/gen_node.h"
+#include "tools/fuzzer/rng.h"
+#include "tools/fuzzer/symbol_table.h"
+
+using bazel::tools::cpp::runfiles::Runfiles;
+using std::size_t;
+using namespace fuzzer;
+
+// Global variables that are initialized in `LLVMFuzzerInitialize`.
+static Runfiles* g_runfiles;
+static lldb::SBDebugger g_debugger;
+static lldb::SBProcess g_process;
+static lldb::SBFrame g_frame;
+static fuzzer::SymbolTable g_symtab;
+
+// Creates an expression generator using fixed configuration and symbol table.
+template <class T>
+ExprGenerator create_generator(T base_rng) {
+  auto rng = std::make_unique<DefaultGeneratorRng<T>>(std::move(base_rng));
+  auto cfg = GenConfig();
+  cfg.bin_op_mask[BinOp::Shl] = false;
+  cfg.bin_op_mask[BinOp::Shr] = false;
+
+  return ExprGenerator(std::move(rng), cfg, g_symtab);
+}
+
+// Generation tree visitor used to randomly pick nodes.
+class GenNodePicker : public GenTreeVisitor {
+ public:
+  void visit_node(std::shared_ptr<GenNode> node) {
+    if (node->is_valid()) {
+      options_.emplace_back(node);
+    }
+  }
+
+  template <class Rng>
+  std::shared_ptr<GenNode> pick(Rng& rng) {
+    std::uniform_int_distribution<size_t> distr(0, options_.size() - 1);
+    return options_[distr(rng)];
+  }
+
+ private:
+  std::vector<std::shared_ptr<GenNode>> options_;
+};
+
+template <class Rng>
+std::shared_ptr<GenNode> pick_random_node(std::shared_ptr<GenNode> root,
+                                          Rng& rng) {
+  GenNodePicker picker;
+  walk_gen_tree(root, &picker);
+  return picker.pick(rng);
+}
+
+// Generation tree visitor used to convert sequence of `rand_t` to byte
+// sequence representing a libFuzzer input.
+class GenNodeWriter : public GenTreeVisitor {
+ public:
+  explicit GenNodeWriter(LibfuzzerWriter& writer) : writer_(writer) {}
+
+  void visit_random_value(rand_t value) { writer_.write(value); }
+
+ private:
+  LibfuzzerWriter& writer_;
+};
+
+void write_node(std::shared_ptr<GenNode> root, LibfuzzerWriter& writer) {
+  GenNodeWriter node_writer(writer);
+  walk_gen_tree(root, &node_writer);
+}
+
+extern "C" size_t LLVMFuzzerCustomMutator(uint8_t* data, size_t size,
+                                          size_t max_size, unsigned int seed) {
+  LibfuzzerReader reader(data, size);
+  auto fixed_generator = create_generator(LibfuzzerRng(std::move(reader)));
+  assert(fixed_generator.generate() && "Expression couldn't be generated!");
+
+  std::mt19937 rng(seed);
+  auto root = fixed_generator.node();
+  auto mutable_node = pick_random_node(root, rng);
+
+  auto random_generator = create_generator(Mt19937(rng()));
+  if (!random_generator.mutate_gen_node(mutable_node)) {
+    return size;
+  }
+
+  LibfuzzerWriter writer(data, max_size);
+  write_node(root, writer);
+
+  // It's possible that `root`'s sequence of random values overflows the size of
+  // `data`. Overflowed values will be ignored. This isn't ideal, but also isn't
+  // critical since expression generator is able to generate an expression from
+  // any byte sequence.
+  // TODO: Compare number of random values in the `root` to the `max_size`.
+
+  return writer.size();
+}
+
+extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
+  auto generator = create_generator(LibfuzzerRng(LibfuzzerReader(data, size)));
+  auto maybe_expr = generator.generate();
+  assert(maybe_expr.has_value() && "Expression couldn't be generated!");
+
+  std::ostringstream os;
+  os << maybe_expr.value();
+
+  lldb::SBError error;
+  lldb_eval::EvaluateExpression(g_frame, os.str().c_str(), error);
+  return 0;
+}
+
+extern "C" int LLVMFuzzerInitialize(int* /*argc*/, char*** /*argv*/) {
+  g_runfiles = Runfiles::CreateForTest();
+  lldb_eval::SetupLLDBServerEnv(*g_runfiles);
+  lldb::SBDebugger::Initialize();
+
+  auto binary_path = g_runfiles->Rlocation("lldb_eval/testdata/fuzzer_binary");
+  auto source_path =
+      g_runfiles->Rlocation("lldb_eval/testdata/fuzzer_binary.cc");
+  g_debugger = lldb::SBDebugger::Create(false);
+  g_process = lldb_eval::LaunchTestProgram(g_debugger, source_path, binary_path,
+                                           "// BREAK HERE");
+  g_frame = g_process.GetSelectedThread().GetSelectedFrame();
+
+  g_symtab = fuzzer::SymbolTable::create_from_frame(
+      g_frame, /*ignore_qualified_types*/ true);
+
+  return 0;
+}
