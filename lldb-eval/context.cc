@@ -69,6 +69,18 @@ Context::Context(std::string expr, lldb::SBExecutionContext ctx,
   de.setClient(new clang::IgnoringDiagConsumer);
 }
 
+lldb::SBType Context::GetBasicType(lldb::BasicType basic_type) {
+  auto type = basic_types_.find(basic_type);
+  if (type != basic_types_.end()) {
+    return type->second;
+  }
+
+  // Get the basic type from the target and cache it for future calls.
+  lldb::SBType ret = ctx_.GetTarget().GetBasicType(basic_type);
+  basic_types_.insert({basic_type, ret});
+  return ret;
+}
+
 lldb::SBType Context::ResolveTypeByName(const std::string& name) const {
   // TODO(b/163308825): Do scope-aware type lookup. Look for the types defined
   // in the current scope (function, class, namespace) and prioritize them.

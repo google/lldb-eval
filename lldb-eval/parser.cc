@@ -126,15 +126,19 @@ std::string FormatDiagnostics(const clang::SourceManager& sm,
                        llvm::fmt_pad("^", arrow - 1, arrow_rpad));
 }
 
+}  // namespace
+
+namespace lldb_eval {
+
 std::tuple<lldb::BasicType, bool> PickIntegerType(
-    lldb::SBTarget target, const clang::NumericLiteralParser& literal,
+    std::shared_ptr<Context> ctx, const clang::NumericLiteralParser& literal,
     const llvm::APInt& value) {
   unsigned int_size =
-      target.GetBasicType(lldb::eBasicTypeInt).GetByteSize() * CHAR_BIT;
+      ctx->GetBasicType(lldb::eBasicTypeInt).GetByteSize() * CHAR_BIT;
   unsigned long_size =
-      target.GetBasicType(lldb::eBasicTypeLong).GetByteSize() * CHAR_BIT;
+      ctx->GetBasicType(lldb::eBasicTypeLong).GetByteSize() * CHAR_BIT;
   unsigned long_long_size =
-      target.GetBasicType(lldb::eBasicTypeLongLong).GetByteSize() * CHAR_BIT;
+      ctx->GetBasicType(lldb::eBasicTypeLongLong).GetByteSize() * CHAR_BIT;
 
   // Binary, Octal, Hexadecimal and literals with a U suffix are allowed to be
   // an unsigned integer.
@@ -177,10 +181,6 @@ std::tuple<lldb::BasicType, bool> PickIntegerType(
   return {lldb::eBasicTypeUnsignedLongLong, true};
 }
 
-}  // namespace
-
-namespace lldb_eval {
-
 static bool TokenEndsTemplateArgumentList(const clang::Token& token) {
   // Note: in C++11 ">>" can be treated as "> >" and thus be a valid token
   // for the template argument list.
@@ -200,7 +200,8 @@ static ExprResult InsertArrayToPointerConversion(ExprResult expr) {
       std::move(expr), CStyleCastKind::kPointer);
 }
 
-static lldb::SBType DoIntegralPromotion(lldb::SBTarget target, Type from) {
+static lldb::SBType DoIntegralPromotion(std::shared_ptr<Context> ctx,
+                                        Type from) {
   assert((from.IsInteger() || from.IsUnscopedEnum()) &&
          "Integral promotion works only for integers and unscoped enums.");
 
@@ -211,7 +212,8 @@ static lldb::SBType DoIntegralPromotion(lldb::SBTarget target, Type from) {
 
   if (from.IsUnscopedEnum()) {
     // Get the enumeration underlying type and promote it.
-    return DoIntegralPromotion(target, from.GetEnumerationIntegerType(target));
+    auto target = ctx->GetExecutionContext().GetTarget();
+    return DoIntegralPromotion(ctx, from.GetEnumerationIntegerType(target));
   }
 
   // At this point the type should an integer.
@@ -230,12 +232,12 @@ static lldb::SBType DoIntegralPromotion(lldb::SBTarget target, Type from) {
     uint64_t from_size = from.GetByteSize();
 
     lldb::SBType promote_types[] = {
-        target.GetBasicType(lldb::eBasicTypeInt),
-        target.GetBasicType(lldb::eBasicTypeUnsignedInt),
-        target.GetBasicType(lldb::eBasicTypeLong),
-        target.GetBasicType(lldb::eBasicTypeUnsignedLong),
-        target.GetBasicType(lldb::eBasicTypeLongLong),
-        target.GetBasicType(lldb::eBasicTypeUnsignedLongLong),
+        ctx->GetBasicType(lldb::eBasicTypeInt),
+        ctx->GetBasicType(lldb::eBasicTypeUnsignedInt),
+        ctx->GetBasicType(lldb::eBasicTypeLong),
+        ctx->GetBasicType(lldb::eBasicTypeUnsignedLong),
+        ctx->GetBasicType(lldb::eBasicTypeLongLong),
+        ctx->GetBasicType(lldb::eBasicTypeUnsignedLongLong),
     };
     for (lldb::SBType& type : promote_types) {
       if (from_size < type.GetByteSize() ||
@@ -249,7 +251,7 @@ static lldb::SBType DoIntegralPromotion(lldb::SBTarget target, Type from) {
   }
 
   // Here we can promote only to "int" or "unsigned int".
-  lldb::SBType int_type = target.GetBasicType(lldb::eBasicTypeInt);
+  lldb::SBType int_type = ctx->GetBasicType(lldb::eBasicTypeInt);
 
   // Signed integer types can be safely promoted to "int".
   if (from.IsSigned()) {
@@ -258,11 +260,11 @@ static lldb::SBType DoIntegralPromotion(lldb::SBTarget target, Type from) {
   // Unsigned integer types are promoted to "unsigned int" if "int" cannot hold
   // their entire value range.
   return (from.GetByteSize() == int_type.GetByteSize())
-             ? target.GetBasicType(lldb::eBasicTypeUnsignedInt)
+             ? ctx->GetBasicType(lldb::eBasicTypeUnsignedInt)
              : int_type;
 }
 
-static ExprResult UsualUnaryConversions(lldb::SBTarget target,
+static ExprResult UsualUnaryConversions(std::shared_ptr<Context> ctx,
                                         ExprResult expr) {
   // Perform usual conversions for unary operators. At the moment this includes
   // array-to-pointer and the integral promotion for eligible types.
@@ -275,7 +277,7 @@ static ExprResult UsualUnaryConversions(lldb::SBTarget target,
   }
 
   if (result_type.IsInteger() || result_type.IsUnscopedEnum()) {
-    lldb::SBType promoted_type = DoIntegralPromotion(target, result_type);
+    lldb::SBType promoted_type = DoIntegralPromotion(ctx, result_type);
 
     // Insert a cast if the type promotion is happening.
     // TODO(werat): Make this an implicit static_cast.
@@ -342,9 +344,9 @@ static lldb::BasicType BasicTypeToUnsigned(lldb::BasicType basic_type) {
   }
 }
 
-static void PerformIntegerConversions(lldb::SBTarget target, ExprResult& l,
-                                      ExprResult& r, bool convert_lhs,
-                                      bool convert_rhs) {
+static void PerformIntegerConversions(std::shared_ptr<Context> ctx,
+                                      ExprResult& l, ExprResult& r,
+                                      bool convert_lhs, bool convert_rhs) {
   // Assert that rank(l) < rank(r).
   Type l_type = l->result_type_deref();
   Type r_type = r->result_type_deref();
@@ -359,7 +361,7 @@ static void PerformIntegerConversions(lldb::SBTarget target, ExprResult& l,
     assert(l_size <= r_size && "left value must not be larger then the right!");
 
     if (r_size == l_size) {
-      lldb::SBType r_type_unsigned = target.GetBasicType(
+      lldb::SBType r_type_unsigned = ctx->GetBasicType(
           BasicTypeToUnsigned(r_type.GetCanonicalType().GetBasicType()));
       if (convert_rhs) {
         r = std::make_unique<CStyleCastNode>(r->location(), r_type_unsigned,
@@ -376,15 +378,15 @@ static void PerformIntegerConversions(lldb::SBTarget target, ExprResult& l,
   }
 }
 
-static lldb::SBType UsualArithmeticConversions(lldb::SBTarget target,
+static lldb::SBType UsualArithmeticConversions(std::shared_ptr<Context> ctx,
                                                ExprResult& lhs, ExprResult& rhs,
                                                bool is_comp_assign = false) {
   // Apply unary conversions (e.g. intergal promotion) for both operands.
   // In case of a composite assignment operator LHS shouldn't get promoted.
   if (!is_comp_assign) {
-    lhs = UsualUnaryConversions(target, std::move(lhs));
+    lhs = UsualUnaryConversions(ctx, std::move(lhs));
   }
-  rhs = UsualUnaryConversions(target, std::move(rhs));
+  rhs = UsualUnaryConversions(ctx, std::move(rhs));
 
   Type lhs_type = lhs->result_type_deref();
   Type rhs_type = rhs->result_type_deref();
@@ -443,9 +445,9 @@ static lldb::SBType UsualArithmeticConversions(lldb::SBTarget target,
   Rank r_rank = {ConversionRank(rhs_type), !rhs_type.IsSigned()};
 
   if (l_rank < r_rank) {
-    PerformIntegerConversions(target, lhs, rhs, !is_comp_assign, true);
+    PerformIntegerConversions(ctx, lhs, rhs, !is_comp_assign, true);
   } else if (l_rank > r_rank) {
-    PerformIntegerConversions(target, rhs, lhs, true, !is_comp_assign);
+    PerformIntegerConversions(ctx, rhs, lhs, true, !is_comp_assign);
   }
 
   if (!is_comp_assign) {
@@ -551,12 +553,11 @@ std::string TypeDeclaration::GetBaseName() const {
 }
 
 static std::unique_ptr<BuiltinFunctionDef> GetBuiltinFunctionDef(
-    lldb::SBTarget target_, const std::string& identifier) {
+    std::shared_ptr<Context> ctx, const std::string& identifier) {
   if (identifier == "__log2") {
-    lldb::SBType return_type =
-        target_.GetBasicType(lldb::eBasicTypeUnsignedInt);
+    lldb::SBType return_type = ctx->GetBasicType(lldb::eBasicTypeUnsignedInt);
     std::vector<lldb::SBType> arguments = {
-        target_.GetBasicType(lldb::eBasicTypeUnsignedInt),
+        ctx->GetBasicType(lldb::eBasicTypeUnsignedInt),
     };
     return std::make_unique<BuiltinFunctionDef>(identifier, return_type,
                                                 std::move(arguments));
@@ -1083,7 +1084,7 @@ ExprResult Parser::ParseUnaryExpression() {
     }
 
     lldb::SBType result_type =
-        target_.GetBasicType(lldb::eBasicTypeUnsignedLongLong);
+        ctx_->GetBasicType(lldb::eBasicTypeUnsignedLongLong);
     return std::make_unique<SizeOfNode>(sizeof_loc, result_type, operand);
   }
 
@@ -1226,7 +1227,7 @@ ExprResult Parser::ParsePrimaryExpression() {
     auto identifier = ParseIdExpression();
     // Check if this is a function call.
     if (token_.is(clang::tok::l_paren)) {
-      auto func_def = GetBuiltinFunctionDef(target_, identifier);
+      auto func_def = GetBuiltinFunctionDef(ctx_, identifier);
       if (!func_def) {
         BailOut(
             ErrorCode::kNotImplemented,
@@ -1888,7 +1889,7 @@ ExprResult Parser::ParseFloatingLiteral(clang::NumericLiteralParser& literal,
       literal.isFloat ? lldb::eBasicTypeFloat : lldb::eBasicTypeDouble;
 
   Value value =
-      CreateValueFromAPFloat(target_, raw_value, target_.GetBasicType(type));
+      CreateValueFromAPFloat(target_, raw_value, ctx_->GetBasicType(type));
 
   return std::make_unique<LiteralNode>(token.getLocation(), std::move(value),
                                        /*is_literal_zero*/ false);
@@ -1908,11 +1909,10 @@ ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
     return std::make_unique<ErrorNode>();
   }
 
-  auto [type, is_unsigned] = PickIntegerType(target_, literal, raw_value);
+  auto [type, is_unsigned] = PickIntegerType(ctx_, literal, raw_value);
 
-  Value value =
-      CreateValueFromAPInt(target_, llvm::APSInt(raw_value, is_unsigned),
-                           target_.GetBasicType(type));
+  Value value = CreateValueFromAPInt(
+      target_, llvm::APSInt(raw_value, is_unsigned), ctx_->GetBasicType(type));
 
   return std::make_unique<LiteralNode>(
       token.getLocation(), std::move(value),
@@ -2236,7 +2236,7 @@ ExprResult Parser::BuildUnaryOp(UnaryOpKind kind, ExprResult rhs,
     }
     case UnaryOpKind::Plus:
     case UnaryOpKind::Minus: {
-      rhs = UsualUnaryConversions(target_, std::move(rhs));
+      rhs = UsualUnaryConversions(ctx_, std::move(rhs));
       rhs_type = rhs->result_type_deref();
       if (rhs_type.IsScalar() ||
           // Unary plus is allowed for pointers.
@@ -2246,7 +2246,7 @@ ExprResult Parser::BuildUnaryOp(UnaryOpKind kind, ExprResult rhs,
       break;
     }
     case UnaryOpKind::Not: {
-      rhs = UsualUnaryConversions(target_, std::move(rhs));
+      rhs = UsualUnaryConversions(ctx_, std::move(rhs));
       rhs_type = rhs->result_type_deref();
       if (rhs_type.IsInteger()) {
         result_type = rhs->result_type();
@@ -2255,7 +2255,7 @@ ExprResult Parser::BuildUnaryOp(UnaryOpKind kind, ExprResult rhs,
     }
     case UnaryOpKind::LNot: {
       if (rhs_type.IsContextuallyConvertibleToBool()) {
-        result_type = target_.GetBasicType(lldb::eBasicTypeBool);
+        result_type = ctx_->GetBasicType(lldb::eBasicTypeBool);
       }
       break;
     }
@@ -2468,8 +2468,7 @@ lldb::SBType Parser::PrepareBinaryAddition(ExprResult& lhs, ExprResult& rhs,
   //  {integer,unscoped_enum} <-> pointer
   //  pointer <-> {integer,unscoped_enum}
 
-  Type result_type =
-      UsualArithmeticConversions(target_, lhs, rhs, is_comp_assign);
+  Type result_type = UsualArithmeticConversions(ctx_, lhs, rhs, is_comp_assign);
 
   if (result_type.IsScalar()) {
     return result_type;
@@ -2512,8 +2511,7 @@ lldb::SBType Parser::PrepareBinarySubtraction(ExprResult& lhs, ExprResult& rhs,
   //  pointer <-> {integer,unscoped_enum}
   //  pointer <-> pointer (if pointee types are compatible)
 
-  Type result_type =
-      UsualArithmeticConversions(target_, lhs, rhs, is_comp_assign);
+  Type result_type = UsualArithmeticConversions(ctx_, lhs, rhs, is_comp_assign);
 
   if (result_type.IsScalar()) {
     return result_type;
@@ -2556,7 +2554,7 @@ lldb::SBType Parser::PrepareBinarySubtraction(ExprResult& lhs, ExprResult& rhs,
     // Pointer difference is technically ptrdiff_t, but the important part is
     // that it is signed.
     // TODO(werat): Get the actual `std::ptrdiff_t` from the target.
-    return target_.GetBasicType(lldb::eBasicTypeLongLong);
+    return ctx_->GetBasicType(lldb::eBasicTypeLongLong);
   }
 
   // Invalid operands.
@@ -2570,8 +2568,7 @@ lldb::SBType Parser::PrepareBinaryMulDiv(ExprResult& lhs, ExprResult& rhs,
   //  {scalar,unscoped_enum} <-> {scalar,unscoped_enum}
   //
 
-  Type result_type =
-      UsualArithmeticConversions(target_, lhs, rhs, is_comp_assign);
+  Type result_type = UsualArithmeticConversions(ctx_, lhs, rhs, is_comp_assign);
 
   // TODO(werat): Check for arithmetic zero division.
   if (result_type.IsScalar()) {
@@ -2588,8 +2585,7 @@ lldb::SBType Parser::PrepareBinaryRemainder(ExprResult& lhs, ExprResult& rhs,
   //
   //  {integer,unscoped_enum} <-> {integer,unscoped_enum}
 
-  Type result_type =
-      UsualArithmeticConversions(target_, lhs, rhs, is_comp_assign);
+  Type result_type = UsualArithmeticConversions(ctx_, lhs, rhs, is_comp_assign);
 
   // TODO(werat): Check for arithmetic zero division.
   if (result_type.IsInteger()) {
@@ -2606,8 +2602,7 @@ lldb::SBType Parser::PrepareBinaryBitwise(ExprResult& lhs, ExprResult& rhs,
   //
   //  {Integer,unscoped_enum} <-> {Integer,unscoped_enum}
 
-  Type result_type =
-      UsualArithmeticConversions(target_, lhs, rhs, is_comp_assign);
+  Type result_type = UsualArithmeticConversions(ctx_, lhs, rhs, is_comp_assign);
 
   if (result_type.IsInteger()) {
     return result_type;
@@ -2633,13 +2628,13 @@ lldb::SBType Parser::PrepareBinaryComparison(BinaryOpKind kind, ExprResult& lhs,
   // If the operands has arithmetic or enumeration type (scoped or unscoped),
   // usual arithmetic conversions are performed on both operands following the
   // rules for arithmetic operators.
-  Type _ = UsualArithmeticConversions(target_, lhs, rhs);
+  Type _ = UsualArithmeticConversions(ctx_, lhs, rhs);
 
   Type lhs_type = lhs->result_type_deref();
   Type rhs_type = rhs->result_type_deref();
 
   // The result of the comparison is always bool.
-  lldb::SBType boolean_ty = target_.GetBasicType(lldb::eBasicTypeBool);
+  lldb::SBType boolean_ty = ctx_->GetBasicType(lldb::eBasicTypeBool);
 
   if (lhs_type.IsScalarOrUnscopedEnum() && rhs_type.IsScalarOrUnscopedEnum()) {
     return boolean_ty;
@@ -2726,7 +2721,7 @@ lldb::SBType Parser::PrepareBinaryLogical(const ExprResult& lhs,
   }
 
   // The result of the logical operator is always bool.
-  return target_.GetBasicType(lldb::eBasicTypeBool);
+  return ctx_->GetBasicType(lldb::eBasicTypeBool);
 }
 
 ExprResult Parser::BuildBinarySubscript(ExprResult lhs, ExprResult rhs,
@@ -2837,7 +2832,7 @@ ExprResult Parser::BuildTernaryOp(ExprResult cond, ExprResult lhs,
   // If both operands have arithmetic type, apply the usual arithmetic
   // conversions to bring them to a common type.
   if (lhs_type.IsScalarOrUnscopedEnum() && rhs_type.IsScalarOrUnscopedEnum()) {
-    lldb::SBType result_type = UsualArithmeticConversions(target_, lhs, rhs);
+    lldb::SBType result_type = UsualArithmeticConversions(ctx_, lhs, rhs);
     return std::make_unique<TernaryOpNode>(
         location, result_type, std::move(cond), std::move(lhs), std::move(rhs));
   }

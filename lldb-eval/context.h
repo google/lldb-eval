@@ -76,6 +76,7 @@ class Context {
   void SetAllowSideEffects(bool allow_side_effects);
 
  public:
+  lldb::SBType GetBasicType(lldb::BasicType basic_type);
   lldb::SBType ResolveTypeByName(const std::string& name) const;
   lldb::SBValue LookupIdentifier(const std::string& name) const;
   bool IsContextVar(const std::string& name) const;
@@ -104,6 +105,9 @@ class Context {
 
   // Whether side effects should be allowed.
   bool allow_side_effects_;
+
+  // Cache of the basic types for the current target.
+  std::unordered_map<lldb::BasicType, lldb::SBType> basic_types_;
 };
 
 }  // namespace lldb_eval
