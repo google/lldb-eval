@@ -127,10 +127,14 @@ std::string FormatDiagnostics(const clang::SourceManager& sm,
 }
 
 std::tuple<lldb::BasicType, bool> PickIntegerType(
-    const clang::NumericLiteralParser& literal, const llvm::APInt& value) {
-  unsigned int_size = type_width<int>();
-  unsigned long_size = type_width<long>();
-  unsigned long_long_size = type_width<long long>();
+    lldb::SBTarget target, const clang::NumericLiteralParser& literal,
+    const llvm::APInt& value) {
+  unsigned int_size =
+      target.GetBasicType(lldb::eBasicTypeInt).GetByteSize() * CHAR_BIT;
+  unsigned long_size =
+      target.GetBasicType(lldb::eBasicTypeLong).GetByteSize() * CHAR_BIT;
+  unsigned long_long_size =
+      target.GetBasicType(lldb::eBasicTypeLongLong).GetByteSize() * CHAR_BIT;
 
   // Binary, Octal, Hexadecimal and literals with a U suffix are allowed to be
   // an unsigned integer.
@@ -1904,7 +1908,7 @@ ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
     return std::make_unique<ErrorNode>();
   }
 
-  auto [type, is_unsigned] = PickIntegerType(literal, raw_value);
+  auto [type, is_unsigned] = PickIntegerType(target_, literal, raw_value);
 
   Value value =
       CreateValueFromAPInt(target_, llvm::APSInt(raw_value, is_unsigned),

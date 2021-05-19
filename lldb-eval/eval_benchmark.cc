@@ -22,6 +22,8 @@
 
 #include "benchmark/benchmark.h"
 #include "lldb-eval/api.h"
+#include "lldb-eval/context.h"
+#include "lldb-eval/parser.h"
 #include "lldb-eval/runner.h"
 #include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBFrame.h"
@@ -112,6 +114,19 @@ BENCHMARK_F(BM, TypeCasting)(benchmark::State& state) {
 
     if (error.Fail()) {
       state.SkipWithError("Failed to evaluate the expression!");
+    }
+  }
+}
+
+BENCHMARK_F(BM, ParseInteger)(benchmark::State& state) {
+  auto context = lldb_eval::Context::Create("1+1u+1l+1ul+1ll+1ull", frame);
+
+  for (auto _ : state) {
+    lldb_eval::Error err;
+    lldb_eval::Parser(context).Run(err);
+
+    if (err) {
+      state.SkipWithError("Failed to parse the expression!");
     }
   }
 }
