@@ -361,7 +361,7 @@ Value CastScalarToBasicType(lldb::SBTarget target, Value val, Type type) {
 }
 
 Value CastEnumToBasicType(lldb::SBTarget target, Value val, Type type) {
-  assert(type.IsScalar() && "target type must be an scalar");
+  assert(type.IsScalar() && "target type must be a scalar");
   assert(val.type().IsEnum() && "argument must be an enum");
 
   // Get the value as APSInt and extend or truncate it to the requested size.
