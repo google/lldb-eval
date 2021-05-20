@@ -82,6 +82,7 @@ cc_test(
         "@bazel_tools//tools/cpp/runfiles",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
+        "@llvm_project//:lldb-api",
     ],
 )
 
@@ -105,11 +106,13 @@ cc_test(
         "@bazel_tools//tools/cpp/runfiles",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
+        "@llvm_project//:lldb-api",
     ],
 )
 
 cc_fuzz_test(
     name = "lldb_eval_libfuzzer_test",
+    srcs = ["lldb_eval_libfuzzer_test.cc"],
     data = [
         "//testdata:fuzzer_binary_gen",
         "//testdata:fuzzer_binary_srcs",
@@ -121,13 +124,13 @@ cc_fuzz_test(
         # with select -- https://github.com/bazelbuild/bazel/issues/2971.
         "no-sandbox",
     ],
-    srcs = ["lldb_eval_libfuzzer_test.cc"],
+    # cc_fuzz_test doesn't work well on Windows.
+    target_compatible_with = ["@platforms//os:linux"],
     deps = [
+        ":fuzzer_lib",
         "//lldb-eval",
         "//lldb-eval:runner",
         "@bazel_tools//tools/cpp/runfiles",
-        ":fuzzer_lib",
+        "@llvm_project//:lldb-api",
     ],
-    # cc_fuzz_test doesn't work well on Windows.
-    target_compatible_with = ["@platforms//os:linux"],
 )
