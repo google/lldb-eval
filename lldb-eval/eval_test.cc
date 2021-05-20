@@ -736,6 +736,11 @@ TEST_F(EvalTest, TestPointerDereference) {
   EXPECT_THAT(Eval("&*(int*)0"), IsEqual("0x0000000000000000"));
   EXPECT_THAT(Eval("&((int*)0)[1]"), IsEqual("0x0000000000000004"));
 
+  EXPECT_THAT(Eval("&p_void[0]"),
+              IsError("subscript of pointer to incomplete type 'void'"));
+  EXPECT_THAT(Eval("&*p_void"), IsOk());
+  EXPECT_THAT(Eval("&pp_void0[2]"), IsOk());
+
   EXPECT_THAT(Eval("**pp_int0"), IsEqual("0"));
   EXPECT_THAT(Eval("**pp_int0 + 1"), IsEqual("1"));
   EXPECT_THAT(Eval("&**pp_int0"), IsOk());

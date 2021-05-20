@@ -2770,6 +2770,13 @@ ExprResult Parser::BuildBinarySubscript(ExprResult lhs, ExprResult rhs,
     return std::make_unique<ErrorNode>();
   }
 
+  Type base_type = base->result_type_deref();
+  if (base_type.IsPointerToVoid()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            "subscript of pointer to incomplete type 'void'", location);
+    return std::make_unique<ErrorNode>();
+  }
+
   return std::make_unique<ArraySubscriptNode>(
       location, base->result_type_deref().GetPointeeType(), std::move(base),
       std::move(index));
