@@ -212,8 +212,7 @@ static lldb::SBType DoIntegralPromotion(std::shared_ptr<Context> ctx,
 
   if (from.IsUnscopedEnum()) {
     // Get the enumeration underlying type and promote it.
-    auto target = ctx->GetExecutionContext().GetTarget();
-    return DoIntegralPromotion(ctx, from.GetEnumerationIntegerType(target));
+    return DoIntegralPromotion(ctx, from.GetEnumerationIntegerType(ctx));
   }
 
   // At this point the type should an integer.

@@ -19,6 +19,7 @@
 
 #include <cstdint>
 
+#include "lldb-eval/context.h"
 #include "lldb/API/SBTarget.h"
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
@@ -49,7 +50,7 @@ class Type : public lldb::SBType {
   bool IsPromotableIntegerType();
   bool IsContextuallyConvertibleToBool();
 
-  lldb::SBType GetEnumerationIntegerType(lldb::SBTarget target);
+  lldb::SBType GetEnumerationIntegerType(std::shared_ptr<Context> ctx);
 };
 
 bool CompareTypes(lldb::SBType lhs, lldb::SBType rhs);

@@ -14,6 +14,7 @@
 
 #include "lldb-eval/value.h"
 
+#include "lldb-eval/context.h"
 #include "lldb-eval/defines.h"
 #include "lldb-eval/traits.h"
 #include "lldb/API/SBTarget.h"
@@ -35,7 +36,7 @@ bool IsScopedEnum_V(T type) {
 }
 
 template <typename T>
-lldb::SBType GetEnumerationIntegerType_V(T type, lldb::SBTarget target) {
+lldb::SBType GetEnumerationIntegerType_V(T type, std::shared_ptr<Context> ctx) {
   // SBType::GetEnumerationIntegerType was introduced in
   // https://reviews.llvm.org/D93696. If it's not available yet, fallback to the
   // "default" implementation.
@@ -43,7 +44,7 @@ lldb::SBType GetEnumerationIntegerType_V(T type, lldb::SBTarget target) {
     return type.GetEnumerationIntegerType();
   } else {
     // Assume "int" by default and hope for the best.
-    return target.GetBasicType(lldb::eBasicTypeInt);
+    return ctx->GetBasicType(lldb::eBasicTypeInt);
   }
 }
 
@@ -145,8 +146,8 @@ bool Type::IsContextuallyConvertibleToBool() {
          IsArrayType();
 }
 
-lldb::SBType Type::GetEnumerationIntegerType(lldb::SBTarget target) {
-  return GetEnumerationIntegerType_V<lldb::SBType>(*this, target);
+lldb::SBType Type::GetEnumerationIntegerType(std::shared_ptr<Context> ctx) {
+  return GetEnumerationIntegerType_V<lldb::SBType>(*this, ctx);
 }
 
 bool CompareTypes(lldb::SBType lhs, lldb::SBType rhs) {
