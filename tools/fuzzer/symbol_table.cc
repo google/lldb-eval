@@ -372,7 +372,7 @@ void load_frame_variables(SymbolTable& symtab, lldb::SBFrame& frame,
     lldb::SBValue value = variables.GetValueAtIndex(i);
     auto maybe_type = convert_type(value.GetType(), ignore_qualified_types);
     if (maybe_type.has_value()) {
-      symtab.add_var(std::move(maybe_type.value()),
+      symtab.add_var(maybe_type.value(),
                      VariableExpr(fix_name(value.GetName())),
                      calculate_freedom_index(value, memory_regions));
     }

@@ -1,3 +1,19 @@
+/*
+ * Copyright 2021 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -89,7 +105,8 @@ extern "C" size_t LLVMFuzzerCustomMutator(uint8_t* data, size_t size,
                                           size_t max_size, unsigned int seed) {
   LibfuzzerReader reader(data, size);
   auto fixed_generator = create_generator(LibfuzzerRng(std::move(reader)));
-  assert(fixed_generator.generate() && "Expression couldn't be generated!");
+  auto maybe_expr = fixed_generator.generate();
+  assert(maybe_expr.has_value() && "Expression couldn't be generated!");
 
   std::mt19937 rng(seed);
   auto root = fixed_generator.node();
@@ -125,8 +142,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   return 0;
 }
 
-extern "C" int LLVMFuzzerInitialize(int* /*argc*/, char*** /*argv*/) {
-  g_runfiles = Runfiles::CreateForTest();
+extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv) {
+  assert(*argc >= 1);
+  g_runfiles = Runfiles::Create((*argv)[0]);
   lldb_eval::SetupLLDBServerEnv(*g_runfiles);
   lldb::SBDebugger::Initialize();
 
