@@ -40,9 +40,7 @@ using std::size_t;
 using namespace fuzzer;
 
 // Global variables that are initialized in `LLVMFuzzerInitialize`.
-static Runfiles* g_runfiles;
 static lldb::SBDebugger g_debugger;
-static lldb::SBProcess g_process;
 static lldb::SBFrame g_frame;
 static fuzzer::SymbolTable g_symtab;
 
@@ -142,22 +140,30 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   return 0;
 }
 
-extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv) {
-  assert(*argc >= 1);
-  g_runfiles = Runfiles::Create((*argv)[0]);
-  lldb_eval::SetupLLDBServerEnv(*g_runfiles);
+extern "C" int LLVMFuzzerInitialize(int* /*argc*/, char*** argv) {
+  std::string err;
+  std::unique_ptr<Runfiles> runfiles(Runfiles::Create((*argv)[0], &err));
+  if (runfiles == nullptr) {
+    fprintf(stderr, "Could not launch the libfuzzer target: %s\n", err.c_str());
+    return 1;
+  }
+
+  lldb_eval::SetupLLDBServerEnv(*runfiles);
   lldb::SBDebugger::Initialize();
 
-  auto binary_path = g_runfiles->Rlocation("lldb_eval/testdata/fuzzer_binary");
-  auto source_path =
-      g_runfiles->Rlocation("lldb_eval/testdata/fuzzer_binary.cc");
-  g_debugger = lldb::SBDebugger::Create(false);
-  g_process = lldb_eval::LaunchTestProgram(g_debugger, source_path, binary_path,
-                                           "// BREAK HERE");
-  g_frame = g_process.GetSelectedThread().GetSelectedFrame();
+  auto binary_path = runfiles->Rlocation("lldb_eval/testdata/fuzzer_binary");
+  auto source_path = runfiles->Rlocation("lldb_eval/testdata/fuzzer_binary.cc");
 
-  g_symtab = fuzzer::SymbolTable::create_from_frame(
-      g_frame, /*ignore_qualified_types*/ true);
+  g_debugger = lldb::SBDebugger::Create(false);
+
+  lldb::SBProcess process = lldb_eval::LaunchTestProgram(
+      g_debugger, source_path, binary_path, "// BREAK HERE");
+
+  g_frame = process.GetSelectedThread().GetSelectedFrame();
+
+  g_symtab =
+      fuzzer::SymbolTable::create_from_frame(g_frame,
+                                             /*ignore_qualified_types*/ true);
 
   return 0;
 }
