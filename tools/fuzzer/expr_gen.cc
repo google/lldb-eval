@@ -485,7 +485,8 @@ std::optional<Expr> ExprGenerator::gen_ternary_expr_impl(
   Expr cond = std::move(maybe_cond.value());
 
   const auto& type_constraints = constraints.type_constraints();
-  auto maybe_type = gen_type(weights, type_constraints);
+  auto maybe_type =
+      gen_type(weights, type_constraints, /*allow_array_types*/ true);
   if (!maybe_type.has_value()) {
     return {};
   }
@@ -495,9 +496,13 @@ std::optional<Expr> ExprGenerator::gen_ternary_expr_impl(
   ExprConstraints rhs_constraints;
 
   if (constraints.must_be_lvalue()) {
+    // Expression `&(condition ? pointer : array)` isn't valid since implicit
+    // array-to-pointer conversion will make the expression in parenthesis an
+    // R-value. Therefore, disallow arrays in the case `type` is a pointer.
+    TypeConstraints allowed_types(type, /*allow_arrays_if_ptr*/ false);
     lhs_constraints =
-        ExprConstraints(TypeConstraints(type), constraints.memory_constraints(),
-                        ExprCategory::Lvalue);
+        ExprConstraints(std::move(allowed_types),
+                        constraints.memory_constraints(), ExprCategory::Lvalue);
     rhs_constraints = lhs_constraints;
   } else if (std::holds_alternative<ScalarType>(type)) {
     ScalarMask mask = INT_TYPES;
@@ -1381,7 +1386,7 @@ Enum weighted_pick(
   RealType running_sum = 0;
   for (size_t i = 0; i < array.size(); i++) {
     running_sum += mask[i] ? array[i] : 0;
-    if (choice < running_sum) {
+    if (choice <= running_sum) {
       return (Enum)i;
     }
   }
