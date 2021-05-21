@@ -1385,7 +1385,11 @@ Enum weighted_pick(
 
   RealType running_sum = 0;
   for (size_t i = 0; i < array.size(); i++) {
-    running_sum += mask[i] ? array[i] : 0;
+    if (!mask[i]) {
+      continue;
+    }
+
+    running_sum += array[i];
     if (choice <= running_sum) {
       return (Enum)i;
     }
