@@ -903,7 +903,7 @@ std::optional<Expr> ExprGenerator::gen_sizeof_expr_impl(
     return SizeofExpr(std::move(maybe_type.value()));
   }
 
-  auto maybe_expr = gen_with_weights(weights, TypeConstraints::all());
+  auto maybe_expr = gen_with_weights(weights, TypeConstraints::all_non_void());
   if (!maybe_expr.has_value()) {
     return {};
   }

@@ -107,6 +107,12 @@ class TypeConstraints {
     return retval;
   }
 
+  static TypeConstraints all_non_void() {
+    TypeConstraints retval = all();
+    retval.scalar_types_[ScalarType::Void] = false;
+    return retval;
+  }
+
   // Return a set of constraints that allow any non-void pointer type,
   // including array types.
   static TypeConstraints all_in_non_void_pointer_ctx() {
