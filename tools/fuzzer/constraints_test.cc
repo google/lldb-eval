@@ -25,7 +25,7 @@ TEST(Constraints, ScalarValues) {
   TypeConstraints float_only = FLOAT_TYPES;
   TypeConstraints int_only = INT_TYPES;
 
-  TypeConstraints any = TypeConstraints::all();
+  TypeConstraints any = TypeConstraints::all_non_void();
   TypeConstraints none;
 
   PointerType void_ptr_type{QualifiedType(ScalarType::Void)};
@@ -85,7 +85,7 @@ TEST(Constraints, TaggedTypes) {
   EXPECT_THAT(test_struct.allows_non_void_pointer(), IsFalse());
   EXPECT_THAT(test_struct.allows_void_pointer(), IsFalse());
 
-  TypeConstraints any = TypeConstraints::all();
+  TypeConstraints any = TypeConstraints::all_non_void();
   TypeConstraints none;
 
   EXPECT_THAT(any.allows_tagged_types(), IsTrue());
@@ -159,7 +159,7 @@ TEST(Constraints, PointerTypes) {
   // void types :(
   EXPECT_THAT(void_constraints.allows_any_of(ScalarType::Void), IsFalse());
 
-  TypeConstraints any = TypeConstraints::all();
+  TypeConstraints any = TypeConstraints::all_non_void();
   TypeConstraints none;
 
   EXPECT_THAT(any.allows_type(const_int_ptr), IsTrue());
@@ -176,7 +176,7 @@ TEST(Constraints, EnumTypes) {
   EnumType unscoped_enum("UnscopedEnum", false);
   EnumType specific_enum("SpecificEnum", true);
 
-  TypeConstraints any = TypeConstraints::all();
+  TypeConstraints any = TypeConstraints::all_non_void();
   TypeConstraints none;
   TypeConstraints bool_ctx = TypeConstraints::all_in_bool_ctx();
   TypeConstraints only_specific = TypeConstraints(specific_enum);
@@ -217,7 +217,7 @@ TEST(Constraints, ArrayTypes) {
   ArrayType array_of_ptrs = ArrayType(int_ptr, 3);
   PointerType ptr_to_array = PointerType(QualifiedType(array_of_three));
 
-  TypeConstraints any = TypeConstraints::all();
+  TypeConstraints any = TypeConstraints::all_non_void();
   EXPECT_THAT(any.allows_type(array_of_three), IsTrue());
   EXPECT_THAT(any.allows_type(array_of_four), IsTrue());
   EXPECT_THAT(any.allows_type(array2d), IsTrue());

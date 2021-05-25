@@ -92,9 +92,9 @@ class TypeConstraints {
     return retval;
   }
 
-  static TypeConstraints all() {
+  static TypeConstraints all_non_void() {
     TypeConstraints retval;
-    retval.scalar_types_ = ScalarMask::all_set();
+    retval.scalar_types_ = ~ScalarMask(ScalarType::Void);
     retval.tagged_types_ = AnyType{};
     retval.ptr_types_ = AnyType{};
     retval.array_types_ = AnyType{};
@@ -104,12 +104,6 @@ class TypeConstraints {
     retval.allows_nullptr_ = true;
     retval.allows_literal_zero_ = true;
 
-    return retval;
-  }
-
-  static TypeConstraints all_non_void() {
-    TypeConstraints retval = all();
-    retval.scalar_types_[ScalarType::Void] = false;
     return retval;
   }
 
