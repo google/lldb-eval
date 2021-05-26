@@ -2043,9 +2043,10 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
                 location);
         return std::make_unique<ErrorNode>();
       }
-      // Check if the result type is at least as big as the pointer size.
+      // Casting pointer to bool is valid. Otherwise check if the result type
+      // is at least as big as the pointer size.
       // TODO(werat): Use target pointer size, not host.
-      if (type.GetByteSize() < sizeof(void*)) {
+      if (!type.IsBool() && type.GetByteSize() < sizeof(void*)) {
         BailOut(ErrorCode::kInvalidOperandType,
                 llvm::formatv(
                     "cast from pointer to smaller type '{0}' loses information",

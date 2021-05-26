@@ -80,6 +80,8 @@ Type::Type(const lldb::SBType& type) : lldb::SBType(type) {}
 
 bool Type::IsScalar() { return GetTypeFlags() & lldb::eTypeIsScalar; }
 
+bool Type::IsBool() { return GetBasicType() == lldb::eBasicTypeBool; }
+
 bool Type::IsInteger() { return GetTypeFlags() & lldb::eTypeIsInteger; }
 
 bool Type::IsFloat() { return GetTypeFlags() & lldb::eTypeIsFloat; }
@@ -331,6 +333,14 @@ Value CastScalarToBasicType(lldb::SBTarget target, Value val, Type type) {
   assert(type.IsScalar() && "target type must be an scalar");
   assert(val.type().IsScalar() && "argument must be a scalar");
 
+  if (type.IsBool()) {
+    if (val.type().IsInteger()) {
+      return CreateValueFromBool(target, val.GetUInt64() != 0);
+    }
+    if (val.type().IsFloat()) {
+      return CreateValueFromBool(target, !val.GetFloat().isZero());
+    }
+  }
   if (type.IsInteger()) {
     if (val.type().IsInteger()) {
       llvm::APSInt ext =
@@ -365,6 +375,10 @@ Value CastEnumToBasicType(lldb::SBTarget target, Value val, Type type) {
   assert(type.IsScalar() && "target type must be a scalar");
   assert(val.type().IsEnum() && "argument must be an enum");
 
+  if (type.IsBool()) {
+    return CreateValueFromBool(target, val.GetUInt64() != 0);
+  }
+
   // Get the value as APSInt and extend or truncate it to the requested size.
   llvm::APSInt ext = val.GetInteger().extOrTrunc(type.GetByteSize() * CHAR_BIT);
 
@@ -382,8 +396,12 @@ Value CastEnumToBasicType(lldb::SBTarget target, Value val, Type type) {
 
 Value CastPointerToBasicType(lldb::SBTarget target, Value val, Type type) {
   assert(type.IsInteger() && "target type must be an integer");
-  assert((type.GetByteSize() >= val.type().GetByteSize()) &&
+  assert((type.IsBool() || type.GetByteSize() >= val.type().GetByteSize()) &&
          "target type cannot be smaller than the pointer type");
+
+  if (type.IsBool()) {
+    return CreateValueFromBool(target, val.GetUInt64() != 0);
+  }
 
   // Get the value as APSInt and extend or truncate it to the requested size.
   llvm::APSInt ext = val.GetInteger().extOrTrunc(type.GetByteSize() * CHAR_BIT);

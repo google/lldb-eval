@@ -370,6 +370,12 @@ static void TestCStyleCast() {
   ns::inner::Foo ns_inner_foo_;
   ns::inner::Foo* ns_inner_foo_ptr_ = &ns_inner_foo_;
 
+  float finf = std::numeric_limits<float>::infinity();
+  float fnan = std::numeric_limits<float>::quiet_NaN();
+  float fsnan = std::numeric_limits<float>::signaling_NaN();
+  float fmax = std::numeric_limits<float>::max();
+  float fdenorm = std::numeric_limits<float>::denorm_min();
+
   // BREAK(TestCStyleCastBuiltins)
   // BREAK(TestCStyleCastBasicType)
   // BREAK(TestCStyleCastPointer)

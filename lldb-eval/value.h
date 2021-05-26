@@ -35,6 +35,7 @@ class Type : public lldb::SBType {
   Type(const lldb::SBType& type);
 
   bool IsScalar();
+  bool IsBool();
   bool IsInteger();
   bool IsFloat();
   bool IsPointerToVoid();

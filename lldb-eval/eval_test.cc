@@ -1094,21 +1094,35 @@ TEST_F(EvalTest, TestCStyleCastBasicType) {
   EXPECT_THAT(Eval("(unsigned long long)-1"), IsEqual("18446744073709551615"));
   EXPECT_THAT(Eval("(short)65534"), IsEqual("-2"));
   EXPECT_THAT(Eval("(unsigned short)100000"), IsEqual("34464"));
+  EXPECT_THAT(Eval("(int)false"), IsEqual("0"));
+  EXPECT_THAT(Eval("(int)true"), IsEqual("1"));
   EXPECT_THAT(Eval("(float)1"), IsEqual("1"));
   EXPECT_THAT(Eval("(float)1.1"), IsEqual("1.10000002"));
   EXPECT_THAT(Eval("(float)1.1f"), IsEqual("1.10000002"));
   EXPECT_THAT(Eval("(float)-1.1"), IsEqual("-1.10000002"));
   EXPECT_THAT(Eval("(float)-1.1f"), IsEqual("-1.10000002"));
+  EXPECT_THAT(Eval("(float)false"), IsEqual("0"));
+  EXPECT_THAT(Eval("(float)true"), IsEqual("1"));
   EXPECT_THAT(Eval("(double)1"), IsEqual("1"));
   EXPECT_THAT(Eval("(double)1.1"), IsEqual("1.1000000000000001"));
   EXPECT_THAT(Eval("(double)1.1f"), IsEqual("1.1000000238418579"));
   EXPECT_THAT(Eval("(double)-1.1"), IsEqual("-1.1000000000000001"));
   EXPECT_THAT(Eval("(double)-1.1f"), IsEqual("-1.1000000238418579"));
+  EXPECT_THAT(Eval("(double)false"), IsEqual("0"));
+  EXPECT_THAT(Eval("(double)true"), IsEqual("1"));
   EXPECT_THAT(Eval("(int)1.1"), IsEqual("1"));
   EXPECT_THAT(Eval("(int)1.1f"), IsEqual("1"));
   EXPECT_THAT(Eval("(int)-1.1"), IsEqual("-1"));
   EXPECT_THAT(Eval("(long)1.1"), IsEqual("1"));
   EXPECT_THAT(Eval("(long)-1.1f"), IsEqual("-1"));
+  EXPECT_THAT(Eval("(bool)0"), IsEqual("false"));
+  EXPECT_THAT(Eval("(bool)0.0"), IsEqual("false"));
+  EXPECT_THAT(Eval("(bool)0.0f"), IsEqual("false"));
+  EXPECT_THAT(Eval("(bool)3"), IsEqual("true"));
+  EXPECT_THAT(Eval("(bool)-3"), IsEqual("true"));
+  EXPECT_THAT(Eval("(bool)-3.4"), IsEqual("true"));
+  EXPECT_THAT(Eval("(bool)-0.1"), IsEqual("true"));
+  EXPECT_THAT(Eval("(bool)-0.1f"), IsEqual("true"));
 
   EXPECT_THAT(Eval("&(int)1"),
               IsError("cannot take the address of an rvalue of type 'int'"));
@@ -1125,6 +1139,11 @@ TEST_F(EvalTest, TestCStyleCastBasicType) {
   EXPECT_THAT(Eval("(double)f"), IsEqual("1.1000000238418579"));
   EXPECT_THAT(Eval("(int)f"), IsEqual("1"));
   EXPECT_THAT(Eval("(long)f"), IsEqual("1"));
+  EXPECT_THAT(Eval("(bool)finf"), IsEqual("true"));
+  EXPECT_THAT(Eval("(bool)fnan"), IsEqual("true"));
+  EXPECT_THAT(Eval("(bool)fsnan"), IsEqual("true"));
+  EXPECT_THAT(Eval("(bool)fmax"), IsEqual("true"));
+  EXPECT_THAT(Eval("(bool)fdenorm"), IsEqual("true"));
 
   EXPECT_THAT(
       Eval("(int)ns_foo_"),
@@ -1154,6 +1173,9 @@ TEST_F(EvalTest, TestCStyleCastBasicType) {
   // Test with pointers.
   EXPECT_THAT(Eval("(long long)ap"), IsOk());
   EXPECT_THAT(Eval("(unsigned long long)vp"), IsOk());
+  EXPECT_THAT(Eval("(bool)ap"), IsEqual("true"));
+  EXPECT_THAT(Eval("(bool)(int*)0x00000000"), IsEqual("false"));
+  EXPECT_THAT(Eval("(bool)nullptr"), IsEqual("false"));
   EXPECT_THAT(
       Eval("(char)ap"),
       IsError("cast from pointer to smaller type 'char' loses information"));
@@ -1615,6 +1637,8 @@ TEST_F(EvalTest, TestScopedEnum) {
   EXPECT_THAT(Eval("(ScopedEnum)-1"), IsOk());
   EXPECT_THAT(Eval("(ScopedEnum)256"), IsOk());
   EXPECT_THAT(Eval("(ScopedEnum)257"), IsOk());
+  EXPECT_THAT(Eval("(ScopedEnum)false"), IsEqual("kFoo"));
+  EXPECT_THAT(Eval("(ScopedEnum)true"), IsEqual("kBar"));
 
   EXPECT_THAT(Eval("(int)enum_foo"), IsEqual("0"));
   EXPECT_THAT(Eval("(int)enum_neg"), IsEqual("-1"));
@@ -1626,6 +1650,9 @@ TEST_F(EvalTest, TestScopedEnum) {
   EXPECT_THAT(Eval("(float)enum_foo"), IsEqual("0"));
   EXPECT_THAT(Eval("(float)enum_neg"), IsEqual("-1"));
   EXPECT_THAT(Eval("(double)enum_neg"), IsEqual("-1"));
+  EXPECT_THAT(Eval("(bool)enum_foo"), IsEqual("false"));
+  EXPECT_THAT(Eval("(bool)enum_bar"), IsEqual("true"));
+  EXPECT_THAT(Eval("(bool)enum_neg"), IsEqual("true"));
   EXPECT_THAT(Eval("(double)ScopedEnumUInt8::kBar"), IsEqual("1"));
   EXPECT_THAT(Eval("(ScopedEnum)ScopedEnum::kBar"), IsEqual("kBar"));
 }
@@ -1695,6 +1722,8 @@ TEST_F(EvalTest, TestUnscopedEnum) {
   EXPECT_THAT(Eval("(UnscopedEnum)-1"), IsOk());
   EXPECT_THAT(Eval("(UnscopedEnum)256"), IsOk());
   EXPECT_THAT(Eval("(UnscopedEnum)257"), IsOk());
+  EXPECT_THAT(Eval("(UnscopedEnum)false"), IsEqual("kZero"));
+  EXPECT_THAT(Eval("(UnscopedEnum)true"), IsEqual("kOne"));
   EXPECT_THAT(Eval("(UnscopedEnum)(UnscopedEnum)0"), IsEqual("kZero"));
   EXPECT_THAT(Eval("(void*)(UnscopedEnum)1"), IsEqual("0x0000000000000001"));
 
@@ -1746,6 +1775,9 @@ TEST_F(EvalTest, TestUnscopedEnum) {
   EXPECT_THAT(Eval("(float)UnscopedEnum::kOne"), IsEqual("1"));
   EXPECT_THAT(Eval("(float)enum_two"), IsEqual("2"));
   EXPECT_THAT(Eval("(double)enum_one"), IsEqual("1"));
+  EXPECT_THAT(Eval("(bool)enum_two"), IsEqual("true"));
+  EXPECT_THAT(Eval("(bool)(UnscopedEnum)0"), IsEqual("false"));
+  EXPECT_THAT(Eval("(bool)(UnscopedEnum)-1"), IsEqual("true"));
 }
 
 TEST_F(EvalTest, TestUnscopedEnumNegation) {
