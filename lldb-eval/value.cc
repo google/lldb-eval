@@ -80,7 +80,9 @@ Type::Type(const lldb::SBType& type) : lldb::SBType(type) {}
 
 bool Type::IsScalar() { return GetTypeFlags() & lldb::eTypeIsScalar; }
 
-bool Type::IsBool() { return GetBasicType() == lldb::eBasicTypeBool; }
+bool Type::IsBool() {
+  return GetCanonicalType().GetBasicType() == lldb::eBasicTypeBool;
+}
 
 bool Type::IsInteger() { return GetTypeFlags() & lldb::eTypeIsInteger; }
 
