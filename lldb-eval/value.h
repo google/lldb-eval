@@ -106,6 +106,10 @@ Value CastEnumToBasicType(lldb::SBTarget target, Value val, Type type);
 
 Value CastPointerToBasicType(lldb::SBTarget target, Value val, Type type);
 
+Value CastIntegerOrEnumToEnumType(lldb::SBTarget target, Value val, Type type);
+
+Value CastFloatToEnumType(lldb::SBTarget target, Value val, Type type);
+
 Value CreateValueFromBytes(lldb::SBTarget target, const void* bytes,
                            lldb::SBType type);
 

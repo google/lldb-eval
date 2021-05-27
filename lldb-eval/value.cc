@@ -97,7 +97,12 @@ bool Type::IsNullPtrType() {
   return GetCanonicalType().GetBasicType() == lldb::eBasicTypeNullPtr;
 }
 
-bool Type::IsSigned() { return GetTypeFlags() & lldb::eTypeIsSigned; }
+bool Type::IsSigned() {
+  if (IsEnum()) {
+    return IsEnumerationIntegerTypeSigned_V<lldb::SBType>(*this);
+  }
+  return GetTypeFlags() & lldb::eTypeIsSigned;
+}
 
 bool Type::IsBasicType() {
   return GetCanonicalType().GetBasicType() != lldb::eBasicTypeInvalid;
@@ -189,12 +194,7 @@ bool Value::IsPointer() { return type_.IsPointerType(); }
 
 bool Value::IsNullPtrType() { return type_.IsNullPtrType(); }
 
-bool Value::IsSigned() {
-  if (IsEnum()) {
-    return IsEnumerationIntegerTypeSigned_V<lldb::SBType>(type_);
-  }
-  return type_.GetTypeFlags() & lldb::eTypeIsSigned;
-}
+bool Value::IsSigned() { return type_.IsSigned(); }
 
 bool Value::IsEnum() { return type_.GetTypeFlags() & lldb::eTypeIsEnumeration; }
 
@@ -408,6 +408,27 @@ Value CastPointerToBasicType(lldb::SBTarget target, Value val, Type type) {
   // Get the value as APSInt and extend or truncate it to the requested size.
   llvm::APSInt ext = val.GetInteger().extOrTrunc(type.GetByteSize() * CHAR_BIT);
   return CreateValueFromAPInt(target, ext, type);
+}
+
+Value CastIntegerOrEnumToEnumType(lldb::SBTarget target, Value val, Type type) {
+  assert(type.IsEnum() && "target type must be an enum");
+  assert((val.type().IsScalar() || val.type().IsEnum()) &&
+         "argument must be a scalar or an enum");
+
+  // Get the value as APSInt and extend or truncate it to the requested size.
+  llvm::APSInt ext = val.GetInteger().extOrTrunc(type.GetByteSize() * CHAR_BIT);
+  return CreateValueFromAPInt(target, ext, type);
+}
+
+Value CastFloatToEnumType(lldb::SBTarget target, Value val, Type type) {
+  assert(type.IsEnum() && "target type must be an enum");
+  assert(val.type().IsFloat() && "argument must be a float");
+
+  llvm::APSInt integer(type.GetByteSize() * CHAR_BIT, !type.IsSigned());
+  bool is_exact;
+  val.GetFloat().convertToInteger(integer, llvm::APFloat::rmTowardZero,
+                                  &is_exact);
+  return CreateValueFromAPInt(target, integer, type);
 }
 
 Value CreateValueFromBytes(lldb::SBTarget target, const void* bytes,

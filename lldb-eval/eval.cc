@@ -280,8 +280,15 @@ void Interpreter::Visit(const CStyleCastNode* node) {
     case CStyleCastKind::kEnumeration: {
       assert(type.IsEnum() &&
              "invalid ast: target type should be an enumeration.");
-      uint64_t value = rhs.GetUInt64();
-      result_ = CreateValueFromBytes(target_, &value, type);
+
+      if (rhs.IsFloat()) {
+        result_ = CastFloatToEnumType(target_, rhs, type);
+      } else if (rhs.IsInteger() || rhs.IsEnum()) {
+        result_ = CastIntegerOrEnumToEnumType(target_, rhs, type);
+      } else {
+        assert(false &&
+               "invalid ast: operand is not convertible to enumeration type");
+      }
       return;
     }
     case CStyleCastKind::kPointer: {
@@ -585,7 +592,7 @@ Value Interpreter::EvaluateComparison(BinaryOpKind kind, Value lhs, Value rhs) {
 
   // Evaluate arithmetic operation for two scoped enum values.
   if (lhs.IsScopedEnum() && rhs.IsScopedEnum()) {
-    bool ret = Compare(kind, lhs.GetUInt64(), rhs.GetUInt64());
+    bool ret = Compare(kind, lhs.GetInteger(), rhs.GetInteger());
     return CreateValueFromBool(target_, ret);
   }
 

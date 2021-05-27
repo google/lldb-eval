@@ -1629,12 +1629,15 @@ TEST_F(EvalTest, TestScopedEnum) {
   EXPECT_THAT(Eval("enum_foo == ScopedEnum::kBar"), IsEqual("false"));
   EXPECT_THAT(Eval("enum_foo != ScopedEnum::kBar"), IsEqual("true"));
   EXPECT_THAT(Eval("enum_foo < ScopedEnum::kBar"), IsEqual("true"));
+  EXPECT_THAT(Eval("enum_foo < enum_neg"), IsEqual("false"));
+  EXPECT_THAT(Eval("enum_neg < enum_bar"), IsEqual("true"));
 
   EXPECT_THAT(Eval("(ScopedEnum)0"), IsEqual("kFoo"));
   EXPECT_THAT(Eval("(ScopedEnum)1"), IsEqual("kBar"));
   EXPECT_THAT(Eval("(ScopedEnum)0.1"), IsEqual("kFoo"));
   EXPECT_THAT(Eval("(ScopedEnum)1.1"), IsEqual("kBar"));
   EXPECT_THAT(Eval("(ScopedEnum)-1"), IsOk());
+  EXPECT_THAT(Eval("(ScopedEnum)-1.1"), IsOk());
   EXPECT_THAT(Eval("(ScopedEnum)256"), IsOk());
   EXPECT_THAT(Eval("(ScopedEnum)257"), IsOk());
   EXPECT_THAT(Eval("(ScopedEnum)false"), IsEqual("kFoo"));
@@ -1655,6 +1658,7 @@ TEST_F(EvalTest, TestScopedEnum) {
   EXPECT_THAT(Eval("(bool)enum_neg"), IsEqual("true"));
   EXPECT_THAT(Eval("(double)ScopedEnumUInt8::kBar"), IsEqual("1"));
   EXPECT_THAT(Eval("(ScopedEnum)ScopedEnum::kBar"), IsEqual("kBar"));
+  EXPECT_THAT(Eval("(int)(ScopedEnumUInt8)enum_neg"), IsEqual("255"));
 }
 
 TEST_F(EvalTest, TestScopedEnumArithmetic) {
@@ -1697,6 +1701,7 @@ TEST_F(EvalTest, TestScopedEnumArithmetic) {
 
 TEST_F(EvalTest, TestScopedEnumWithUnderlyingType) {
   EXPECT_THAT(Eval("(ScopedEnumUInt8)-1"), IsOk());
+  EXPECT_THAT(Eval("(ScopedEnumUInt8)-1.1"), IsOk());
   EXPECT_THAT(Eval("(ScopedEnumUInt8)256"), IsEqual("kFoo"));
   EXPECT_THAT(Eval("(ScopedEnumUInt8)257"), IsEqual("kBar"));
 }
@@ -1795,6 +1800,11 @@ TEST_F(EvalTest, TestUnscopedEnumWithUnderlyingType) {
   EXPECT_THAT(Eval("(UnscopedEnumUInt8)-1"), IsOk());
   EXPECT_THAT(Eval("(UnscopedEnumUInt8)256"), IsEqual("kZeroU8"));
   EXPECT_THAT(Eval("(UnscopedEnumUInt8)257"), IsEqual("kOneU8"));
+
+  EXPECT_THAT(Eval("(UnscopedEnumInt8)-2.1"), IsOk());
+  EXPECT_THAT(Eval("(int)enum_neg_8"), IsEqual("-1"));
+  EXPECT_THAT(Eval("enum_neg_8 < enum_one_8"), IsEqual("true"));
+  EXPECT_THAT(Eval("enum_neg_8 > enum_one_8"), IsEqual("false"));
 }
 
 TEST_F(EvalTest, TestUnscopedEnumEmpty) {

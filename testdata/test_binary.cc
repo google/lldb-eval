@@ -703,6 +703,7 @@ void TestScopedEnum() {
 
 enum UnscopedEnum { kZero, kOne, kTwo };
 enum UnscopedEnumUInt8 : uint8_t { kZeroU8, kOneU8, kTwoU8 };
+enum UnscopedEnumInt8 : int8_t { kZero8, kOne8, kTwo8 };
 enum UnscopedEnumEmpty : uint8_t {};
 
 // UnscopedEnum global_enum = UnscopedEnum::kOne;
@@ -720,6 +721,9 @@ void TestUnscopedEnum() {
   auto enum_two_u8 = UnscopedEnumUInt8::kTwoU8;
 
   UnscopedEnumEmpty enum_empty{};
+
+  auto enum_one_8 = UnscopedEnumInt8::kOne8;
+  auto enum_neg_8 = (UnscopedEnumInt8)-1;
 
   // BREAK(TestUnscopedEnum)
   // BREAK(TestUnscopedEnumNegation)
