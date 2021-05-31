@@ -59,7 +59,10 @@ void Context::SetAllowSideEffects(bool allow_side_effects) {
 
 Context::Context(std::string expr, lldb::SBExecutionContext ctx,
                  lldb::SBValue scope)
-    : expr_(std::move(expr)), ctx_(std::move(ctx)), scope_(std::move(scope)) {
+    : expr_(std::move(expr)),
+      ctx_(std::move(ctx)),
+      scope_(std::move(scope)),
+      ptr_size_(0) {
   // This holds a SourceManager and all of its dependencies.
   smff_ = std::make_unique<clang::SourceManagerForFile>("<expr>", expr_);
 
@@ -67,6 +70,14 @@ Context::Context(std::string expr, lldb::SBExecutionContext ctx,
   // TODO(werat): Add custom consumer to keep track of errors.
   clang::DiagnosticsEngine& de = smff_->get().getDiagnostics();
   de.setClient(new clang::IgnoringDiagConsumer);
+}
+
+uint64_t Context::GetPointerSize() {
+  if (ptr_size_ == 0) {
+    lldb::SBType void_ty = ctx_.GetTarget().GetBasicType(lldb::eBasicTypeVoid);
+    ptr_size_ = void_ty.GetPointerType().GetByteSize();
+  }
+  return ptr_size_;
 }
 
 lldb::SBType Context::GetBasicType(lldb::BasicType basic_type) {
