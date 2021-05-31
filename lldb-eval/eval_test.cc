@@ -1701,7 +1701,6 @@ TEST_F(EvalTest, TestScopedEnumArithmetic) {
 
 TEST_F(EvalTest, TestScopedEnumWithUnderlyingType) {
   EXPECT_THAT(Eval("(ScopedEnumUInt8)-1"), IsOk());
-  EXPECT_THAT(Eval("(ScopedEnumUInt8)-1.1"), IsOk());
   EXPECT_THAT(Eval("(ScopedEnumUInt8)256"), IsEqual("kFoo"));
   EXPECT_THAT(Eval("(ScopedEnumUInt8)257"), IsEqual("kBar"));
 }
