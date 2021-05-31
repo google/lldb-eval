@@ -25,6 +25,11 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "libfuzzer_utils_lib",
+    hdrs = ["libfuzzer_utils.h"],
+)
+
 cc_binary(
     name = "fuzzer",
     srcs = ["main.cc"],
@@ -57,6 +62,16 @@ cc_test(
     srcs = ["fuzzer_test.cc"],
     deps = [
         ":fuzzer_lib",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "libfuzzer_utils_test",
+    srcs = ["libfuzzer_utils_test.cc"],
+    deps = [
+        ":libfuzzer_utils_lib",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
