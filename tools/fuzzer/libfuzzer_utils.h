@@ -46,7 +46,7 @@ class LibfuzzerReader {
     uint64_t range = static_cast<uint64_t>(max) - min;
     uint64_t value = 0;
 
-    for (int i = 0; i < 8 * sizeof(T) && (range >> i) > 0; i += 8) {
+    for (size_t i = 0; i < 8 * sizeof(T) && (range >> i) > 0; i += 8) {
       value |= (static_cast<uint64_t>(read_byte()) << i);
     }
 
@@ -68,7 +68,7 @@ class LibfuzzerReader {
                                               uint32_t, uint64_t>::type;
 
     T frac = static_cast<T>(read_int<IntType>()) /
-             std::numeric_limits<IntType>::max();
+             static_cast<T>(std::numeric_limits<IntType>::max());
 
     return min + (max - min) * frac;
   }

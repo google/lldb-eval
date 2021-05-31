@@ -56,12 +56,12 @@ TEST(LibfuzzerUtils, Int) {
 
   writer.write_int<int64_t>(0);
   writer.write_int<int64_t>(-1);
-  writer.write_int<int64_t>(-9'223'372'036'854'775'808LL);  // -2^63
-  writer.write_int<int64_t>(9'223'372'036'854'775'807LL);   // 2^63 - 1
+  writer.write_int<int64_t>(-9223372036854775808ULL);  // -2^63
+  writer.write_int<int64_t>(9223372036854775807LL);    // 2^63 - 1
   EXPECT_EQ(reader.read_int<int64_t>(), 0);
   EXPECT_EQ(reader.read_int<int64_t>(), -1);
-  EXPECT_EQ(reader.read_int<int64_t>(), -9'223'372'036'854'775'808LL);
-  EXPECT_EQ(reader.read_int<int64_t>(), 9'223'372'036'854'775'807LL);
+  EXPECT_EQ(reader.read_int<int64_t>(), -9223372036854775808ULL);
+  EXPECT_EQ(reader.read_int<int64_t>(), 9223372036854775807LL);
 
   writer.write_int<int>(100, -500, 500);
   EXPECT_EQ(reader.read_int<int>(-500, 500), 100);
