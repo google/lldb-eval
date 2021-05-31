@@ -1658,7 +1658,12 @@ TEST_F(EvalTest, TestScopedEnum) {
   EXPECT_THAT(Eval("(bool)enum_neg"), IsEqual("true"));
   EXPECT_THAT(Eval("(double)ScopedEnumUInt8::kBar"), IsEqual("1"));
   EXPECT_THAT(Eval("(ScopedEnum)ScopedEnum::kBar"), IsEqual("kBar"));
-  EXPECT_THAT(Eval("(int)(ScopedEnumUInt8)enum_neg"), IsEqual("255"));
+
+  // TODO: Enable the following test once the underlying enumeration type
+  // becomes fully available. Information about underlying enumeration type
+  // isn't available in LLDB 11 or lower, which are currently used by GitHub
+  // actions.
+  // EXPECT_THAT(Eval("(int)(ScopedEnumUInt8)enum_neg"), IsEqual("255"));
 }
 
 TEST_F(EvalTest, TestScopedEnumArithmetic) {
