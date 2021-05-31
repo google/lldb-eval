@@ -76,7 +76,6 @@ class Context {
   void SetAllowSideEffects(bool allow_side_effects);
 
  public:
-  uint64_t GetPointerSize();
   lldb::SBType GetBasicType(lldb::BasicType basic_type);
   lldb::SBType ResolveTypeByName(const std::string& name) const;
   lldb::SBValue LookupIdentifier(const std::string& name) const;
@@ -109,10 +108,6 @@ class Context {
 
   // Cache of the basic types for the current target.
   std::unordered_map<lldb::BasicType, lldb::SBType> basic_types_;
-
-  // Size of the pointer type for the current target.
-  // NOTE: Calculated lazily upon the first call to `GetPointerSize()`.
-  uint64_t ptr_size_;
 };
 
 }  // namespace lldb_eval

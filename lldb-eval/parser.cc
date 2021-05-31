@@ -2045,7 +2045,7 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
       }
       // Casting pointer to bool is valid. Otherwise check if the result type
       // is at least as big as the pointer size.
-      if (!type.IsBool() && type.GetByteSize() < ctx_->GetPointerSize()) {
+      if (!type.IsBool() && type.GetByteSize() < rhs_type.GetByteSize()) {
         BailOut(ErrorCode::kInvalidOperandType,
                 llvm::formatv(
                     "cast from pointer to smaller type '{0}' loses information",
