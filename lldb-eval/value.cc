@@ -412,8 +412,8 @@ Value CastPointerToBasicType(lldb::SBTarget target, Value val, Type type) {
 
 Value CastIntegerOrEnumToEnumType(lldb::SBTarget target, Value val, Type type) {
   assert(type.IsEnum() && "target type must be an enum");
-  assert((val.type().IsScalar() || val.type().IsEnum()) &&
-         "argument must be a scalar or an enum");
+  assert((val.type().IsInteger() || val.type().IsEnum()) &&
+         "argument must be an integer or an enum");
 
   // Get the value as APSInt and extend or truncate it to the requested size.
   llvm::APSInt ext = val.GetInteger().extOrTrunc(type.GetByteSize() * CHAR_BIT);
