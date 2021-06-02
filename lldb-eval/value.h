@@ -100,7 +100,8 @@ class Value {
   Type type_;
 };
 
-Value CastScalarToBasicType(lldb::SBTarget target, Value val, Type type);
+Value CastScalarToBasicType(lldb::SBTarget target, Value val, Type type,
+                            Error& error);
 
 Value CastEnumToBasicType(lldb::SBTarget target, Value val, Type type);
 
@@ -108,7 +109,8 @@ Value CastPointerToBasicType(lldb::SBTarget target, Value val, Type type);
 
 Value CastIntegerOrEnumToEnumType(lldb::SBTarget target, Value val, Type type);
 
-Value CastFloatToEnumType(lldb::SBTarget target, Value val, Type type);
+Value CastFloatToEnumType(lldb::SBTarget target, Value val, Type type,
+                          Error& error);
 
 Value CreateValueFromBytes(lldb::SBTarget target, const void* bytes,
                            lldb::SBType type);

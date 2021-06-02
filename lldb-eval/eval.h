@@ -52,7 +52,7 @@ class Interpreter : Visitor {
   }
 
  public:
-  Value Eval(const AstNode* tree);
+  Value Eval(const AstNode* tree, Error& error);
 
  private:
   void Visit(const ErrorNode* node) override;
@@ -118,6 +118,8 @@ class Interpreter : Visitor {
   std::vector<FlowAnalysis*> flow_analysis_chain_;
 
   Value result_;
+
+  Error error_;
 };
 
 }  // namespace lldb_eval

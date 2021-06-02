@@ -44,7 +44,12 @@ static lldb::SBValue EvaluateExpressionImpl(std::shared_ptr<Context> ctx,
   }
 
   Interpreter eval(ctx);
-  Value ret = eval.Eval(tree.get());
+  Value ret = eval.Eval(tree.get(), err);
+  if (err) {
+    error.SetError(static_cast<uint32_t>(err.code()), lldb::eErrorTypeGeneric);
+    error.SetErrorString(err.message().c_str());
+    return ret.inner_value();
+  }
 
   // Check if the inner value holds an error (this could be a runtime evaluation
   // failure, e.g. dereferencing a null pointer).

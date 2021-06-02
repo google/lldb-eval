@@ -39,22 +39,32 @@ enum class ErrorCode : unsigned char {
   kUnknown,
 };
 
+enum class UbStatus : unsigned char {
+  kOk = 0,
+  kDivisionByZero,
+  kCastOutOfBounds,
+  kNullptrArithmetic,
+};
+
 class Error {
  public:
   void Set(ErrorCode code, std::string message) {
     code_ = code;
     message_ = std::move(message);
   }
+  void SetUbStatus(UbStatus status) { ub_status_ = status; }
   void Clear() { *this = {}; }
 
   ErrorCode code() const { return code_; }
   const std::string& message() const { return message_; }
+  UbStatus ub_status() const { return ub_status_; }
 
   explicit operator bool() const { return code_ != ErrorCode::kOk; }
 
  private:
   ErrorCode code_ = ErrorCode::kOk;
   std::string message_;
+  UbStatus ub_status_ = UbStatus::kOk;
 };
 
 class Context {
