@@ -86,8 +86,8 @@ cc_test(
     name = "ub_detection_test",
     srcs = ["ub_detection_test.cc"],
     data = [
-        "//testdata:test_binary_gen",
-        "//testdata:test_binary_srcs",
+        "//testdata:ub_detection_binary_gen",
+        "//testdata:ub_detection_binary_srcs",
     ],
     tags = [
         # On Linux lldb-server behaves funny in a sandbox ¯\_(ツ)_/¯. This is

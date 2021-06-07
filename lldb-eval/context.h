@@ -42,7 +42,7 @@ enum class ErrorCode : unsigned char {
 enum class UbStatus : unsigned char {
   kOk = 0,
   kDivisionByZero,
-  kCastOutOfBounds,
+  kInvalidCast,
   kNullptrArithmetic,
 };
 

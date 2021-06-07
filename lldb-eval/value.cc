@@ -331,64 +331,6 @@ static llvm::APFloat CreateAPFloatFromAPFloat(llvm::APFloat value,
   }
 }
 
-static bool IsCastOutOfBounds(Value value, Type type) {
-  // A function that determines whether casting `value` of floating point type
-  // to the given `type` (integer or enum) is undefined behaviour.
-  //
-  // From https://eel.is/c++draft/conv.fpint:
-  //
-  // A prvalue of a floating-point type can be converted to a prvalue of an
-  // integer type. The conversion truncates; that is, the fractional part is
-  // discarded. The behavior is undefined if the truncated value cannot be
-  // represented in the destination type.
-
-  assert(value.IsFloat() && "argument must be a float");
-  assert((type.IsInteger() || type.IsEnum()) &&
-         "target type must be either an integer or an enum");
-
-  // Casting to bool is well-defined. This function doesn't support types that
-  // cannot fit a 64-bit value. In that case return false.
-  if (type.IsBool() || type.GetByteSize() * CHAR_BIT > 64) {
-    return false;
-  }
-
-  double dbl_value = 0.0;
-  switch (value.type().GetBasicType()) {
-    case lldb::eBasicTypeFloat:
-      dbl_value = static_cast<double>(value.GetFloat().convertToFloat());
-      break;
-    case lldb::eBasicTypeDouble:
-    case lldb::eBasicTypeLongDouble:
-      dbl_value = value.GetFloat().convertToDouble();
-      break;
-
-    default:
-      return false;
-  }
-
-  // Check few corner cases.
-  if (std::isnan(dbl_value) || !std::isfinite(dbl_value)) {
-    return true;
-  }
-
-  uint64_t half_range = 1ULL << (type.GetByteSize() * CHAR_BIT - 1);
-
-  // Truncation tolerance.
-  constexpr double tolerance = 0.999;
-
-  double min = 0.0;
-  double max = 0.0;
-  if (type.IsSigned()) {
-    min = -static_cast<double>(half_range) - tolerance;
-    max = static_cast<double>(half_range) - 1 + tolerance;
-  } else {
-    min = -tolerance;
-    max = 2 * static_cast<double>(half_range) - 1 + tolerance;
-  }
-
-  return dbl_value < min || dbl_value > max;
-}
-
 Value CastScalarToBasicType(lldb::SBTarget target, Value val, Type type,
                             Error& error) {
   assert(type.IsScalar() && "target type must be an scalar");
@@ -411,14 +353,16 @@ Value CastScalarToBasicType(lldb::SBTarget target, Value val, Type type,
     if (val.type().IsFloat()) {
       llvm::APSInt integer(type.GetByteSize() * CHAR_BIT, !type.IsSigned());
       bool is_exact;
-      val.GetFloat().convertToInteger(integer, llvm::APFloat::rmTowardZero,
-                                      &is_exact);
-      if (IsCastOutOfBounds(val, type)) {
-        error.SetUbStatus(UbStatus::kCastOutOfBounds);
+      llvm::APFloatBase::opStatus status = val.GetFloat().convertToInteger(
+          integer, llvm::APFloat::rmTowardZero, &is_exact);
+
+      // Casting floating point values that are out of bounds of the target type
+      // is undefined behaviour.
+      if (status & llvm::APFloatBase::opInvalidOp) {
+        error.SetUbStatus(UbStatus::kInvalidCast);
       }
 
       return CreateValueFromAPInt(target, integer, type);
-      // TODO: check ub status...
     }
   }
   if (type.IsFloat()) {
@@ -491,11 +435,14 @@ Value CastFloatToEnumType(lldb::SBTarget target, Value val, Type type,
 
   llvm::APSInt integer(type.GetByteSize() * CHAR_BIT, !type.IsSigned());
   bool is_exact;
-  val.GetFloat().convertToInteger(integer, llvm::APFloat::rmTowardZero,
-                                  &is_exact);
 
-  if (IsCastOutOfBounds(val, type)) {
-    error.SetUbStatus(UbStatus::kCastOutOfBounds);
+  llvm::APFloatBase::opStatus status = val.GetFloat().convertToInteger(
+      integer, llvm::APFloat::rmTowardZero, &is_exact);
+
+  // Casting floating point values that are out of bounds of the target type
+  // is undefined behaviour.
+  if (status & llvm::APFloatBase::opInvalidOp) {
+    error.SetUbStatus(UbStatus::kInvalidCast);
   }
 
   return CreateValueFromAPInt(target, integer, type);

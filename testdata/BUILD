@@ -23,3 +23,10 @@ binary_gen(
         "test_library.cc",
     ],
 )
+
+binary_gen(
+    name = "ub_detection_binary",
+    srcs = [
+        "ub_detection_binary.cc",
+    ],
+)

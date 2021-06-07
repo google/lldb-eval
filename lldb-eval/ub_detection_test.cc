@@ -44,8 +44,8 @@ std::ostream& operator<<(std::ostream& os, UbStatus status) {
       return os << "UbStatus::kOk";
     case UbStatus::kDivisionByZero:
       return os << "UbStatus::kDivisionByZero";
-    case UbStatus::kCastOutOfBounds:
-      return os << "UbStatus::kCastOutOfBounds";
+    case UbStatus::kInvalidCast:
+      return os << "UbStatus::kInvalidCast";
     case UbStatus::kNullptrArithmetic:
       return os << "UbStatus::kNullptrArithmetic";
 
@@ -71,13 +71,12 @@ class UbDetectionTest : public ::testing::Test {
   }
 
   void SetUp() {
-    std::string test_name =
-        ::testing::UnitTest::GetInstance()->current_test_info()->name();
-    std::string break_line = "// BREAK(TestUndefinedBehaviour)";
+    std::string break_line = "// BREAK HERE";
 
-    auto binary_path = runfiles_->Rlocation("lldb_eval/testdata/test_binary");
+    auto binary_path =
+        runfiles_->Rlocation("lldb_eval/testdata/ub_detection_binary");
     auto source_path =
-        runfiles_->Rlocation("lldb_eval/testdata/test_binary.cc");
+        runfiles_->Rlocation("lldb_eval/testdata/ub_detection_binary.cc");
 
     debugger_ = lldb::SBDebugger::Create(false);
     process_ = lldb_eval::LaunchTestProgram(debugger_, source_path, binary_path,
@@ -145,95 +144,90 @@ TEST_F(UbDetectionTest, TestDivisionByZero) {
   EXPECT_EQ(GetUbStatus("1 && 0"), UbStatus::kOk);
 }
 
-TEST_F(UbDetectionTest, TestCastOutOfBounds) {
+TEST_F(UbDetectionTest, TestInvalidCast) {
   EXPECT_EQ(GetUbStatus("(int)2147483647.0"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(int)2147483648.0"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(int)2147483648.0"), UbStatus::kInvalidCast);
   EXPECT_EQ(GetUbStatus("(int)-2147483648.0"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(int)-2147483649.0"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(int)-2147483649.0"), UbStatus::kInvalidCast);
   // With floats.
   EXPECT_EQ(GetUbStatus("(int)2147483500.f"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(int)2147483800.f"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(int)2147483800.f"), UbStatus::kInvalidCast);
   EXPECT_EQ(GetUbStatus("(int)-2147483500.f"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(int)-2147483800.f"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(int)-2147483800.f"), UbStatus::kInvalidCast);
   // Unsigned.
   EXPECT_EQ(GetUbStatus("(unsigned int)4294967295.0"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(unsigned int)4294967296.0"),
-            UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(unsigned int)4294967296.0"), UbStatus::kInvalidCast);
   EXPECT_EQ(GetUbStatus("(unsigned int)0.0"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(unsigned int)-1.0"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(unsigned int)-1.0"), UbStatus::kInvalidCast);
   // Values that has to be truncated.
   EXPECT_EQ(GetUbStatus("(unsigned int)4294967295.8"), UbStatus::kOk);
   EXPECT_EQ(GetUbStatus("(unsigned int)-0.1"), UbStatus::kOk);
 
   EXPECT_EQ(GetUbStatus("(signed char)127.0"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(signed char)128.0"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(signed char)128.0"), UbStatus::kInvalidCast);
   EXPECT_EQ(GetUbStatus("(signed char)-128.0"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(signed char)-129.0"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(signed char)-129.0"), UbStatus::kInvalidCast);
   EXPECT_EQ(GetUbStatus("(unsigned char)255.0"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(unsigned char)256.0"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(unsigned char)256.0"), UbStatus::kInvalidCast);
 
   EXPECT_EQ(GetUbStatus("(short)32767.0"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(short)32768.0"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(short)32768.0"), UbStatus::kInvalidCast);
   EXPECT_EQ(GetUbStatus("(short)-32768.0"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(short)-32769.0"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(short)-32769.0"), UbStatus::kInvalidCast);
   EXPECT_EQ(GetUbStatus("(unsigned short)65535.0"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(unsigned short)65536.0"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(unsigned short)65536.0"), UbStatus::kInvalidCast);
 
   EXPECT_EQ(GetUbStatus("(long long)9.223372036854775E+18"), UbStatus::kOk);
   EXPECT_EQ(GetUbStatus("(long long)9.223372036854777E+18"),
-            UbStatus::kCastOutOfBounds);
+            UbStatus::kInvalidCast);
   EXPECT_EQ(GetUbStatus("(long long)-9.223372036854775E+18"), UbStatus::kOk);
   EXPECT_EQ(GetUbStatus("(long long)-9.223372036854777E+18"),
-            UbStatus::kCastOutOfBounds);
+            UbStatus::kInvalidCast);
   EXPECT_EQ(GetUbStatus("(unsigned long long)1.844674407370955E+19"),
             UbStatus::kOk);
   EXPECT_EQ(GetUbStatus("(unsigned long long)1.844674407370957E+19"),
-            UbStatus::kCastOutOfBounds);
+            UbStatus::kInvalidCast);
 
-  EXPECT_EQ(GetUbStatus("(int)(1 / 0.0)"), UbStatus::kCastOutOfBounds);
-  EXPECT_EQ(GetUbStatus("(int)(1 / 0.f)"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(int)(1 / 0.0)"), UbStatus::kInvalidCast);
+  EXPECT_EQ(GetUbStatus("(int)(1 / 0.f)"), UbStatus::kInvalidCast);
 
   // Corner cases.
-  EXPECT_EQ(GetUbStatus("(int)finf"), UbStatus::kCastOutOfBounds);
-  EXPECT_EQ(GetUbStatus("(int)-finf"), UbStatus::kCastOutOfBounds);
-  EXPECT_EQ(GetUbStatus("(int)fnan"), UbStatus::kCastOutOfBounds);
-  EXPECT_EQ(GetUbStatus("(int)fsnan"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(int)finf"), UbStatus::kInvalidCast);
+  EXPECT_EQ(GetUbStatus("(int)-finf"), UbStatus::kInvalidCast);
+  EXPECT_EQ(GetUbStatus("(int)fnan"), UbStatus::kInvalidCast);
+  EXPECT_EQ(GetUbStatus("(int)fsnan"), UbStatus::kInvalidCast);
   EXPECT_EQ(GetUbStatus("(int)fdenorm"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(int)fmax"), UbStatus::kCastOutOfBounds);
-  EXPECT_EQ(GetUbStatus("(int)-fmax"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(int)fmax"), UbStatus::kInvalidCast);
+  EXPECT_EQ(GetUbStatus("(int)-fmax"), UbStatus::kInvalidCast);
   EXPECT_EQ(GetUbStatus("(unsigned int)-fdenorm"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(unsigned long long)fmax"),
-            UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(unsigned long long)fmax"), UbStatus::kInvalidCast);
 
-  EXPECT_EQ(GetUbStatus("(unsigned int)finf"), UbStatus::kCastOutOfBounds);
-  EXPECT_EQ(GetUbStatus("(unsigned int)-finf"), UbStatus::kCastOutOfBounds);
-  EXPECT_EQ(GetUbStatus("(unsigned int)fnan"), UbStatus::kCastOutOfBounds);
-  EXPECT_EQ(GetUbStatus("(unsigned int)fsnan"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(unsigned int)finf"), UbStatus::kInvalidCast);
+  EXPECT_EQ(GetUbStatus("(unsigned int)-finf"), UbStatus::kInvalidCast);
+  EXPECT_EQ(GetUbStatus("(unsigned int)fnan"), UbStatus::kInvalidCast);
+  EXPECT_EQ(GetUbStatus("(unsigned int)fsnan"), UbStatus::kInvalidCast);
   EXPECT_EQ(GetUbStatus("(unsigned int)fdenorm"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(unsigned int)fmax"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(unsigned int)fmax"), UbStatus::kInvalidCast);
 
-  EXPECT_EQ(GetUbStatus("(int)dinf"), UbStatus::kCastOutOfBounds);
-  EXPECT_EQ(GetUbStatus("(int)-dinf"), UbStatus::kCastOutOfBounds);
-  EXPECT_EQ(GetUbStatus("(int)dnan"), UbStatus::kCastOutOfBounds);
-  EXPECT_EQ(GetUbStatus("(int)dsnan"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(int)dinf"), UbStatus::kInvalidCast);
+  EXPECT_EQ(GetUbStatus("(int)-dinf"), UbStatus::kInvalidCast);
+  EXPECT_EQ(GetUbStatus("(int)dnan"), UbStatus::kInvalidCast);
+  EXPECT_EQ(GetUbStatus("(int)dsnan"), UbStatus::kInvalidCast);
   EXPECT_EQ(GetUbStatus("(int)ddenorm"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(int)dmax"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(int)dmax"), UbStatus::kInvalidCast);
 
   // Test with ScopedEnum (underlying type is int).
   EXPECT_EQ(GetUbStatus("(ScopedEnum)2147483647.0"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(ScopedEnum)2147483648.0"),
-            UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(ScopedEnum)2147483648.0"), UbStatus::kInvalidCast);
   EXPECT_EQ(GetUbStatus("(ScopedEnum)-2147483648.0"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(ScopedEnum)-2147483649.0"),
-            UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(ScopedEnum)-2147483649.0"), UbStatus::kInvalidCast);
   EXPECT_EQ(GetUbStatus("(ScopedEnum)-2147483648.5"), UbStatus::kOk);
   EXPECT_EQ(GetUbStatus("(ScopedEnum)2147483500.f"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("(ScopedEnum)2147483900.f"),
-            UbStatus::kCastOutOfBounds);
-  EXPECT_EQ(GetUbStatus("(ScopedEnum)fnan"), UbStatus::kCastOutOfBounds);
-  EXPECT_EQ(GetUbStatus("(ScopedEnum)fsnan"), UbStatus::kCastOutOfBounds);
-  EXPECT_EQ(GetUbStatus("(ScopedEnum)fmax"), UbStatus::kCastOutOfBounds);
-  EXPECT_EQ(GetUbStatus("(ScopedEnum)finf"), UbStatus::kCastOutOfBounds);
+  EXPECT_EQ(GetUbStatus("(ScopedEnum)2147483900.f"), UbStatus::kInvalidCast);
+  EXPECT_EQ(GetUbStatus("(ScopedEnum)fnan"), UbStatus::kInvalidCast);
+  EXPECT_EQ(GetUbStatus("(ScopedEnum)fsnan"), UbStatus::kInvalidCast);
+  EXPECT_EQ(GetUbStatus("(ScopedEnum)fmax"), UbStatus::kInvalidCast);
+  EXPECT_EQ(GetUbStatus("(ScopedEnum)finf"), UbStatus::kInvalidCast);
   EXPECT_EQ(GetUbStatus("(ScopedEnum)fdenorm"), UbStatus::kOk);
 
   // TODO: Add tests with enums of custom underlying type.
