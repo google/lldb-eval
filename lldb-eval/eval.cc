@@ -733,6 +733,13 @@ Value Interpreter::EvaluateBinaryAddition(Value lhs, Value rhs) {
   }
   assert(ptr.IsPointer() && "invalid ast: ptr must be a pointer");
   assert(offset.IsInteger() && "invalid ast: offset must be an integer");
+
+  if (ptr.GetUInt64() == 0 && offset.GetInteger().isNegative()) {
+    // Binary addition with null pointer causes mismatches between LLDB and
+    // lldb-eval if the offset is negative.
+    error_.SetUbStatus(UbStatus::kNullptrArithmetic);
+  }
+
   return PointerAdd(ptr, offset.GetUInt64());
 }
 
@@ -933,15 +940,6 @@ Value Interpreter::EvaluateBinaryBitwiseAssign(BinaryOpKind kind, Value lhs,
 }
 
 Value Interpreter::PointerAdd(Value lhs, int64_t offset) {
-  if (lhs.GetUInt64() == 0 && offset != 0) {
-    // This is UB and the compiler would generate a warning:
-    //
-    //  warning: performing pointer arithmetic on a null pointer has undefined
-    //  behaviour if the offset is nonzero [-Wnull-pointer-arithmetic]
-    //
-    error_.SetUbStatus(UbStatus::kNullptrArithmetic);
-  }
-
   uintptr_t addr =
       lhs.GetUInt64() + offset * lhs.type().GetPointeeType().GetByteSize();
 

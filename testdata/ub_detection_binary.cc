@@ -4,8 +4,14 @@ enum class ScopedEnum { kZero, kOne };
 
 int main() {
   int i = 1;
-  int* p = &i;
-  int* np = nullptr;
+  int* inp = nullptr;
+  std::nullptr_t null_ptr = nullptr;
+  std::nullptr_t& null_ptr_ref = null_ptr;
+  std::nullptr_t* null_ptr_addr = &null_ptr;
+
+  struct S {
+    std::nullptr_t null_field = nullptr;
+  } s;
 
   float finf = std::numeric_limits<float>::infinity();
   float fnan = std::numeric_limits<float>::quiet_NaN();

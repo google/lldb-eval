@@ -234,21 +234,36 @@ TEST_F(UbDetectionTest, TestInvalidCast) {
 }
 
 TEST_F(UbDetectionTest, TestNullptrArithmetic) {
-  EXPECT_EQ(GetUbStatus("(int*)0 - 4"), UbStatus::kNullptrArithmetic);
-  EXPECT_EQ(GetUbStatus("(int*)0 + 4"), UbStatus::kNullptrArithmetic);
-  EXPECT_EQ(GetUbStatus("(int*)0 - 0"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("(int*)0 + 4"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("(int*)0 + (-4)"), UbStatus::kNullptrArithmetic);
   EXPECT_EQ(GetUbStatus("(int*)0 + 0"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("(int*)4 + (-4)"), UbStatus::kOk);
 
-  EXPECT_EQ(GetUbStatus("np + 4"), UbStatus::kNullptrArithmetic);
-  EXPECT_EQ(GetUbStatus("np - 4"), UbStatus::kNullptrArithmetic);
-  EXPECT_EQ(GetUbStatus("p - 4"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("p + 4"), UbStatus::kOk);
+  // Subtraction didn't cause mismatches so far.
+  EXPECT_EQ(GetUbStatus("(int*)0 - 4"), UbStatus::kOk);
 
-  EXPECT_EQ(GetUbStatus("&np[1]"), UbStatus::kNullptrArithmetic);
-  EXPECT_EQ(GetUbStatus("&np[-1]"), UbStatus::kNullptrArithmetic);
-  EXPECT_EQ(GetUbStatus("&np[0]"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("&p[1]"), UbStatus::kOk);
-  EXPECT_EQ(GetUbStatus("&p[-1]"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("inp + 4"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("inp + (-4)"), UbStatus::kNullptrArithmetic);
+
+  EXPECT_EQ(GetUbStatus("(int*)nullptr + (-4)"), UbStatus::kNullptrArithmetic);
+  EXPECT_EQ(GetUbStatus("(int*)null_ptr + (-4)"), UbStatus::kNullptrArithmetic);
+  EXPECT_EQ(GetUbStatus("(int*)null_ptr_ref + (-4)"),
+            UbStatus::kNullptrArithmetic);
+  EXPECT_EQ(GetUbStatus("(int*)*null_ptr_addr + (-4)"),
+            UbStatus::kNullptrArithmetic);
+  EXPECT_EQ(GetUbStatus("(int*)null_ptr_addr[0] + (-4)"),
+            UbStatus::kNullptrArithmetic);
+  EXPECT_EQ(GetUbStatus("(int*)s.null_field + (-4)"),
+            UbStatus::kNullptrArithmetic);
+  EXPECT_EQ(GetUbStatus("(int*)(&s)->null_field + (-4)"),
+            UbStatus::kNullptrArithmetic);
+
+  // Multiple casts.
+  EXPECT_EQ(GetUbStatus("(int*)(char*)0 + (-4)"), UbStatus::kNullptrArithmetic);
+
+  EXPECT_EQ(GetUbStatus("&inp[1]"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("&inp[-1]"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("&inp[0]"), UbStatus::kOk);
 }
 
 // TODO: Add tests with composite assignments (e.g. `i /= 0`, `i -= fmax`).
