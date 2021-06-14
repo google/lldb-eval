@@ -77,6 +77,7 @@ class Context {
 
  public:
   lldb::SBType GetBasicType(lldb::BasicType basic_type);
+  lldb::SBType GetSizeType();
   lldb::SBType ResolveTypeByName(const std::string& name) const;
   lldb::SBValue LookupIdentifier(const std::string& name) const;
   bool IsContextVar(const std::string& name) const;
@@ -108,6 +109,9 @@ class Context {
 
   // Cache of the basic types for the current target.
   std::unordered_map<lldb::BasicType, lldb::SBType> basic_types_;
+
+  // Cache of the `size_t` type.
+  lldb::SBType size_type_;
 };
 
 }  // namespace lldb_eval

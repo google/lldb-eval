@@ -81,6 +81,20 @@ lldb::SBType Context::GetBasicType(lldb::BasicType basic_type) {
   return ret;
 }
 
+lldb::SBType Context::GetSizeType() {
+  if (size_type_.IsValid()) {
+    return size_type_;
+  }
+
+  // Get the `size_t` type from the target and cache it for future calls.
+  size_type_ = ctx_.GetTarget().FindFirstType("size_t").GetCanonicalType();
+  if (!size_type_.IsValid()) {
+    // Or fallback to `unsigned long long`.
+    size_type_ = GetBasicType(lldb::eBasicTypeUnsignedLongLong);
+  }
+  return size_type_;
+}
+
 lldb::SBType Context::ResolveTypeByName(const std::string& name) const {
   // TODO(b/163308825): Do scope-aware type lookup. Look for the types defined
   // in the current scope (function, class, namespace) and prioritize them.

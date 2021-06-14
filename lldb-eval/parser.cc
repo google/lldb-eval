@@ -1082,8 +1082,7 @@ ExprResult Parser::ParseUnaryExpression() {
       return std::make_unique<ErrorNode>();
     }
 
-    lldb::SBType result_type =
-        ctx_->GetBasicType(lldb::eBasicTypeUnsignedLongLong);
+    lldb::SBType result_type = ctx_->GetSizeType();
     return std::make_unique<SizeOfNode>(sizeof_loc, result_type, operand);
   }
 

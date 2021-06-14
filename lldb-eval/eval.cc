@@ -225,8 +225,7 @@ void Interpreter::Visit(const SizeOfNode* node) {
   size_t size = operand.IsReferenceType()
                     ? operand.GetDereferencedType().GetByteSize()
                     : operand.GetByteSize();
-  result_ =
-      CreateValueFromBytes(target_, &size, lldb::eBasicTypeUnsignedLongLong);
+  result_ = CreateValueFromBytes(target_, &size, ctx_->GetSizeType());
 }
 
 void Interpreter::Visit(const BuiltinFunctionCallNode* node) {
