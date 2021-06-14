@@ -561,6 +561,12 @@ std::optional<Expr> ExprGenerator::gen_cast_expr_impl(
     return {};
   }
 
+  const auto& memory_constraints = constraints.memory_constraints();
+  if (!cfg_.valid_pointer_cast_enabled && memory_constraints.must_be_valid() &&
+      memory_constraints.required_freedom_index() > 0) {
+    return {};
+  }
+
   auto maybe_type = gen_type(weights, constraints.type_constraints());
   if (!maybe_type.has_value()) {
     return {};
@@ -723,9 +729,15 @@ std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr_impl(
 
   Field field = rng_->pick_field(fields);
   TypeConstraints new_type_constraints(field.containing_type());
-  ExprConstraints new_constraints = ExprConstraints(
-      new_type_constraints.make_pointer_constraints(),
-      memory_constraints.from_member_of(constraints.must_be_lvalue(), 1));
+  // If the field is a reference or a virtually inherited field, assume a read
+  // from memory.
+  MemoryConstraints new_memory_constraints =
+      field.is_reference_or_virtual()
+          ? MemoryConstraints(true, 1)
+          : memory_constraints.from_member_of(constraints.must_be_lvalue(), 1);
+  ExprConstraints new_constraints =
+      ExprConstraints(new_type_constraints.make_pointer_constraints(),
+                      std::move(new_memory_constraints));
   auto maybe_expr = gen_with_weights(weights, std::move(new_constraints));
   if (!maybe_expr.has_value()) {
     return {};

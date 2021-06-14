@@ -243,17 +243,21 @@ class ClassAnalyzer {
     std::string name;
     Type type;
     uint32_t id;
+    bool is_reference;
     bool is_virtual;  // Is it a virtually inherited field?
 
-    FieldInfo(std::string name, Type type, uint32_t id, bool is_virtual = false)
+    FieldInfo(std::string name, Type type, uint32_t id, bool is_reference,
+              bool is_virtual = false)
         : name(std::move(name)),
           type(std::move(type)),
           id(id),
+          is_reference(is_reference),
           is_virtual(is_virtual) {}
 
     friend bool operator==(const FieldInfo& lhs, const FieldInfo& rhs) {
-      return lhs.id == rhs.id && lhs.is_virtual == rhs.is_virtual &&
-             lhs.name == rhs.name && lhs.type == rhs.type;
+      return lhs.id == rhs.id && lhs.is_reference == rhs.is_reference &&
+             lhs.is_virtual == rhs.is_virtual && lhs.name == rhs.name &&
+             lhs.type == rhs.type;
     }
 
     // Needed for std::unordered_set.
@@ -310,7 +314,7 @@ class ClassAnalyzer {
       auto maybe_type = convert_type(field.GetType(), ignore_qualified_types_);
       if (maybe_type.has_value()) {
         fields.emplace(fix_name(field.GetName()), std::move(maybe_type.value()),
-                       next_field_id());
+                       next_field_id(), field.GetType().IsReferenceType());
       }
     }
 
@@ -398,7 +402,9 @@ ClassAnalyzer load_tagged_types(SymbolTable& symtab, lldb::SBFrame& frame,
       const auto& info = classes.get_class_info(type);
       for (const auto& field : info.fields()) {
         if (info.is_unique_field_name(field.name)) {
-          symtab.add_field(tagged_type, field.name, field.type);
+          bool reference_or_virtual = field.is_reference || field.is_virtual;
+          symtab.add_field(tagged_type, field.name, field.type,
+                           reference_or_virtual);
         }
       }
     }

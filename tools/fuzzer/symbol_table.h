@@ -42,15 +42,20 @@ struct VariableFreedomPair {
 
 class Field {
  public:
-  Field(TaggedType containing_type, std::string name)
-      : containing_type_(std::move(containing_type)), name_(std::move(name)) {}
+  Field(TaggedType containing_type, std::string name,
+        bool is_reference_or_virtual = false)
+      : containing_type_(std::move(containing_type)),
+        name_(std::move(name)),
+        is_reference_or_virtual_(is_reference_or_virtual) {}
 
   const TaggedType& containing_type() const { return containing_type_; }
   const std::string& name() const { return name_; }
+  bool is_reference_or_virtual() const { return is_reference_or_virtual_; }
 
  private:
   TaggedType containing_type_;
   std::string name_;
+  bool is_reference_or_virtual_;
 };
 
 class Function {
@@ -100,9 +105,9 @@ class SymbolTable {
   }
 
   void add_field(TaggedType containing_type, std::string field_name,
-                 Type field_type) {
-    fields_by_type_[std::move(field_type)].emplace_back(containing_type,
-                                                        std::move(field_name));
+                 Type field_type, bool reference_or_virtual) {
+    fields_by_type_[std::move(field_type)].emplace_back(
+        containing_type, std::move(field_name), reference_or_virtual);
 
     tagged_types_.insert(std::move(containing_type));
   }

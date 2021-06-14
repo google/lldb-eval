@@ -147,6 +147,11 @@ struct GenConfig {
   // Probability that sizeof will take a type as a argument.
   float sizeof_gen_type_prob = 0.3f;
 
+  // A cast such as `((AnotherStruct*)struct_ptr)->field` isn't allowed. Setting
+  // this flag to false avoids casting between different pointer types if read
+  // from memory is expected.
+  bool valid_pointer_cast_enabled = false;
+
   BinOpMask bin_op_mask = BinOpMask::all_set();
   UnOpMask un_op_mask = UnOpMask::all_set();
 
