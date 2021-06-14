@@ -87,7 +87,7 @@ lldb::SBType Context::GetSizeType() {
   }
 
   // Get the `size_t` type from the target and cache it for future calls.
-  size_type_ = ctx_.GetTarget().FindFirstType("size_t").GetCanonicalType();
+  size_type_ = ctx_.GetTarget().FindFirstType("::size_t").GetCanonicalType();
   if (!size_type_.IsValid()) {
     // Or fallback to `unsigned long long`.
     size_type_ = GetBasicType(lldb::eBasicTypeUnsignedLongLong);
