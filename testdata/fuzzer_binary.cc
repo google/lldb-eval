@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-#include <cstddef>  // size_t
 #include <limits>
 
 // This file _must not_ access the file system, since the current directory
@@ -286,9 +285,6 @@ int main() {
   const char* test_str = "Hee hee hee";
   char** addr_null_char_ptr = &null_char_ptr;
   (void)null_char_ptr, (void)test_str, (void)addr_null_char_ptr;
-
-  size_t size_val = 5;
-  (void)size_val;
 
   NonEmptyDerived empty_base;
   (void)empty_base;
