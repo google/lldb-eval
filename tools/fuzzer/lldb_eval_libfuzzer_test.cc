@@ -31,8 +31,8 @@
 #include "tools/cpp/runfiles/runfiles.h"
 #include "tools/fuzzer/ast.h"
 #include "tools/fuzzer/expr_gen.h"
+#include "tools/fuzzer/fixed_rng.h"
 #include "tools/fuzzer/gen_node.h"
-#include "tools/fuzzer/rng.h"
 #include "tools/fuzzer/symbol_table.h"
 
 using bazel::tools::cpp::runfiles::Runfiles;
@@ -45,9 +45,7 @@ static lldb::SBFrame g_frame;
 static fuzzer::SymbolTable g_symtab;
 
 // Creates an expression generator using fixed configuration and symbol table.
-template <class T>
-ExprGenerator create_generator(T base_rng) {
-  auto rng = std::make_unique<DefaultGeneratorRng<T>>(std::move(base_rng));
+ExprGenerator create_generator(std::unique_ptr<GeneratorRng> rng) {
   auto cfg = GenConfig();
   cfg.bin_op_mask[BinOp::Shl] = false;
   cfg.bin_op_mask[BinOp::Shr] = false;
@@ -88,7 +86,7 @@ class GenNodeWriter : public GenTreeVisitor {
  public:
   explicit GenNodeWriter(LibfuzzerWriter& writer) : writer_(writer) {}
 
-  void visit_random_value(rand_t value) { writer_.write(value); }
+  void visit_byte(uint8_t value) { writer_.write_byte(value); }
 
  private:
   LibfuzzerWriter& writer_;
@@ -102,7 +100,8 @@ void write_node(std::shared_ptr<GenNode> root, LibfuzzerWriter& writer) {
 extern "C" size_t LLVMFuzzerCustomMutator(uint8_t* data, size_t size,
                                           size_t max_size, unsigned int seed) {
   LibfuzzerReader reader(data, size);
-  auto fixed_generator = create_generator(LibfuzzerRng(std::move(reader)));
+  auto fixed_generator =
+      create_generator(std::make_unique<FixedGeneratorRng>(data, size));
   auto maybe_expr = fixed_generator.generate();
   assert(maybe_expr.has_value() && "Expression couldn't be generated!");
 
@@ -110,7 +109,8 @@ extern "C" size_t LLVMFuzzerCustomMutator(uint8_t* data, size_t size,
   auto root = fixed_generator.node();
   auto mutable_node = pick_random_node(root, rng);
 
-  auto random_generator = create_generator(Mt19937(rng()));
+  auto random_generator =
+      create_generator(std::make_unique<DefaultGeneratorRng>(rng()));
   if (!random_generator.mutate_gen_node(mutable_node)) {
     return size;
   }
@@ -128,7 +128,8 @@ extern "C" size_t LLVMFuzzerCustomMutator(uint8_t* data, size_t size,
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  auto generator = create_generator(LibfuzzerRng(LibfuzzerReader(data, size)));
+  auto generator =
+      create_generator(std::make_unique<FixedGeneratorRng>(data, size));
   auto maybe_expr = generator.generate();
   assert(maybe_expr.has_value() && "Expression couldn't be generated!");
 

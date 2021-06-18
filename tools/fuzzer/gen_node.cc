@@ -19,20 +19,22 @@
 #include <variant>
 
 #include "tools/fuzzer/expr_gen.h"
-#include "tools/fuzzer/rng.h"
 
 namespace fuzzer {
 
-void walk_gen_tree(std::shared_ptr<GenNode> node, GenTreeVisitor* visitor) {
+void walk_gen_tree(std::shared_ptr<GenNode> node, GenTreeVisitor* visitor,
+                   int dep) {
+  visitor->set_depth(dep);
   visitor->visit_node(node);
   for (auto child : node->children()) {
-    auto* as_int = std::get_if<rand_t>(&child);
-    if (as_int) {
-      visitor->visit_random_value(*as_int);
+    auto* as_byte = std::get_if<uint8_t>(&child);
+    if (as_byte) {
+      visitor->visit_byte(*as_byte);
     }
     auto* as_node = std::get_if<std::shared_ptr<GenNode>>(&child);
     if (as_node) {
-      walk_gen_tree(*as_node, visitor);
+      walk_gen_tree(*as_node, visitor, dep + 1);
+      visitor->set_depth(dep);
     }
   }
 }

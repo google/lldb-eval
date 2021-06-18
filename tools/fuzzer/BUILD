@@ -7,6 +7,7 @@ cc_library(
         "ast.cc",
         "constraints.cc",
         "expr_gen.cc",
+        "fixed_rng.cc",
         "gen_node.cc",
         "symbol_table.cc",
     ],
@@ -15,19 +16,15 @@ cc_library(
         "constraints.h",
         "enum_bitset.h",
         "expr_gen.h",
+        "fixed_rng.h",
         "gen_node.h",
-        "rng.h",
+        "libfuzzer_utils.h",
         "symbol_table.h",
     ],
     deps = [
         "//lldb-eval",
         "@llvm_project//:lldb-api",
     ],
-)
-
-cc_library(
-    name = "libfuzzer_utils_lib",
-    hdrs = ["libfuzzer_utils.h"],
 )
 
 cc_binary(
@@ -71,7 +68,7 @@ cc_test(
     name = "libfuzzer_utils_test",
     srcs = ["libfuzzer_utils_test.cc"],
     deps = [
-        ":libfuzzer_utils_lib",
+        ":fuzzer_lib",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],

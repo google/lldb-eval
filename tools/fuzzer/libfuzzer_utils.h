@@ -18,6 +18,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <type_traits>
 
@@ -135,17 +136,26 @@ class LibfuzzerWriter {
   }
 
   void write_byte(uint8_t byte) {
-    if (size_ < max_size_) {
+    if (callback_) {
+      callback_(byte);
+    }
+    if (data_ != nullptr && size_ < max_size_) {
       data_[size_++] = byte;
     }
   }
 
   size_t size() const { return size_; }
 
+  void set_callback(std::function<void(uint8_t)> callback) {
+    callback_ = std::move(callback);
+  }
+
  private:
   uint8_t* data_;
   size_t max_size_;
   size_t size_ = 0;
+
+  std::function<void(uint8_t)> callback_;
 };
 
 }  // namespace fuzzer

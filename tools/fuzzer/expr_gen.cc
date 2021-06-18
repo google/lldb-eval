@@ -1051,6 +1051,7 @@ std::optional<Expr> ExprGenerator::gen_with_weights_impl(
     if (!maybe_expr.has_value()) {
       new_weights[kind] = old_weight;
       mask[kind] = false;
+      // stack_.top()->children_.clear();
 
       continue;
     }
@@ -1075,10 +1076,10 @@ std::optional<Expr> ExprGenerator::gen_expr(const GenerateExprFn& callback,
   return maybe_expr;
 }
 
-void ExprGenerator::on_consume_random(rand_t value) {
+void ExprGenerator::on_consume_byte(uint8_t byte) {
   assert(!stack_.empty() &&
          "Stack shouldn't be empty when consuming random value!");
-  stack_.top()->children_.emplace_back(value);
+  stack_.top()->children_.emplace_back(byte);
 }
 
 #define DEFINE_GEN_METHOD_WEIGHTS_CONSTRAINTS(method)               \
@@ -1373,8 +1374,14 @@ bool ExprGenerator::mutate_gen_node(std::shared_ptr<GenNode>& node) {
   return true;
 }
 
+template <typename Enum>
+void write_enum(LibfuzzerWriter& writer, Enum value) {
+  writer.write_int((int)value, (int)Enum::EnumFirst, (int)Enum::EnumLast);
+}
+
 template <typename Enum, typename Rng>
-Enum pick_nth_set_bit(const EnumBitset<Enum> mask, Rng& rng) {
+Enum pick_nth_set_bit(const EnumBitset<Enum> mask, Rng& rng,
+                      LibfuzzerWriter& writer) {
   // At least one bit needs to be set
   assert(mask.any() && "Mask must not be empty");
 
@@ -1388,6 +1395,7 @@ Enum pick_nth_set_bit(const EnumBitset<Enum> mask, Rng& rng) {
     }
 
     if (running_ones == choice) {
+      write_enum(writer, (Enum)i);
       return (Enum)i;
     }
   }
@@ -1402,7 +1410,7 @@ Enum pick_nth_set_bit(const EnumBitset<Enum> mask, Rng& rng) {
 template <typename Enum, typename Rng, typename RealType>
 Enum weighted_pick(
     const std::array<RealType, (size_t)Enum::EnumLast + 1>& array,
-    const EnumBitset<Enum>& mask, Rng& rng) {
+    const EnumBitset<Enum>& mask, Rng& rng, LibfuzzerWriter& writer) {
   static_assert(std::is_floating_point_v<RealType>,
                 "Must be a floating point type");
 
@@ -1422,6 +1430,7 @@ Enum weighted_pick(
 
     running_sum += array[i];
     if (choice <= running_sum) {
+      write_enum(writer, (Enum)i);
       return (Enum)i;
     }
   }
@@ -1430,192 +1439,171 @@ Enum weighted_pick(
 }
 
 template <typename T, typename Rng>
-const T& pick_element(const std::vector<T>& vec, Rng& rng) {
+const T& pick_element(const std::vector<T>& vec, Rng& rng,
+                      LibfuzzerWriter& writer) {
   assert(!vec.empty() && "Can't pick an element out of an empty vector");
 
   std::uniform_int_distribution<size_t> distr(0, vec.size() - 1);
   auto choice = distr(rng);
+  writer.write_int<size_t>(choice, 0, vec.size() - 1);
 
   return vec[choice];
 }
 
 template <typename Rng>
-BinOp DefaultGeneratorRng<Rng>::gen_bin_op(BinOpMask mask) {
-  return pick_nth_set_bit(mask, rng_);
+bool pick_bool(float probability, Rng& rng, LibfuzzerWriter& writer) {
+  std::bernoulli_distribution distr(probability);
+  bool value = distr(rng);
+  writer.write_bool(value);
+  return value;
 }
 
-template <typename Rng>
-UnOp DefaultGeneratorRng<Rng>::gen_un_op(UnOpMask mask) {
-  return pick_nth_set_bit(mask, rng_);
+BinOp DefaultGeneratorRng::gen_bin_op(BinOpMask mask) {
+  return pick_nth_set_bit(mask, rng_, writer_);
 }
 
-template <typename Rng>
-IntegerConstant DefaultGeneratorRng<Rng>::gen_integer_constant(uint64_t min,
-                                                               uint64_t max) {
+UnOp DefaultGeneratorRng::gen_un_op(UnOpMask mask) {
+  return pick_nth_set_bit(mask, rng_, writer_);
+}
+
+IntegerConstant DefaultGeneratorRng::gen_integer_constant(uint64_t min,
+                                                          uint64_t max) {
   using Base = IntegerConstant::Base;
   using Length = IntegerConstant::Length;
   using Signedness = IntegerConstant::Signedness;
 
   std::uniform_int_distribution<uint64_t> distr(min, max);
   auto value = distr(rng_);
+  writer_.write_int(value, min, max);
 
   std::uniform_int_distribution<int> base_distr((int)Base::EnumFirst,
                                                 (int)Base::EnumLast);
   auto base = (Base)base_distr(rng_);
+  write_enum(writer_, base);
 
   std::uniform_int_distribution<int> length_distr((int)Length::EnumFirst,
                                                   (int)Length::EnumLast);
-  auto length = (Length)base_distr(rng_);
+  auto length = (Length)length_distr(rng_);
+  write_enum(writer_, length);
 
   std::uniform_int_distribution<int> sign_distr((int)Signedness::EnumFirst,
                                                 (int)Signedness::EnumLast);
-  auto signedness = (Signedness)base_distr(rng_);
+  auto signedness = (Signedness)sign_distr(rng_);
+  write_enum(writer_, signedness);
 
   return IntegerConstant(value, base, length, signedness);
 }
 
-template <typename Rng>
-DoubleConstant DefaultGeneratorRng<Rng>::gen_double_constant(double min,
-                                                             double max) {
+DoubleConstant DefaultGeneratorRng::gen_double_constant(double min,
+                                                        double max) {
   using Format = DoubleConstant::Format;
   using Length = DoubleConstant::Length;
 
   std::uniform_real_distribution<double> distr(min, max);
   auto value = distr(rng_);
+  writer_.write_float(value, min, max);
 
   std::uniform_int_distribution<int> format_distr((int)Format::EnumFirst,
                                                   (int)Format::EnumLast);
   auto format = (Format)format_distr(rng_);
+  write_enum(writer_, format);
 
   std::uniform_int_distribution<int> length_distr((int)Length::EnumFirst,
                                                   (int)Length::EnumLast);
   auto length = (Length)length_distr(rng_);
+  write_enum(writer_, length);
 
   return DoubleConstant(value, format, length);
 }
 
-template <typename Rng>
-CvQualifiers DefaultGeneratorRng<Rng>::gen_cv_qualifiers(float const_prob,
-                                                         float volatile_prob) {
-  std::bernoulli_distribution const_distr(const_prob);
-  std::bernoulli_distribution volatile_distr(volatile_prob);
-
+CvQualifiers DefaultGeneratorRng::gen_cv_qualifiers(float const_prob,
+                                                    float volatile_prob) {
   CvQualifiers retval;
-  retval[CvQualifier::Const] = const_distr(rng_);
-  retval[CvQualifier::Volatile] = volatile_distr(rng_);
+  retval[CvQualifier::Const] = pick_bool(const_prob, rng_, writer_);
+  retval[CvQualifier::Volatile] = pick_bool(volatile_prob, rng_, writer_);
 
   return retval;
 }
 
-template <typename Rng>
-VariableExpr DefaultGeneratorRng<Rng>::pick_variable(
+VariableExpr DefaultGeneratorRng::pick_variable(
     const std::vector<std::reference_wrapper<const VariableExpr>>& vars) {
-  return pick_element(vars, rng_);
+  return pick_element(vars, rng_, writer_);
 }
 
-template <typename Rng>
-Field DefaultGeneratorRng<Rng>::pick_field(
+Field DefaultGeneratorRng::pick_field(
     const std::vector<std::reference_wrapper<const Field>>& fields) {
-  return pick_element(fields, rng_);
+  return pick_element(fields, rng_, writer_);
 }
 
-template <typename Rng>
-TaggedType DefaultGeneratorRng<Rng>::pick_tagged_type(
+TaggedType DefaultGeneratorRng::pick_tagged_type(
     const std::vector<std::reference_wrapper<const TaggedType>>& types) {
-  return pick_element(types, rng_);
+  return pick_element(types, rng_, writer_);
 }
 
-template <typename Rng>
-EnumType DefaultGeneratorRng<Rng>::pick_enum_type(
+EnumType DefaultGeneratorRng::pick_enum_type(
     const std::vector<std::reference_wrapper<const EnumType>>& types) {
-  return pick_element(types, rng_);
+  return pick_element(types, rng_, writer_);
 }
 
-template <typename Rng>
-EnumConstant DefaultGeneratorRng<Rng>::pick_enum_literal(
+EnumConstant DefaultGeneratorRng::pick_enum_literal(
     const std::vector<std::reference_wrapper<const EnumConstant>>& enums) {
-  return pick_element(enums, rng_);
+  return pick_element(enums, rng_, writer_);
 }
 
-template <typename Rng>
-Function DefaultGeneratorRng<Rng>::pick_function(
+Function DefaultGeneratorRng::pick_function(
     const std::vector<std::reference_wrapper<const Function>>& functions) {
-  return pick_element(functions, rng_);
+  return pick_element(functions, rng_, writer_);
 }
 
-template <typename Rng>
-ArrayType DefaultGeneratorRng<Rng>::pick_array_type(
+ArrayType DefaultGeneratorRng::pick_array_type(
     const std::vector<std::reference_wrapper<const ArrayType>>& types) {
-  return pick_element(types, rng_);
+  return pick_element(types, rng_, writer_);
 }
 
-template <typename Rng>
-bool DefaultGeneratorRng<Rng>::gen_binop_ptr_expr(float probability) {
-  std::bernoulli_distribution distr(probability);
-  return distr(rng_);
+bool DefaultGeneratorRng::gen_binop_ptr_expr(float probability) {
+  return pick_bool(probability, rng_, writer_);
 }
 
-template <typename Rng>
-bool DefaultGeneratorRng<Rng>::gen_binop_flip_operands(float probability) {
-  std::bernoulli_distribution distr(probability);
-  return distr(rng_);
+bool DefaultGeneratorRng::gen_binop_flip_operands(float probability) {
+  return pick_bool(probability, rng_, writer_);
 }
 
-template <typename Rng>
-bool DefaultGeneratorRng<Rng>::gen_binop_ptrdiff_expr(float probability) {
-  std::bernoulli_distribution distr(probability);
-  return distr(rng_);
+bool DefaultGeneratorRng::gen_binop_ptrdiff_expr(float probability) {
+  return pick_bool(probability, rng_, writer_);
 }
 
-template <typename Rng>
-bool DefaultGeneratorRng<Rng>::gen_binop_ptr_or_enum(float probability) {
-  std::bernoulli_distribution distr(probability);
-  return distr(rng_);
+bool DefaultGeneratorRng::gen_binop_ptr_or_enum(float probability) {
+  return pick_bool(probability, rng_, writer_);
 }
 
-template <typename Rng>
-bool DefaultGeneratorRng<Rng>::gen_sizeof_type(float probability) {
-  std::bernoulli_distribution distr(probability);
-  return distr(rng_);
+bool DefaultGeneratorRng::gen_sizeof_type(float probability) {
+  return pick_bool(probability, rng_, writer_);
 }
 
-template <typename Rng>
-bool DefaultGeneratorRng<Rng>::gen_parenthesize(float probability) {
-  std::bernoulli_distribution distr(probability);
-  return distr(rng_);
+bool DefaultGeneratorRng::gen_parenthesize(float probability) {
+  return pick_bool(probability, rng_, writer_);
 }
 
-template <typename Rng>
-bool DefaultGeneratorRng<Rng>::gen_boolean() {
-  std::bernoulli_distribution distr;
-  return distr(rng_);
+bool DefaultGeneratorRng::gen_boolean() {
+  return pick_bool(/*probability*/ 0.5f, rng_, writer_);
 }
 
-template <typename Rng>
-ExprKind DefaultGeneratorRng<Rng>::gen_expr_kind(const Weights& weights,
-                                                 const ExprKindMask& mask) {
-  return weighted_pick(weights.expr_weights(), mask, rng_);
+ExprKind DefaultGeneratorRng::gen_expr_kind(const Weights& weights,
+                                            const ExprKindMask& mask) {
+  return weighted_pick(weights.expr_weights(), mask, rng_, writer_);
 }
 
-template <typename Rng>
-TypeKind DefaultGeneratorRng<Rng>::gen_type_kind(const Weights& weights,
-                                                 const TypeKindMask& mask) {
-  return weighted_pick(weights.type_weights(), mask, rng_);
+TypeKind DefaultGeneratorRng::gen_type_kind(const Weights& weights,
+                                            const TypeKindMask& mask) {
+  return weighted_pick(weights.type_weights(), mask, rng_, writer_);
 }
 
-template <typename Rng>
-CastExpr::Kind DefaultGeneratorRng<Rng>::gen_cast_kind(
-    const CastKindMask& mask) {
-  return pick_nth_set_bit(mask, rng_);
+CastExpr::Kind DefaultGeneratorRng::gen_cast_kind(const CastKindMask& mask) {
+  return pick_nth_set_bit(mask, rng_, writer_);
 }
 
-template <typename Rng>
-ScalarType DefaultGeneratorRng<Rng>::gen_scalar_type(ScalarMask mask) {
-  return pick_nth_set_bit(mask, rng_);
+ScalarType DefaultGeneratorRng::gen_scalar_type(ScalarMask mask) {
+  return pick_nth_set_bit(mask, rng_, writer_);
 }
-
-template class DefaultGeneratorRng<Mt19937>;
-template class DefaultGeneratorRng<FixedRng>;
-template class DefaultGeneratorRng<LibfuzzerRng>;
 
 }  // namespace fuzzer
