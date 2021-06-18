@@ -152,6 +152,9 @@ struct GenConfig {
   // from memory is expected.
   bool valid_pointer_cast_enabled = false;
 
+  // Long double may not work properly in lldb-eval yet.
+  bool long_double_enabled = false;
+
   BinOpMask bin_op_mask = BinOpMask::all_set();
   UnOpMask un_op_mask = UnOpMask::all_set();
 

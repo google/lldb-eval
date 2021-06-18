@@ -200,6 +200,11 @@ std::optional<Expr> ExprGenerator::gen_variable_expr_impl(
 
   std::vector<std::reference_wrapper<const VariableExpr>> vars;
   for (const auto& [k, v] : symtab_.vars()) {
+    // Skip long double variables if long double isn't enabled.
+    if (!cfg_.long_double_enabled && k == Type(ScalarType::LongDouble)) {
+      continue;
+    }
+
     if (type_constraints.allows_type(k)) {
       for (const auto& var : v) {
         if (var.expr.name() == "this" && constraints.must_be_lvalue()) {
@@ -729,12 +734,21 @@ std::optional<Expr> ExprGenerator::gen_member_of_ptr_expr_impl(
 
   Field field = rng_->pick_field(fields);
   TypeConstraints new_type_constraints(field.containing_type());
-  // If the field is a reference or a virtually inherited field, assume a read
-  // from memory.
-  MemoryConstraints new_memory_constraints =
-      field.is_reference_or_virtual()
-          ? MemoryConstraints(true, 1)
-          : memory_constraints.from_member_of(constraints.must_be_lvalue(), 1);
+
+  // `&(ptr)->field` is equivalent to `ptr + offset(field)` where offset can
+  // be determined statically if the `field` isn't a reference or a virtually
+  // inherited field (in these cases a read from memory is expected). However,
+  // lldb-eval doesn't support address-of elision for member-of expressions,
+  // so assume a read from memory in all cases.
+  MemoryConstraints new_memory_constraints(true, 1);
+
+  // TODO: Uncomment the following code once lldb-eval supports address-of
+  // elision for member-of expressions.
+  // MemoryConstraints new_memory_constraints =
+  //     field.is_reference_or_virtual() ? MemoryConstraints(true, 1)
+  //                                     : memory_constraints.from_member_of(
+  //                                           constraints.must_be_lvalue(), 1);
+
   ExprConstraints new_constraints =
       ExprConstraints(new_type_constraints.make_pointer_constraints(),
                       std::move(new_memory_constraints));
@@ -1267,6 +1281,11 @@ std::optional<Type> ExprGenerator::gen_tagged_type(
 std::optional<Type> ExprGenerator::gen_scalar_type(
     const TypeConstraints& constraints) {
   ScalarMask mask = constraints.allowed_scalar_types();
+
+  if (!cfg_.long_double_enabled) {
+    mask[ScalarType::LongDouble] = false;
+  }
+
   if (mask.none()) {
     return {};
   }

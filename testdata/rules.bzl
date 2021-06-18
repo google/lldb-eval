@@ -38,7 +38,7 @@ def binary_gen(name, srcs):
                 platform_opts = "--for-linker -debug:dwarf",
             ),
             "//conditions:default": build_cmd.format(
-                platform_opts = "-lstdc++",
+                platform_opts = "-lstdc++ -static",
             ),
         }),
         tags = ["no-sandbox"],
