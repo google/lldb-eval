@@ -38,6 +38,8 @@ def binary_gen(name, srcs):
                 platform_opts = "--for-linker -debug:dwarf",
             ),
             "//conditions:default": build_cmd.format(
+                # Using "-static" prevents fuzzer_binary from using __log2
+                # function from libm.so.
                 platform_opts = "-lstdc++ -static",
             ),
         }),
