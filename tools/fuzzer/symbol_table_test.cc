@@ -20,6 +20,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "lldb-eval/context.h"
 #include "lldb-eval/runner.h"
 #include "lldb-eval/traits.h"
 #include "lldb/API/SBDebugger.h"
@@ -59,6 +60,7 @@ class PopulateSymbolTableTest : public Test {
                                             "// BREAK HERE");
     auto frame = process_.GetSelectedThread().GetSelectedFrame();
     symtab_ = SymbolTable::create_from_frame(frame);
+    context_ = lldb_eval::Context::Create(/*expr*/ "", frame);
   }
 
   static void TearDownTestSuite() {
@@ -72,11 +74,13 @@ class PopulateSymbolTableTest : public Test {
   static Runfiles* runfiles_;
   static lldb::SBProcess process_;
   static SymbolTable symtab_;
+  static std::shared_ptr<lldb_eval::Context> context_;
 };
 
 Runfiles* PopulateSymbolTableTest::runfiles_ = nullptr;
 lldb::SBProcess PopulateSymbolTableTest::process_;
 SymbolTable PopulateSymbolTableTest::symtab_;
+std::shared_ptr<lldb_eval::Context> PopulateSymbolTableTest::context_;
 
 TEST_F(PopulateSymbolTableTest, Variables) {
   // Make sure there isn't a type we forgot to check.
@@ -123,10 +127,19 @@ TEST_F(PopulateSymbolTableTest, Variables) {
        "global_int", "ns::global_int", "ns::nested_ns::global_int",
        "global_ref", "ns::global_ref", "StaticMember::s1",
        "ns::StaticMember::s1", "ClassWithNestedClass::NestedClass::s1"});
-  expect_vars(ScalarType::UnsignedLong, {"ulong_min", "ulong_max"});
   expect_vars(ScalarType::SignedLong, {"long_min", "long_max"});
-  expect_vars(ScalarType::UnsignedLongLong, {"ullong_min", "ullong_max"});
   expect_vars(ScalarType::SignedLongLong, {"llong_min", "llong_max"});
+
+  std::unordered_set<std::string> ulong_vars{"ulong_min", "ulong_max"};
+  std::unordered_set<std::string> ullong_vars{"ullong_min", "ullong_max"};
+  if (context_->GetSizeType().GetBasicType() == lldb::eBasicTypeUnsignedLong) {
+    ulong_vars.insert("size_val");
+  } else {
+    ullong_vars.insert("size_val");
+  }
+  expect_vars(ScalarType::UnsignedLong, ulong_vars);
+  expect_vars(ScalarType::UnsignedLongLong, ullong_vars);
+
   expect_vars(ScalarType::Float, {"fnan", "finf", "fsnan", "fmax", "fdenorm"});
   expect_vars(ScalarType::Double, {"dnan", "dinf", "dsnan", "dmax", "ddenorm"});
   expect_vars(ScalarType::LongDouble,
