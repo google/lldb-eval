@@ -28,6 +28,8 @@
 #include "lldb/API/SBTypeEnumMember.h"
 #include "lldb/API/SBValue.h"
 #include "lldb/API/SBValueList.h"
+#include "llvm/ADT/Triple.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/FormatVariadic.h"
 
 namespace {
@@ -86,13 +88,50 @@ lldb::SBType Context::GetSizeType() {
     return size_type_;
   }
 
-  // Get the `size_t` type from the target and cache it for future calls.
-  size_type_ = ResolveTypeByName("::size_t").GetCanonicalType();
-  if (!size_type_.IsValid()) {
-    // Or fallback to `unsigned long long`.
-    size_type_ = GetBasicType(lldb::eBasicTypeUnsignedLongLong);
+  // Determine correct "size_t" type based on OS and architecture. This method
+  // supports X86 architectures, as is defined in
+  // https://github.com/llvm/llvm-project/blob/main/clang/lib/Basic/Targets/X86.h.
+  // For other architectures it fallbacks to "unsigned long long".
+
+  llvm::Triple triple(llvm::Twine(ctx_.GetTarget().GetTriple()));
+  if (triple.isX86()) {
+    if (triple.isOSWindows() && triple.isArch64Bit()) {
+      size_type_ = GetBasicType(lldb::eBasicTypeUnsignedLongLong);
+    } else {
+      size_type_ = triple.isArch64Bit()
+                       ? GetBasicType(lldb::eBasicTypeUnsignedLong)
+                       : GetBasicType(lldb::eBasicTypeUnsignedInt);
+    }
+    return size_type_;
   }
+
+  size_type_ = GetBasicType(lldb::eBasicTypeUnsignedLongLong);
   return size_type_;
+}
+
+lldb::SBType Context::GetPtrDiffType() {
+  if (ptrdiff_type_.IsValid()) {
+    return ptrdiff_type_;
+  }
+
+  // Determine correct "ptrdiff_t" type based on OS and architecture. This
+  // method supports X86 architectures, as is defined in
+  // https://github.com/llvm/llvm-project/blob/main/clang/lib/Basic/Targets/X86.h.
+  // For other architectures it fallbacks to "long long".
+
+  llvm::Triple triple(llvm::Twine(ctx_.GetTarget().GetTriple()));
+  if (triple.isX86()) {
+    if (triple.isOSWindows() && triple.isArch64Bit()) {
+      ptrdiff_type_ = GetBasicType(lldb::eBasicTypeLongLong);
+    } else {
+      ptrdiff_type_ = triple.isArch64Bit() ? GetBasicType(lldb::eBasicTypeLong)
+                                           : GetBasicType(lldb::eBasicTypeInt);
+    }
+    return ptrdiff_type_;
+  }
+
+  ptrdiff_type_ = GetBasicType(lldb::eBasicTypeLongLong);
+  return ptrdiff_type_;
 }
 
 lldb::SBType Context::ResolveTypeByName(const std::string& name) const {

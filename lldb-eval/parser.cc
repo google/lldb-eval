@@ -2551,8 +2551,7 @@ lldb::SBType Parser::PrepareBinarySubtraction(ExprResult& lhs, ExprResult& rhs,
 
     // Pointer difference is technically ptrdiff_t, but the important part is
     // that it is signed.
-    // TODO(werat): Get the actual `std::ptrdiff_t` from the target.
-    return ctx_->GetBasicType(lldb::eBasicTypeLongLong);
+    return ctx_->GetPtrDiffType();
   }
 
   // Invalid operands.

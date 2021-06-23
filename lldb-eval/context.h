@@ -88,6 +88,7 @@ class Context {
  public:
   lldb::SBType GetBasicType(lldb::BasicType basic_type);
   lldb::SBType GetSizeType();
+  lldb::SBType GetPtrDiffType();
   lldb::SBType ResolveTypeByName(const std::string& name) const;
   lldb::SBValue LookupIdentifier(const std::string& name) const;
   bool IsContextVar(const std::string& name) const;
@@ -122,6 +123,9 @@ class Context {
 
   // Cache of the `size_t` type.
   lldb::SBType size_type_;
+
+  // Cache of the `ptrdiff_t` type.
+  lldb::SBType ptrdiff_type_;
 };
 
 }  // namespace lldb_eval

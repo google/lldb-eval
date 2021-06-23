@@ -771,7 +771,7 @@ Value Interpreter::EvaluateBinarySubtraction(Value lhs, Value rhs) {
   int64_t diff = static_cast<ptrdiff_t>(lhs.GetUInt64() - rhs.GetUInt64()) /
                  static_cast<int64_t>(item_size);
 
-  return CreateValueFromBytes(target_, &diff, lldb::eBasicTypeLongLong);
+  return CreateValueFromBytes(target_, &diff, ctx_->GetPtrDiffType());
 }
 
 Value Interpreter::EvaluateBinaryMultiplication(Value lhs, Value rhs) {
