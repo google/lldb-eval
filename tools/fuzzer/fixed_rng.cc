@@ -4,6 +4,8 @@
 
 namespace fuzzer {
 
+namespace {
+
 template <typename Enum>
 void write_enum(LibfuzzerWriter& writer, Enum value) {
   writer.write_int((int)value, (int)Enum::EnumFirst, (int)Enum::EnumLast);
@@ -52,6 +54,8 @@ const T& pick_element(const std::vector<T>& vec, LibfuzzerReader& reader,
 
   return vec[choice];
 }
+
+}  // namespace
 
 BinOp FixedGeneratorRng::gen_bin_op(BinOpMask mask) {
   return pick_enum_from_mask(mask, reader_, writer_);

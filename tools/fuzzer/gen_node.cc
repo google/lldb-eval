@@ -22,9 +22,7 @@
 
 namespace fuzzer {
 
-void walk_gen_tree(std::shared_ptr<GenNode> node, GenTreeVisitor* visitor,
-                   int dep) {
-  visitor->set_depth(dep);
+void walk_gen_tree(std::shared_ptr<GenNode> node, GenTreeVisitor* visitor) {
   visitor->visit_node(node);
   for (auto child : node->children()) {
     auto* as_byte = std::get_if<uint8_t>(&child);
@@ -33,8 +31,7 @@ void walk_gen_tree(std::shared_ptr<GenNode> node, GenTreeVisitor* visitor,
     }
     auto* as_node = std::get_if<std::shared_ptr<GenNode>>(&child);
     if (as_node) {
-      walk_gen_tree(*as_node, visitor, dep + 1);
-      visitor->set_depth(dep);
+      walk_gen_tree(*as_node, visitor);
     }
   }
 }

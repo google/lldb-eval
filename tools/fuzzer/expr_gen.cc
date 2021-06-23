@@ -1451,7 +1451,7 @@ const T& pick_element(const std::vector<T>& vec, Rng& rng,
 }
 
 template <typename Rng>
-bool pick_bool(float probability, Rng& rng, LibfuzzerWriter& writer) {
+bool gen_and_record_bool(float probability, Rng& rng, LibfuzzerWriter& writer) {
   std::bernoulli_distribution distr(probability);
   bool value = distr(rng);
   writer.write_bool(value);
@@ -1478,17 +1478,17 @@ IntegerConstant DefaultGeneratorRng::gen_integer_constant(uint64_t min,
 
   std::uniform_int_distribution<int> base_distr((int)Base::EnumFirst,
                                                 (int)Base::EnumLast);
-  auto base = (Base)base_distr(rng_);
-  write_enum(writer_, base);
-
   std::uniform_int_distribution<int> length_distr((int)Length::EnumFirst,
                                                   (int)Length::EnumLast);
-  auto length = (Length)length_distr(rng_);
-  write_enum(writer_, length);
-
   std::uniform_int_distribution<int> sign_distr((int)Signedness::EnumFirst,
                                                 (int)Signedness::EnumLast);
+
+  auto base = (Base)base_distr(rng_);
+  auto length = (Length)length_distr(rng_);
   auto signedness = (Signedness)sign_distr(rng_);
+
+  write_enum(writer_, base);
+  write_enum(writer_, length);
   write_enum(writer_, signedness);
 
   return IntegerConstant(value, base, length, signedness);
@@ -1505,12 +1505,13 @@ DoubleConstant DefaultGeneratorRng::gen_double_constant(double min,
 
   std::uniform_int_distribution<int> format_distr((int)Format::EnumFirst,
                                                   (int)Format::EnumLast);
-  auto format = (Format)format_distr(rng_);
-  write_enum(writer_, format);
-
   std::uniform_int_distribution<int> length_distr((int)Length::EnumFirst,
                                                   (int)Length::EnumLast);
+
+  auto format = (Format)format_distr(rng_);
   auto length = (Length)length_distr(rng_);
+
+  write_enum(writer_, format);
   write_enum(writer_, length);
 
   return DoubleConstant(value, format, length);
@@ -1519,8 +1520,9 @@ DoubleConstant DefaultGeneratorRng::gen_double_constant(double min,
 CvQualifiers DefaultGeneratorRng::gen_cv_qualifiers(float const_prob,
                                                     float volatile_prob) {
   CvQualifiers retval;
-  retval[CvQualifier::Const] = pick_bool(const_prob, rng_, writer_);
-  retval[CvQualifier::Volatile] = pick_bool(volatile_prob, rng_, writer_);
+  retval[CvQualifier::Const] = gen_and_record_bool(const_prob, rng_, writer_);
+  retval[CvQualifier::Volatile] =
+      gen_and_record_bool(volatile_prob, rng_, writer_);
 
   return retval;
 }
@@ -1561,31 +1563,31 @@ ArrayType DefaultGeneratorRng::pick_array_type(
 }
 
 bool DefaultGeneratorRng::gen_binop_ptr_expr(float probability) {
-  return pick_bool(probability, rng_, writer_);
+  return gen_and_record_bool(probability, rng_, writer_);
 }
 
 bool DefaultGeneratorRng::gen_binop_flip_operands(float probability) {
-  return pick_bool(probability, rng_, writer_);
+  return gen_and_record_bool(probability, rng_, writer_);
 }
 
 bool DefaultGeneratorRng::gen_binop_ptrdiff_expr(float probability) {
-  return pick_bool(probability, rng_, writer_);
+  return gen_and_record_bool(probability, rng_, writer_);
 }
 
 bool DefaultGeneratorRng::gen_binop_ptr_or_enum(float probability) {
-  return pick_bool(probability, rng_, writer_);
+  return gen_and_record_bool(probability, rng_, writer_);
 }
 
 bool DefaultGeneratorRng::gen_sizeof_type(float probability) {
-  return pick_bool(probability, rng_, writer_);
+  return gen_and_record_bool(probability, rng_, writer_);
 }
 
 bool DefaultGeneratorRng::gen_parenthesize(float probability) {
-  return pick_bool(probability, rng_, writer_);
+  return gen_and_record_bool(probability, rng_, writer_);
 }
 
 bool DefaultGeneratorRng::gen_boolean() {
-  return pick_bool(/*probability*/ 0.5f, rng_, writer_);
+  return gen_and_record_bool(/*probability*/ 0.5f, rng_, writer_);
 }
 
 ExprKind DefaultGeneratorRng::gen_expr_kind(const Weights& weights,

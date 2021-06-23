@@ -68,12 +68,10 @@ class GenTreeVisitor {
 
   virtual void visit_node(std::shared_ptr<GenNode>) {}
   virtual void visit_byte(uint8_t) {}
-  virtual void set_depth(int) {}
 };
 
 // Recursively visits nodes and random values contained in the `node`.
-void walk_gen_tree(std::shared_ptr<GenNode> node, GenTreeVisitor* visitor,
-                   int dep = 0);
+void walk_gen_tree(std::shared_ptr<GenNode> node, GenTreeVisitor* visitor);
 
 }  // namespace fuzzer
 
