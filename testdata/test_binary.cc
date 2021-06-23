@@ -701,7 +701,7 @@ void TestScopedEnum() {
   // BREAK(TestScopedEnumWithUnderlyingType)
 }
 
-enum UnscopedEnum { kZero, kOne, kTwo };
+enum UnscopedEnum { kNegOne = -1, kZero, kOne, kTwo };
 enum UnscopedEnumUInt8 : uint8_t { kZeroU8, kOneU8, kTwoU8 };
 enum UnscopedEnumInt8 : int8_t { kZero8, kOne8, kTwo8 };
 enum UnscopedEnumEmpty : uint8_t {};

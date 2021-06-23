@@ -2212,8 +2212,16 @@ TEST_F(EvalTest, TestCompositeAssignmentSub) {
 
   ASSERT_TRUE(CreateContextVariable("$p", "(int*)10"));
   EXPECT_THAT(EvalWithContext("$p -= 1", vars_), IsEqual("0x0000000000000006"));
+
+#ifdef _WIN32
+  // On Windows, 'ptrdiff_t' is 'long long'.
   EXPECT_THAT(EvalWithContext("$p -= $p", vars_),
               IsError("no known conversion from 'long long' to 'int *'"));
+#else
+  // On Linux, 'ptrdiff_t' is 'long'.
+  EXPECT_THAT(EvalWithContext("$p -= $p", vars_),
+              IsError("no known conversion from 'long' to 'int *'"));
+#endif
 }
 
 TEST_F(EvalTest, TestCompositeAssignmentMul) {
