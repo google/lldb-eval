@@ -80,8 +80,8 @@ std::shared_ptr<GenNode> pick_random_node(std::shared_ptr<GenNode> root,
   return picker.pick(rng);
 }
 
-// Generation tree visitor used to convert sequence of `rand_t` to byte
-// sequence representing a libFuzzer input.
+// Generation tree visitor used to produce a byte sequence representing a
+// libFuzzer input.
 class GenNodeWriter : public GenTreeVisitor {
  public:
   explicit GenNodeWriter(LibfuzzerWriter& writer) : writer_(writer) {}

@@ -64,7 +64,7 @@ std::shared_ptr<GenNode> pick_random_node(std::shared_ptr<GenNode> root,
   return picker.pick(rng);
 }
 
-// Generation tree visitor used to extract a sequence produced by RNG.
+// Generation tree visitor used to extract a byte sequence.
 class SequenceBuilder : public GenTreeVisitor {
  public:
   void visit_byte(uint8_t value) { queue_.emplace_back(value); }
@@ -159,7 +159,7 @@ TEST(MutateTest, MutateMultipleTimes) {
     // Re-evaluate the node.
     random_generator.mutate_gen_node(to_be_mutated);
 
-    // Construct expression generator over the fixed rng sequence.
+    // Construct expression generator over the fixed byte sequence.
     std::vector<uint8_t> bytes = make_rng_sequence(root);
     ExprGenerator fixed_generator(
         std::make_unique<FixedGeneratorRng>(bytes.data(), bytes.size()), cfg,
@@ -170,7 +170,7 @@ TEST(MutateTest, MutateMultipleTimes) {
     ASSERT_NE(maybe_expr, std::nullopt);
 
     // Compare mutated root gen-node with the root gen-node obtained by running
-    // the expression generator over the fixed random sequence.
+    // the expression generator over the fixed byte sequence.
     ASSERT_TRUE(compare_gen_nodes(root, fixed_generator.node()));
   }
 

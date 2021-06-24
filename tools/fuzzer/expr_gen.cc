@@ -1051,7 +1051,6 @@ std::optional<Expr> ExprGenerator::gen_with_weights_impl(
     if (!maybe_expr.has_value()) {
       new_weights[kind] = old_weight;
       mask[kind] = false;
-      // stack_.top()->children_.clear();
 
       continue;
     }
@@ -1077,8 +1076,7 @@ std::optional<Expr> ExprGenerator::gen_expr(const GenerateExprFn& callback,
 }
 
 void ExprGenerator::on_consume_byte(uint8_t byte) {
-  assert(!stack_.empty() &&
-         "Stack shouldn't be empty when consuming random value!");
+  assert(!stack_.empty() && "Stack shouldn't be empty when consuming a byte!");
   stack_.top()->children_.emplace_back(byte);
 }
 
