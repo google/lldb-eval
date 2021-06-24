@@ -766,11 +766,11 @@ Value Interpreter::EvaluateBinarySubtraction(Value lhs, Value rhs) {
   // Since pointers have compatible types, both have the same pointee size.
   uint64_t item_size = lhs.type().GetPointeeType().GetByteSize();
 
-  // Pointer difference is technically ptrdiff_t, but the important part is
-  // that it is signed.
+  // Pointer difference is a signed value.
   int64_t diff = static_cast<ptrdiff_t>(lhs.GetUInt64() - rhs.GetUInt64()) /
                  static_cast<int64_t>(item_size);
 
+  // Pointer difference is ptrdiff_t.
   return CreateValueFromBytes(target_, &diff, ctx_->GetPtrDiffType());
 }
 

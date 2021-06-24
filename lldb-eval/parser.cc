@@ -2549,8 +2549,7 @@ lldb::SBType Parser::PrepareBinarySubtraction(ExprResult& lhs, ExprResult& rhs,
       return kInvalidType;
     }
 
-    // Pointer difference is technically ptrdiff_t, but the important part is
-    // that it is signed.
+    // Pointer difference is ptrdiff_t.
     return ctx_->GetPtrDiffType();
   }
 

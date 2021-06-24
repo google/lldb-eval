@@ -88,24 +88,23 @@ lldb::SBType Context::GetSizeType() {
     return size_type_;
   }
 
-  // Determine correct "size_t" type based on OS and architecture. This method
-  // supports X86 architectures, as is defined in
-  // https://github.com/llvm/llvm-project/blob/main/clang/lib/Basic/Targets/X86.h.
-  // For other architectures it fallbacks to "unsigned long long".
+  // Determine "size_t" based on OS and architecture. It is "unsigned int" on
+  // most 32-bit architectures and "unsigned long" on most 64-bit architectures.
+  // On 64-bit Windows, it is "unsigned long long". To see a complete definition
+  // for all architectures, refer to
+  // https://github.com/llvm/llvm-project/blob/main/clang/lib/Basic/Targets.
 
   llvm::Triple triple(llvm::Twine(ctx_.GetTarget().GetTriple()));
-  if (triple.isX86()) {
-    if (triple.isOSWindows() && triple.isArch64Bit()) {
-      size_type_ = GetBasicType(lldb::eBasicTypeUnsignedLongLong);
-    } else {
-      size_type_ = triple.isArch64Bit()
-                       ? GetBasicType(lldb::eBasicTypeUnsignedLong)
-                       : GetBasicType(lldb::eBasicTypeUnsignedInt);
-    }
-    return size_type_;
+  if (triple.isOSWindows()) {
+    size_type_ = triple.isArch64Bit()
+                     ? GetBasicType(lldb::eBasicTypeUnsignedLongLong)
+                     : GetBasicType(lldb::eBasicTypeUnsignedInt);
+  } else {
+    size_type_ = triple.isArch64Bit()
+                     ? GetBasicType(lldb::eBasicTypeUnsignedLong)
+                     : GetBasicType(lldb::eBasicTypeUnsignedInt);
   }
 
-  size_type_ = GetBasicType(lldb::eBasicTypeUnsignedLongLong);
   return size_type_;
 }
 
@@ -114,23 +113,22 @@ lldb::SBType Context::GetPtrDiffType() {
     return ptrdiff_type_;
   }
 
-  // Determine correct "ptrdiff_t" type based on OS and architecture. This
-  // method supports X86 architectures, as is defined in
-  // https://github.com/llvm/llvm-project/blob/main/clang/lib/Basic/Targets/X86.h.
-  // For other architectures it fallbacks to "long long".
+  // Determine "ptrdiff_t" based on OS and architecture. It is "int" on most
+  // 32-bit architectures and "long" on most 64-bit architectures. On 64-bit
+  // Windows, it is "long long". To see a complete definition for all
+  // architectures, refer to
+  // https://github.com/llvm/llvm-project/blob/main/clang/lib/Basic/Targets.
 
   llvm::Triple triple(llvm::Twine(ctx_.GetTarget().GetTriple()));
-  if (triple.isX86()) {
-    if (triple.isOSWindows() && triple.isArch64Bit()) {
-      ptrdiff_type_ = GetBasicType(lldb::eBasicTypeLongLong);
-    } else {
-      ptrdiff_type_ = triple.isArch64Bit() ? GetBasicType(lldb::eBasicTypeLong)
-                                           : GetBasicType(lldb::eBasicTypeInt);
-    }
-    return ptrdiff_type_;
+  if (triple.isOSWindows()) {
+    ptrdiff_type_ = triple.isArch64Bit()
+                        ? GetBasicType(lldb::eBasicTypeLongLong)
+                        : GetBasicType(lldb::eBasicTypeInt);
+  } else {
+    ptrdiff_type_ = triple.isArch64Bit() ? GetBasicType(lldb::eBasicTypeLong)
+                                         : GetBasicType(lldb::eBasicTypeInt);
   }
 
-  ptrdiff_type_ = GetBasicType(lldb::eBasicTypeLongLong);
   return ptrdiff_type_;
 }
 
