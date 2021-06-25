@@ -154,9 +154,8 @@ class LibfuzzerWriter {
   }
 
   void write_byte(uint8_t byte) {
-    if (callback_) {
-      callback_(byte);
-    }
+    assert(callback_ && "Callback isn't set!");
+    callback_(byte);
   }
 
   void set_callback(std::function<void(uint8_t)> callback) {
