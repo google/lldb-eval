@@ -516,6 +516,9 @@ TEST_F(EvalTest, TestBitwiseOperators) {
 
   EXPECT_THAT(Eval("(1 << 5)"), IsEqual("32"));
   EXPECT_THAT(Eval("(32 >> 2)"), IsEqual("8"));
+  EXPECT_THAT(Eval("(-1 >> 10)"), IsEqual("-1"));
+  EXPECT_THAT(Eval("(-100 >> 5)"), IsEqual("-4"));
+  EXPECT_THAT(Eval("(-3 << 6)"), IsEqual("-192"));
 
   EXPECT_THAT(Eval("0b1011 & 0xFF"), IsEqual("11"));
   EXPECT_THAT(Eval("0b1011 & mask_ff"), IsEqual("11"));

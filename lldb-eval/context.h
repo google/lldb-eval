@@ -43,6 +43,7 @@ enum class UbStatus : unsigned char {
   kOk = 0,
   kDivisionByZero,
   kInvalidCast,
+  kInvalidShift,
   kNullptrArithmetic,
 };
 

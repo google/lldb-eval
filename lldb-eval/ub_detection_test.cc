@@ -266,4 +266,31 @@ TEST_F(UbDetectionTest, TestNullptrArithmetic) {
   EXPECT_EQ(GetUbStatus("&inp[0]"), UbStatus::kOk);
 }
 
+TEST_F(UbDetectionTest, TestInvalidShift) {
+  // Left shift.
+  EXPECT_EQ(GetUbStatus("1 << 0"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("1 << 31"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("1 << -1"), UbStatus::kInvalidShift);
+  EXPECT_EQ(GetUbStatus("1 << 32"), UbStatus::kInvalidShift);
+
+  // Right shift.
+  EXPECT_EQ(GetUbStatus("1 >> 0"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("1 >> 31"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("1 >> -1"), UbStatus::kInvalidShift);
+  EXPECT_EQ(GetUbStatus("1 >> 32"), UbStatus::kInvalidShift);
+
+  // Left operand has different size.
+  EXPECT_EQ(GetUbStatus("1LL << 0"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("1LL << 63"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("1LL << -1"), UbStatus::kInvalidShift);
+  EXPECT_EQ(GetUbStatus("1LL << 64"), UbStatus::kInvalidShift);
+
+  // Try different values of the left operand.
+  EXPECT_EQ(GetUbStatus("10000 << 30"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("-10000 << 30"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("-1LL >> 10"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("100U << 30"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("100ULL << 60"), UbStatus::kOk);
+}
+
 // TODO: Add tests with composite assignments (e.g. `i /= 0`, `i -= fmax`).

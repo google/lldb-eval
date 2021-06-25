@@ -117,7 +117,9 @@ static Value EvaluateArithmeticOpInteger(lldb::SBTarget target,
     case BinaryOpKind::Shl:
       return wrap(l.shl(r));
     case BinaryOpKind::Shr:
-      return wrap(l.lshr(r));
+      // Apply arithmetic shift on signed values and logical shift operation
+      // on unsigned values.
+      return wrap(l.isSigned() ? l.ashr(r) : l.lshr(r));
 
     default:
       assert(false && "invalid ast: invalid arithmetic operation");
@@ -821,6 +823,15 @@ Value Interpreter::EvaluateBinaryBitwise(BinaryOpKind kind, Value lhs,
                                          Value rhs) {
   assert((lhs.IsInteger() && CompareTypes(lhs.type(), rhs.type())) &&
          "invalid ast: operands must be integers and have the same type");
+
+  if (kind == BinaryOpKind::Shl || kind == BinaryOpKind::Shr) {
+    // Performing shift operation is undefined behaviour if the right operand
+    // isn't in interval [0, bit-size of the left operand).
+    if (rhs.GetInteger().isNegative() ||
+        rhs.GetUInt64() >= lhs.type().GetByteSize() * CHAR_BIT) {
+      error_.SetUbStatus(UbStatus::kInvalidShift);
+    }
+  }
 
   return EvaluateArithmeticOpInteger(target_, kind, lhs, rhs, lhs.type());
 }
