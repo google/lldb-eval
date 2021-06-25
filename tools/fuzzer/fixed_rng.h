@@ -25,7 +25,7 @@ namespace fuzzer {
 class FixedGeneratorRng : public GeneratorRng {
  public:
   explicit FixedGeneratorRng(const uint8_t* data, size_t size)
-      : reader_(data, size), writer_(nullptr, 0) {}
+      : reader_(data, size) {}
 
   BinOp gen_bin_op(BinOpMask mask) override;
   UnOp gen_un_op(UnOpMask mask) override;

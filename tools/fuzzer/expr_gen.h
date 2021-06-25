@@ -106,7 +106,7 @@ struct GenConfig {
   int num_exprs_to_generate = 100;
 
   // Maximum recursion depth
-  int max_depth = 10;
+  int max_depth = 8;
 
   // Min/max integer constant value
   uint64_t int_const_min = 0;
@@ -240,8 +240,7 @@ class GeneratorRng {
 
 class DefaultGeneratorRng : public GeneratorRng {
  public:
-  explicit DefaultGeneratorRng(unsigned seed)
-      : rng_(seed), writer_(nullptr, 0) {}
+  explicit DefaultGeneratorRng(unsigned seed) : rng_(seed) {}
 
   BinOp gen_bin_op(BinOpMask mask) override;
   UnOp gen_un_op(UnOpMask mask) override;

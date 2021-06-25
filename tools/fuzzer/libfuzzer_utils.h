@@ -25,7 +25,7 @@
 namespace fuzzer {
 
 // A class that consumes byte sequence provided by libFuzzer and produces a
-// sequence of meaningful basic data types, made after LLVM's
+// sequence of meaningful basic data types, inspired by LLVM's
 // `FuzzedDataProvider`.
 class LibfuzzerReader {
  public:
@@ -84,12 +84,30 @@ class LibfuzzerReader {
   size_t offset_ = 0;
 };
 
+class ByteWriter {
+ public:
+  ByteWriter(uint8_t* data, size_t max_size)
+      : data_(data), max_size_(max_size) {}
+
+  void write_byte(uint8_t byte) {
+    if (size_ < max_size_) {
+      data_[size_++] = byte;
+    }
+  }
+
+  size_t size() const { return size_; }
+
+ private:
+  uint8_t* data_;
+  size_t max_size_;
+  size_t size_ = 0;
+};
+
 // A class that converts a sequence of meaningful basic type data to a byte
 // sequence, compatible with the `LibfuzzerReader`.
 class LibfuzzerWriter {
  public:
-  LibfuzzerWriter(uint8_t* data, size_t max_size)
-      : data_(data), max_size_(max_size) {}
+  LibfuzzerWriter() = default;
 
   void write_bool(bool value) { write_byte(value ? 1 : 0); }
 
@@ -139,22 +157,13 @@ class LibfuzzerWriter {
     if (callback_) {
       callback_(byte);
     }
-    if (data_ != nullptr && size_ < max_size_) {
-      data_[size_++] = byte;
-    }
   }
-
-  size_t size() const { return size_; }
 
   void set_callback(std::function<void(uint8_t)> callback) {
     callback_ = std::move(callback);
   }
 
  private:
-  uint8_t* data_;
-  size_t max_size_;
-  size_t size_ = 0;
-
   std::function<void(uint8_t)> callback_;
 };
 

@@ -84,15 +84,15 @@ std::shared_ptr<GenNode> pick_random_node(std::shared_ptr<GenNode> root,
 // libFuzzer input.
 class GenNodeWriter : public GenTreeVisitor {
  public:
-  explicit GenNodeWriter(LibfuzzerWriter& writer) : writer_(writer) {}
+  explicit GenNodeWriter(ByteWriter& writer) : writer_(writer) {}
 
   void visit_byte(uint8_t value) { writer_.write_byte(value); }
 
  private:
-  LibfuzzerWriter& writer_;
+  ByteWriter& writer_;
 };
 
-void write_node(std::shared_ptr<GenNode> root, LibfuzzerWriter& writer) {
+void write_node(std::shared_ptr<GenNode> root, ByteWriter& writer) {
   GenNodeWriter node_writer(writer);
   walk_gen_tree(root, &node_writer);
 }
@@ -115,7 +115,7 @@ extern "C" size_t LLVMFuzzerCustomMutator(uint8_t* data, size_t size,
     return size;
   }
 
-  LibfuzzerWriter writer(data, max_size);
+  ByteWriter writer(data, max_size);
   write_node(root, writer);
 
   // It's possible that `root`'s sequence of random values overflows the size of
