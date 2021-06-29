@@ -117,7 +117,7 @@ class Context {
   std::unordered_map<std::string, lldb::SBValue> context_vars_;
 
   // Whether side effects should be allowed.
-  bool allow_side_effects_;
+  bool allow_side_effects_ = false;
 
   // Cache of the basic types for the current target.
   std::unordered_map<lldb::BasicType, lldb::SBType> basic_types_;

@@ -273,6 +273,56 @@ Matcher<EvalResult> IsError(std::string value) {
   return MakeMatcher(new IsErrorMatcher(std::move(value)));
 }
 
+class IsTypeMatcher : public MatcherInterface<EvalResult> {
+ public:
+  explicit IsTypeMatcher(std::string value) : value_(std::move(value)) {}
+
+ public:
+  bool MatchAndExplain(EvalResult result,
+                       MatchResultListener* listener) const override {
+    if (result.lldb_eval_error.GetError()) {
+      PrintError(listener, result.lldb_eval_error.GetCString());
+      return false;
+    }
+
+    std::string actual = result.lldb_eval_value.GetType().GetName();
+    if (actual != value_) {
+      *listener << "evaluated to type '" << actual << "'";
+      return false;
+    }
+
+    // Compare only if we tried to evaluate with LLDB.
+    if (result.lldb_value.has_value()) {
+      if (result.lldb_value.value().GetError().GetError()) {
+        *listener << "types produced by lldb-eval and LLDB don't match\n"
+                  << "lldb-eval: " << actual << "\n"
+                  << "lldb     : "
+                  << result.lldb_value.value().GetError().GetCString();
+        return false;
+      } else if (actual != result.lldb_value.value().GetType().GetName()) {
+        *listener << "types produced by lldb-eval and LLDB don't match\n"
+                  << "lldb-eval: " << actual << "\n"
+                  << "lldb     : "
+                  << result.lldb_value.value().GetType().GetName();
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os) const override {
+    *os << "evaluates with a type: '" << value_ << "'";
+  }
+
+ private:
+  std::string value_;
+};
+
+Matcher<EvalResult> IsType(std::string value) {
+  return MakeMatcher(new IsTypeMatcher(std::move(value)));
+}
+
 class EvalTest : public ::testing::Test {
  protected:
   static void SetUpTestSuite() {
@@ -519,6 +569,10 @@ TEST_F(EvalTest, TestBitwiseOperators) {
   EXPECT_THAT(Eval("(-1 >> 10)"), IsEqual("-1"));
   EXPECT_THAT(Eval("(-100 >> 5)"), IsEqual("-4"));
   EXPECT_THAT(Eval("(-3 << 6)"), IsEqual("-192"));
+  EXPECT_THAT(Eval("(2000000000U << 1)"), IsEqual("4000000000"));
+  EXPECT_THAT(Eval("(-1 >> 1U)"), IsEqual("-1"));
+  EXPECT_THAT(Eval("(-1 >> 1U)"), IsType("int"));
+  EXPECT_THAT(Eval("(1 << 1LL)"), IsType("int"));
 
   EXPECT_THAT(Eval("0b1011 & 0xFF"), IsEqual("11"));
   EXPECT_THAT(Eval("0b1011 & mask_ff"), IsEqual("11"));
@@ -1694,6 +1748,10 @@ TEST_F(EvalTest, TestScopedEnumArithmetic) {
               IsError("invalid operands to binary expression"));
   EXPECT_THAT(Eval("enum_bar << 1"),
               IsError("invalid operands to binary expression"));
+  EXPECT_THAT(Eval("1 >> enum_bar"),
+              IsError("invalid operands to binary expression"));
+  EXPECT_THAT(Eval("1 << enum_bar"),
+              IsError("invalid operands to binary expression"));
   EXPECT_THAT(Eval("(int*)1 + enum_foo"),
               IsError("invalid operands to binary expression"));
   EXPECT_THAT(Eval("(int*)5 - enum_foo"),
@@ -1749,6 +1807,15 @@ TEST_F(EvalTest, TestUnscopedEnum) {
   EXPECT_THAT(Eval("enum_two ^ 0b11"), IsEqual("1"));
   EXPECT_THAT(Eval("enum_two >> 1"), IsEqual("1"));
   EXPECT_THAT(Eval("enum_two << 1"), IsEqual("4"));
+  EXPECT_THAT(Eval("8 >> enum_two"), IsEqual("2"));
+  EXPECT_THAT(Eval("1 << enum_two"), IsEqual("4"));
+  EXPECT_THAT(Eval("1 << enum_two"), IsType("int"));
+  EXPECT_THAT(Eval("UnscopedEnumUInt8::kTwoU8 << 1"), IsEqual("4"));
+  // TODO: Enable the following test when underlying enumeration type becomes
+  // fully accessible.
+  // EXPECT_THAT(Eval("UnscopedEnumUInt8::kTwoU8 << 1"), IsType("int"));
+  EXPECT_THAT(Eval("UnscopedEnumInt8::kTwo8 << 1U"), IsEqual("4"));
+  EXPECT_THAT(Eval("UnscopedEnumInt8::kTwo8 << 1U"), IsType("int"));
   EXPECT_THAT(Eval("+enum_one"), IsEqual("1"));
   EXPECT_THAT(Eval("!enum_one"), IsEqual("false"));
   EXPECT_THAT(Eval("(int*)1 + enum_one"), IsEqual("0x0000000000000005"));
@@ -1775,6 +1842,8 @@ TEST_F(EvalTest, TestUnscopedEnum) {
   EXPECT_THAT(Eval("enum_two_ref ^ 0b11"), IsEqual("1"));
   EXPECT_THAT(Eval("enum_two_ref >> 1"), IsEqual("1"));
   EXPECT_THAT(Eval("enum_two_ref << 1"), IsEqual("4"));
+  EXPECT_THAT(Eval("8 >> enum_two_ref"), IsEqual("2"));
+  EXPECT_THAT(Eval("1 << enum_two_ref"), IsEqual("4"));
   EXPECT_THAT(Eval("+enum_one_ref"), IsEqual("1"));
   EXPECT_THAT(Eval("!enum_one_ref"), IsEqual("false"));
   EXPECT_THAT(Eval("(int*)1 + enum_one_ref"), IsEqual("0x0000000000000005"));
@@ -2295,6 +2364,10 @@ TEST_F(EvalTest, TestCompositeAssignmentBitwise) {
   EXPECT_THAT(EvalWithContext("$i ^= 0b00100010", vars_), IsEqual("209"));
   EXPECT_THAT(EvalWithContext("$i <<= 2", vars_), IsEqual("836"));
   EXPECT_THAT(EvalWithContext("$i >>= 3", vars_), IsEqual("104"));
+  EXPECT_THAT(EvalWithContext("$i <<= eTwo", vars_), IsEqual("208"));
+  EXPECT_THAT(EvalWithContext("$i >>= eTwo", vars_), IsEqual("104"));
+  EXPECT_THAT(EvalWithContext("$i <<= 1U", vars_), IsType("int"));
+  EXPECT_THAT(EvalWithContext("$i >>= 1LL", vars_), IsType("int"));
 
   ASSERT_TRUE(CreateContextVariable("$f", "1.5f"));
   EXPECT_THAT(
@@ -2317,6 +2390,15 @@ TEST_F(EvalTest, TestCompositeAssignmentBitwise) {
   EXPECT_THAT(EvalWithContext("$s >>= 2", vars_), IsEqual("25"));
   EXPECT_THAT(EvalWithContext("$s <<= 6", vars_), IsEqual("1600"));
   EXPECT_THAT(EvalWithContext("$s <<= 12", vars_), IsEqual("0"));
+
+  ASSERT_TRUE(CreateContextVariable("$e", "eTwo"));
+  std::vector<std::string> ops = {"&=", "|=", "^=", "<<=", ">>="};
+  for (const auto& op : ops) {
+    const std::string expr = "$e " + op + " 1";  // e.g. "$e ^= 1"
+    EXPECT_THAT(
+        EvalWithContext(expr, vars_),
+        IsError("invalid operands to binary expression ('Enum' and 'int')"));
+  }
 
   ASSERT_TRUE(CreateContextVariable("$p", "(int*)10"));
   EXPECT_THAT(

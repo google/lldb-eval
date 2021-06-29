@@ -144,6 +144,7 @@ class AstPrinter : Visitor {
 
 void PrintExpr(lldb::SBFrame frame, const std::string& expr) {
   auto ctx = lldb_eval::Context::Create(expr, frame);
+  ctx->SetAllowSideEffects(true);
 
   lldb_eval::Error err;
   auto tree = lldb_eval::Parser(ctx).Run(err);

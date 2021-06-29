@@ -2394,9 +2394,12 @@ ExprResult Parser::BuildBinaryOp(BinaryOpKind kind, ExprResult lhs,
     case BinaryOpKind::And:
     case BinaryOpKind::Or:
     case BinaryOpKind::Xor:
+      result_type = PrepareBinaryBitwise(lhs, rhs, /*is_shift_op*/ false,
+                                         /*is_comp_assign*/ false);
+      break;
     case BinaryOpKind::Shl:
     case BinaryOpKind::Shr:
-      result_type = PrepareBinaryBitwise(lhs, rhs,
+      result_type = PrepareBinaryBitwise(lhs, rhs, /*is_shift_op*/ true,
                                          /*is_comp_assign*/ false);
       break;
 
@@ -2449,9 +2452,12 @@ ExprResult Parser::BuildBinaryOp(BinaryOpKind kind, ExprResult lhs,
     case BinaryOpKind::AndAssign:
     case BinaryOpKind::OrAssign:
     case BinaryOpKind::XorAssign:
+      comp_assign_type = PrepareBinaryBitwise(lhs, rhs, /*is_shift_op*/ false,
+                                              /*is_comp_assign*/ true);
+      break;
     case BinaryOpKind::ShlAssign:
     case BinaryOpKind::ShrAssign:
-      comp_assign_type = PrepareBinaryBitwise(lhs, rhs,
+      comp_assign_type = PrepareBinaryBitwise(lhs, rhs, /*is_shift_op*/ true,
                                               /*is_comp_assign*/ true);
       break;
 
@@ -2615,12 +2621,54 @@ lldb::SBType Parser::PrepareBinaryRemainder(ExprResult& lhs, ExprResult& rhs,
 }
 
 lldb::SBType Parser::PrepareBinaryBitwise(ExprResult& lhs, ExprResult& rhs,
+                                          bool is_shift_op,
                                           bool is_comp_assign) {
   // Operations {'&', '|', '^', '>>', '<<'} work for:
   //
   //  {Integer,unscoped_enum} <-> {Integer,unscoped_enum}
 
-  Type result_type = UsualArithmeticConversions(ctx_, lhs, rhs, is_comp_assign);
+  Type result_type;
+
+  // While most binary operations has resulting type determined by performing
+  // usual arithmetic conversions, in the case of shift operations ('<<' and
+  // '>>') the resulting type is that of the promoted left operand.
+  if (is_shift_op) {
+    Type lhs_type = lhs->result_type_deref();
+    Type rhs_type = rhs->result_type_deref();
+
+    if (!lhs_type.IsIntegerOrUnscopedEnum() ||
+        !rhs_type.IsIntegerOrUnscopedEnum()) {
+      return kInvalidType;
+    }
+
+    Type promoted_lhs_type = DoIntegralPromotion(ctx_, lhs_type);
+
+    // Insert casts for promoted types.
+    // In the case of composite assignments, LHS should preserve its original
+    // type.
+    if (!is_comp_assign && !CompareTypes(lhs_type, promoted_lhs_type)) {
+      lhs = std::make_unique<CStyleCastNode>(lhs->location(), promoted_lhs_type,
+                                             std::move(lhs),
+                                             CStyleCastKind::kArithmetic);
+    }
+
+    // Technically, RHS should be promoted according to its own type. However,
+    // converting both operands to the same type (promoted LHS type) will make
+    // evaluation easier and shouldn't affect correctness.
+    if (!CompareTypes(rhs_type, promoted_lhs_type)) {
+      rhs = std::make_unique<CStyleCastNode>(rhs->location(), promoted_lhs_type,
+                                             std::move(rhs),
+                                             CStyleCastKind::kArithmetic);
+    }
+
+    // Result of composite assignment preserves the type of the left operand.
+    // Otherwise, promoted left operand determines the result type.
+    result_type = is_comp_assign ? lhs_type : promoted_lhs_type;
+  } else {
+    // For the rest of bitwise operations ('&', '|', '^') perform usual
+    // arithmetic conversions.
+    result_type = UsualArithmeticConversions(ctx_, lhs, rhs, is_comp_assign);
+  }
 
   if (result_type.IsInteger()) {
     return result_type;
