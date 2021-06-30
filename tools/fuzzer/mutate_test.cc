@@ -151,7 +151,7 @@ TEST(MutateTest, MutateMultipleTimes) {
   std::mt19937 rng(12345);
 
   // Perform mutation multiple times.
-  for (int i = 0; i < 500; ++i) {
+  for (int i = 0; i < 1000; ++i) {
     // Pick a random node.
     std::shared_ptr<GenNode> to_be_mutated = pick_random_node(root, rng);
     ASSERT_NE(to_be_mutated, nullptr);

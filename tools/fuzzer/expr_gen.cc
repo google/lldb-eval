@@ -107,6 +107,33 @@ static Expr make_binary_expr(Expr lhs, BinOp op, Expr rhs) {
   return BinaryExpr(std::move(lhs), op, std::move(rhs));
 }
 
+// A helper function that tries generate an expression given the set of possible
+// enum options. If it cannot generate an expression with one option, it picks
+// up a different one until all options are exhausted.
+// It also cuts invalid GenNode's off from the produced generation tree as a
+// mechanism to reduce the overall generation tree size.
+template <typename EnumMask, typename PickOptionFn, typename EvalOptionFn>
+static std::optional<Expr> gen_from_options(
+    const PickOptionFn& pick_option, const EvalOptionFn& eval_option,
+    EnumMask mask, std::vector<GenNodeOrByte>& children_nodes) {
+  const size_t initial_children_size = children_nodes.size();
+
+  while (mask.any()) {
+    auto option = pick_option(mask);
+    auto maybe_expr = eval_option(option);
+    if (maybe_expr.has_value()) {
+      return maybe_expr.value();
+    }
+
+    mask[option] = false;
+    assert(children_nodes.size() >= initial_children_size &&
+           "There shouldn't be less children nodes than its initial size!");
+    children_nodes.resize(initial_children_size);
+  }
+
+  return {};
+}
+
 std::optional<Expr> ExprGenerator::gen_boolean_constant_impl(
     const ExprConstraints& constraints) {
   const auto& type_constraints = constraints.type_constraints();
@@ -249,9 +276,11 @@ std::optional<Expr> ExprGenerator::gen_binary_expr_impl(
     mask &= PTR_OPS;
   }
 
-  while (mask.any()) {
-    auto op = rng_->gen_bin_op(mask);
+  // How to pick a binary expression option from a mask?
+  auto pick_option = [this](BinOpMask mask) { return rng_->gen_bin_op(mask); };
 
+  // How to evaluate a specific binary expression option?
+  auto eval_option = [&, this](BinOp op) -> std::optional<Expr> {
     TypeConstraints lhs_types;
     TypeConstraints rhs_types;
 
@@ -322,27 +351,23 @@ std::optional<Expr> ExprGenerator::gen_binary_expr_impl(
         }
 
         if (!allows_scalars && !allows_pointers) {
-          mask[op] = false;
-          continue;
+          return {};
         }
 
         if (allows_pointers) {
           auto maybe_type = gen_type(weights, type_constraints);
           if (!maybe_type.has_value()) {
-            mask[op] = false;
-            continue;
+            return {};
           }
           const auto& type = maybe_type.value();
           const auto* ptr_type = std::get_if<PointerType>(&type);
           if (ptr_type == nullptr) {
-            mask[op] = false;
-            continue;
+            return {};
           }
           const auto* scalar_type =
               std::get_if<ScalarType>(&ptr_type->type().type());
           if (scalar_type != nullptr && *scalar_type == ScalarType::Void) {
-            mask[op] = false;
-            continue;
+            return {};
           }
 
           lhs_types = TypeConstraints(type);
@@ -358,20 +383,17 @@ std::optional<Expr> ExprGenerator::gen_binary_expr_impl(
             auto maybe_type = gen_type(weights, type_constraints);
 
             if (!maybe_type.has_value()) {
-              mask[op] = false;
-              continue;
+              return {};
             }
             const auto& type = maybe_type.value();
             const auto* ptr_type = std::get_if<PointerType>(&type);
             if (ptr_type == nullptr) {
-              mask[op] = false;
-              continue;
+              return {};
             }
             const auto* scalar_type =
                 std::get_if<ScalarType>(&ptr_type->type().type());
             if (scalar_type != nullptr && *scalar_type == ScalarType::Void) {
-              mask[op] = false;
-              continue;
+              return {};
             }
 
             lhs_types = TypeConstraints(type);
@@ -399,22 +421,21 @@ std::optional<Expr> ExprGenerator::gen_binary_expr_impl(
 
     auto maybe_lhs = gen_with_weights(weights, std::move(lhs_types));
     if (!maybe_lhs.has_value()) {
-      mask[op] = false;
-      continue;
+      return {};
     }
     Expr lhs = std::move(maybe_lhs.value());
 
     auto maybe_rhs = gen_with_weights(weights, std::move(rhs_types));
     if (!maybe_rhs.has_value()) {
-      mask[op] = false;
-      continue;
+      return {};
     }
     Expr rhs = std::move(maybe_rhs.value());
 
     return make_binary_expr(std::move(lhs), op, std::move(rhs));
-  }
+  };  // lambda eval_option
 
-  return {};
+  return gen_from_options(pick_option, eval_option, mask,
+                          stack_.top()->children_);
 }
 
 std::optional<Expr> ExprGenerator::gen_unary_expr_impl(
@@ -439,9 +460,12 @@ std::optional<Expr> ExprGenerator::gen_unary_expr_impl(
   }
 
   UnOpMask mask = cfg_.un_op_mask;
-  while (mask.any()) {
-    auto op = (UnOp)rng_->gen_un_op(mask);
 
+  // How to pick a unary expression option from a mask?
+  auto pick_option = [this](UnOpMask mask) { return rng_->gen_un_op(mask); };
+
+  // How to evaluate a specific unary expression option?
+  auto eval_option = [&, this](UnOp op) -> std::optional<Expr> {
     TypeConstraints expr_types;
     switch (op) {
       case UnOp::Plus:
@@ -465,8 +489,7 @@ std::optional<Expr> ExprGenerator::gen_unary_expr_impl(
 
     auto maybe_expr = gen_with_weights(weights, std::move(expr_types));
     if (!maybe_expr.has_value()) {
-      mask[op] = false;
-      continue;
+      return {};
     }
     Expr expr = std::move(maybe_expr.value());
 
@@ -475,9 +498,10 @@ std::optional<Expr> ExprGenerator::gen_unary_expr_impl(
     }
 
     return UnaryExpr(op, std::move(expr));
-  }
+  };  // lambda eval_option
 
-  return {};
+  return gen_from_options(pick_option, eval_option, mask,
+                          stack_.top()->children_);
 }
 
 std::optional<Expr> ExprGenerator::gen_ternary_expr_impl(
@@ -586,9 +610,14 @@ std::optional<Expr> ExprGenerator::gen_cast_expr_impl(
     mask[CastExpr::Kind::ReinterpretCast] = false;
   }
 
-  while (mask.any()) {
+  // How to pick a cast kind from a mask?
+  auto pick_option = [this](CastKindMask mask) {
+    return rng_->gen_cast_kind(mask);
+  };
+
+  // How to evaluate a specific cast kind?
+  auto eval_option = [&, this](CastExpr::Kind kind) -> std::optional<Expr> {
     TypeConstraints expr_types;
-    auto kind = rng_->gen_cast_kind(mask);
     switch (kind) {
       case CastExpr::Kind::CStyleCast:
         expr_types = TypeConstraints::cast_to(type);
@@ -602,8 +631,7 @@ std::optional<Expr> ExprGenerator::gen_cast_expr_impl(
     }
 
     if (!expr_types.satisfiable()) {
-      mask[kind] = false;
-      continue;
+      return {};
     }
 
     ExprConstraints new_constraints = ExprConstraints(
@@ -611,8 +639,7 @@ std::optional<Expr> ExprGenerator::gen_cast_expr_impl(
     auto maybe_expr = gen_with_weights(weights, new_constraints);
 
     if (!maybe_expr.has_value()) {
-      mask[kind] = false;
-      continue;
+      return {};
     }
 
     Expr expr = std::move(maybe_expr.value());
@@ -622,9 +649,10 @@ std::optional<Expr> ExprGenerator::gen_cast_expr_impl(
     }
 
     return CastExpr(kind, std::move(type), std::move(expr));
-  }
+  };  // lambda eval_option
 
-  return {};
+  return gen_from_options(pick_option, eval_option, mask,
+                          stack_.top()->children_);
 }
 
 std::optional<Expr> ExprGenerator::gen_address_of_expr_impl(
@@ -967,8 +995,13 @@ std::optional<Expr> ExprGenerator::gen_with_weights_impl(
     mask &= LEAF_EXPR_KINDS;
   }
 
-  while (mask.any()) {
-    auto kind = rng_->gen_expr_kind(new_weights, mask);
+  // How to pick an expression kind from a mask?
+  auto pick_option = [&, this](ExprKindMask mask) {
+    return rng_->gen_expr_kind(new_weights, mask);
+  };
+
+  // How to evaluate a specific expression kind?
+  auto eval_option = [&, this](ExprKind kind) -> std::optional<Expr> {
     auto idx = (size_t)kind;
 
     auto old_weight = new_weights[kind];
@@ -1050,15 +1083,14 @@ std::optional<Expr> ExprGenerator::gen_with_weights_impl(
 
     if (!maybe_expr.has_value()) {
       new_weights[kind] = old_weight;
-      mask[kind] = false;
-
-      continue;
+      return {};
     }
 
     return maybe_parenthesized(std::move(maybe_expr.value()));
-  }
+  };  // lambda eval_option
 
-  return {};
+  return gen_from_options(pick_option, eval_option, mask,
+                          stack_.top()->children_);
 }
 
 std::optional<Expr> ExprGenerator::gen_expr(const GenerateExprFn& callback,
