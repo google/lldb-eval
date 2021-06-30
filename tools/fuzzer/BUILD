@@ -122,6 +122,19 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "libfuzzer_common",
+    hdrs = ["libfuzzer_common.h"],
+    srcs = ["libfuzzer_common.cc"],
+    deps = [
+        ":fuzzer_lib",
+        "//lldb-eval",
+        "//lldb-eval:runner",
+        "@bazel_tools//tools/cpp/runfiles",
+        "@llvm_project//:lldb-api",
+    ]
+)
+
 cc_fuzz_test(
     name = "lldb_eval_libfuzzer_test",
     srcs = ["lldb_eval_libfuzzer_test.cc"],
@@ -140,9 +153,32 @@ cc_fuzz_test(
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":fuzzer_lib",
+        ":libfuzzer_common",
         "//lldb-eval",
-        "//lldb-eval:runner",
-        "@bazel_tools//tools/cpp/runfiles",
+        "@llvm_project//:lldb-api",
+    ],
+)
+
+cc_fuzz_test(
+    name = "lldb_vs_lldb_eval_libfuzzer_test",
+    srcs = ["lldb_vs_lldb_eval_libfuzzer_test.cc"],
+    data = [
+        "//testdata:fuzzer_binary_gen",
+        "//testdata:fuzzer_binary_srcs",
+    ],
+    tags = [
+        "manual",
+        # On Linux lldb-server behaves funny in a sandbox ¯\_(ツ)_/¯. This is
+        # not necessary on Windows, but "tags" attribute is not configurable
+        # with select -- https://github.com/bazelbuild/bazel/issues/2971.
+        "no-sandbox",
+    ],
+    # cc_fuzz_test doesn't work well on Windows.
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":fuzzer_lib",
+        ":libfuzzer_common",
+        "//lldb-eval",
         "@llvm_project//:lldb-api",
     ],
 )
