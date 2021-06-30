@@ -124,15 +124,15 @@ cc_test(
 
 cc_library(
     name = "libfuzzer_common",
-    hdrs = ["libfuzzer_common.h"],
     srcs = ["libfuzzer_common.cc"],
+    hdrs = ["libfuzzer_common.h"],
     deps = [
         ":fuzzer_lib",
         "//lldb-eval",
         "//lldb-eval:runner",
         "@bazel_tools//tools/cpp/runfiles",
         "@llvm_project//:lldb-api",
-    ]
+    ],
 )
 
 cc_fuzz_test(
