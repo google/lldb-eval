@@ -2132,6 +2132,12 @@ TEST_F(EvalTest, TestAssignment) {
   EXPECT_THAT(EvalWithContext("$p = (int*)12", vars_),
               IsEqual("0x000000000000000c"));
   EXPECT_THAT(EvalWithContext("$p", vars_), IsEqual("0x000000000000000c"));
+  EXPECT_THAT(EvalWithContext("$p = 0", vars_), IsEqual("0x0000000000000000"));
+  EXPECT_THAT(EvalWithContext("$p = nullptr", vars_),
+              IsEqual("0x0000000000000000"));
+
+  ASSERT_TRUE(CreateContextVariableArray("int", "$arr", "{1, 2}"));
+  EXPECT_THAT(EvalWithContext("$p = $arr", vars_), IsOk());
 }
 
 TEST_F(EvalTest, TestCompositeAssignmentInvalid) {

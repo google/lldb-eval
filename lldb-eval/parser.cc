@@ -1999,10 +1999,20 @@ ExprResult Parser::InsertImplicitConversion(ExprResult expr, Type type) {
   }
 
   // Check if the implicit conversion is possible and insert a cast.
-  if (ImplicitConversionIsAllowed(expr_type, type)) {
-    // TODO(werat): What about if the conversion is not `kArithmetic`?
-    return std::make_unique<CStyleCastNode>(
-        expr->location(), type, std::move(expr), CStyleCastKind::kArithmetic);
+  if (ImplicitConversionIsAllowed(expr_type, type, expr->is_literal_zero())) {
+    if (type.IsBasicType()) {
+      return std::make_unique<CStyleCastNode>(
+          expr->location(), type, std::move(expr), CStyleCastKind::kArithmetic);
+    }
+
+    if (type.IsPointerType()) {
+      return std::make_unique<CStyleCastNode>(
+          expr->location(), type, std::move(expr), CStyleCastKind::kPointer);
+    }
+
+    // TODO(werat): What about if the conversion is not `kArithmetic` or
+    // `kPointer`?
+    lldb_eval_unreachable("invalid implicit cast kind");
   }
 
   BailOut(ErrorCode::kInvalidOperandType,
@@ -2012,12 +2022,20 @@ ExprResult Parser::InsertImplicitConversion(ExprResult expr, Type type) {
   return std::make_unique<ErrorNode>();
 }
 
-bool Parser::ImplicitConversionIsAllowed(Type src, Type dst) {
-  // Now see if there's a known conversion from `expr_type` to `type`.
+bool Parser::ImplicitConversionIsAllowed(Type src, Type dst,
+                                         bool is_src_literal_zero) {
   if (dst.IsInteger() || dst.IsFloat()) {
     // Arithmetic types and enumerations can be implicitly converted to integers
     // and floating point types.
     if (src.IsScalarOrUnscopedEnum() || src.IsScopedEnum()) {
+      return true;
+    }
+  }
+
+  if (dst.IsPointerType()) {
+    // Literal zero, `nullptr_t` and arrays can be implicitly converted to
+    // pointers.
+    if (is_src_literal_zero || src.IsNullPtrType() || src.IsArrayType()) {
       return true;
     }
   }

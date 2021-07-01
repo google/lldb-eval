@@ -133,7 +133,8 @@ class Parser {
   ExprResult ParseBuiltinFunction(clang::SourceLocation loc,
                                   std::unique_ptr<BuiltinFunctionDef> func_def);
 
-  bool ImplicitConversionIsAllowed(Type src, Type dst);
+  bool ImplicitConversionIsAllowed(Type src, Type dst,
+                                   bool is_src_literal_zero = false);
   ExprResult InsertImplicitConversion(ExprResult expr, Type type);
 
   void ConsumeToken();
