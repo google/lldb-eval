@@ -2035,7 +2035,11 @@ bool Parser::ImplicitConversionIsAllowed(Type src, Type dst,
   if (dst.IsPointerType()) {
     // Literal zero, `nullptr_t` and arrays can be implicitly converted to
     // pointers.
-    if (is_src_literal_zero || src.IsNullPtrType() || src.IsArrayType()) {
+    if (is_src_literal_zero || src.IsNullPtrType()) {
+      return true;
+    }
+    if (src.IsArrayType() &&
+        CompareTypes(src.GetArrayElementType(), dst.GetPointeeType())) {
       return true;
     }
   }
