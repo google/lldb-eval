@@ -87,8 +87,11 @@ bool Compare(BinaryOpKind kind, const llvm::APFloat& l,
 static Value EvaluateArithmeticOpInteger(lldb::SBTarget target,
                                          BinaryOpKind kind, Value lhs,
                                          Value rhs, lldb::SBType rtype) {
-  assert((lhs.IsInteger() && CompareTypes(lhs.type(), rhs.type())) &&
-         "invalid ast: operands must be integers and have the same type");
+  assert(lhs.IsInteger() && rhs.IsInteger() &&
+         "invalid ast: both operands must be integers");
+  assert((kind == BinaryOpKind::Shl || kind == BinaryOpKind::Shr ||
+          CompareTypes(lhs.type(), rhs.type())) &&
+         "invalid ast: operands must have the same type");
 
   auto wrap = [target, rtype](auto value) {
     return CreateValueFromAPInt(target, value, rtype);
@@ -451,9 +454,11 @@ void Interpreter::Visit(const BinaryOpNode* node) {
     case BinaryOpKind::And:
     case BinaryOpKind::Or:
     case BinaryOpKind::Xor:
+      result_ = EvaluateBinaryBitwise(node->kind(), lhs, rhs);
+      return;
     case BinaryOpKind::Shl:
     case BinaryOpKind::Shr:
-      result_ = EvaluateBinaryBitwise(node->kind(), lhs, rhs);
+      result_ = EvaluateBinaryShift(node->kind(), lhs, rhs);
       return;
 
     // Comparison operations.
@@ -489,9 +494,12 @@ void Interpreter::Visit(const BinaryOpNode* node) {
     case BinaryOpKind::AndAssign:
     case BinaryOpKind::OrAssign:
     case BinaryOpKind::XorAssign:
+      result_ = EvaluateBinaryBitwiseAssign(node->kind(), lhs, rhs);
+      return;
     case BinaryOpKind::ShlAssign:
     case BinaryOpKind::ShrAssign:
-      result_ = EvaluateBinaryBitwiseAssign(node->kind(), lhs, rhs);
+      result_ = EvaluateBinaryShiftAssign(node->kind(), lhs, rhs,
+                                          node->comp_assign_type());
       return;
 
     default:
@@ -823,14 +831,25 @@ Value Interpreter::EvaluateBinaryBitwise(BinaryOpKind kind, Value lhs,
                                          Value rhs) {
   assert((lhs.IsInteger() && CompareTypes(lhs.type(), rhs.type())) &&
          "invalid ast: operands must be integers and have the same type");
+  assert((kind == BinaryOpKind::And || kind == BinaryOpKind::Or ||
+          kind == BinaryOpKind::Xor) &&
+         "invalid ast: operation must be '&', '|' or '^'");
 
-  if (kind == BinaryOpKind::Shl || kind == BinaryOpKind::Shr) {
-    // Performing shift operation is undefined behaviour if the right operand
-    // isn't in interval [0, bit-size of the left operand).
-    if (rhs.GetInteger().isNegative() ||
-        rhs.GetUInt64() >= lhs.type().GetByteSize() * CHAR_BIT) {
-      error_.SetUbStatus(UbStatus::kInvalidShift);
-    }
+  return EvaluateArithmeticOpInteger(target_, kind, lhs, rhs, lhs.type());
+}
+
+Value Interpreter::EvaluateBinaryShift(BinaryOpKind kind, Value lhs,
+                                       Value rhs) {
+  assert(lhs.IsInteger() && rhs.IsInteger() &&
+         "invalid ast: operands must be integers");
+  assert((kind == BinaryOpKind::Shl || kind == BinaryOpKind::Shr) &&
+         "invalid ast: operation must be '<<' or '>>'");
+
+  // Performing shift operation is undefined behaviour if the right operand
+  // isn't in interval [0, bit-size of the left operand).
+  if (rhs.GetInteger().isNegative() ||
+      rhs.GetUInt64() >= lhs.type().GetByteSize() * CHAR_BIT) {
+    error_.SetUbStatus(UbStatus::kInvalidShift);
   }
 
   return EvaluateArithmeticOpInteger(target_, kind, lhs, rhs, lhs.type());
@@ -928,15 +947,8 @@ Value Interpreter::EvaluateBinaryBitwiseAssign(BinaryOpKind kind, Value lhs,
     case BinaryOpKind::XorAssign:
       kind = BinaryOpKind::Xor;
       break;
-    case BinaryOpKind::ShlAssign:
-      kind = BinaryOpKind::Shl;
-      break;
-    case BinaryOpKind::ShrAssign:
-      kind = BinaryOpKind::Shr;
-      break;
     default:
-      assert(false &&
-             "invalid BinaryOpKind: must be a composite assignment operation");
+      assert(false && "invalid BinaryOpKind: must be '&=', '|=' or '^='");
       break;
   }
   assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");
@@ -944,6 +956,32 @@ Value Interpreter::EvaluateBinaryBitwiseAssign(BinaryOpKind kind, Value lhs,
 
   Value ret = CastScalarToBasicType(target_, lhs, rhs.type(), error_);
   ret = EvaluateBinaryBitwise(kind, ret, rhs);
+  ret = CastScalarToBasicType(target_, ret, lhs.type(), error_);
+
+  lhs.Update(ret);
+  return lhs;
+}
+
+Value Interpreter::EvaluateBinaryShiftAssign(BinaryOpKind kind, Value lhs,
+                                             Value rhs, Type comp_assign_type) {
+  switch (kind) {
+    case BinaryOpKind::ShlAssign:
+      kind = BinaryOpKind::Shl;
+      break;
+    case BinaryOpKind::ShrAssign:
+      kind = BinaryOpKind::Shr;
+      break;
+    default:
+      assert(false && "invalid BinaryOpKind: must be '<<=' or '>>='");
+      break;
+  }
+  assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");
+  assert(rhs.type().IsBasicType() && "invalid ast: rhs must be a basic type");
+  assert(comp_assign_type.IsInteger() &&
+         "invalid ast: comp_assign_type must be an integer");
+
+  Value ret = CastScalarToBasicType(target_, lhs, comp_assign_type, error_);
+  ret = EvaluateBinaryShift(kind, ret, rhs);
   ret = CastScalarToBasicType(target_, ret, lhs.type(), error_);
 
   lhs.Update(ret);

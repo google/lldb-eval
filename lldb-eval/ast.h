@@ -274,12 +274,14 @@ bool binary_op_kind_is_comp_assign(BinaryOpKind kind);
 class BinaryOpNode : public AstNode {
  public:
   BinaryOpNode(clang::SourceLocation location, lldb::SBType result_type,
-               BinaryOpKind kind, ExprResult lhs, ExprResult rhs)
+               BinaryOpKind kind, ExprResult lhs, ExprResult rhs,
+               lldb::SBType comp_assign_type)
       : AstNode(location),
         result_type_(result_type),
         kind_(kind),
         lhs_(std::move(lhs)),
-        rhs_(std::move(rhs)) {}
+        rhs_(std::move(rhs)),
+        comp_assign_type_(comp_assign_type) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override {
@@ -290,9 +292,11 @@ class BinaryOpNode : public AstNode {
   BinaryOpKind kind() const { return kind_; }
   AstNode* lhs() const { return lhs_.get(); }
   AstNode* rhs() const { return rhs_.get(); }
+  lldb::SBType comp_assign_type() const { return comp_assign_type_; }
 
  private:
   lldb::SBType result_type_;
+  lldb::SBType comp_assign_type_;
   BinaryOpKind kind_;
   ExprResult lhs_;
   ExprResult rhs_;

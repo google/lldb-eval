@@ -85,6 +85,7 @@ class Interpreter : Visitor {
   Value EvaluateBinaryDivision(Value lhs, Value rhs);
   Value EvaluateBinaryRemainder(Value lhs, Value rhs);
   Value EvaluateBinaryBitwise(BinaryOpKind kind, Value lhs, Value rhs);
+  Value EvaluateBinaryShift(BinaryOpKind kind, Value lhs, Value rhs);
 
   Value EvaluateAssignment(Value lhs, Value rhs);
   Value EvaluateBinaryAddAssign(Value lhs, Value rhs);
@@ -93,6 +94,8 @@ class Interpreter : Visitor {
   Value EvaluateBinaryDivAssign(Value lhs, Value rhs);
   Value EvaluateBinaryRemAssign(Value lhs, Value rhs);
   Value EvaluateBinaryBitwiseAssign(BinaryOpKind kind, Value lhs, Value rhs);
+  Value EvaluateBinaryShiftAssign(BinaryOpKind kind, Value lhs, Value rhs,
+                                  Type comp_assign_type);
 
   Value PointerAdd(Value lhs, int64_t offset);
 

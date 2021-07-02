@@ -96,6 +96,9 @@ class UbDetectionTest : public ::testing::Test {
     lldb_eval::Parser p(ctx);
     lldb_eval::ExprResult tree = p.Run(err);
 
+    if (err) {
+      printf("GRESKA: %s\n", err.message().c_str());
+    }
     assert(!err && "Error while parsing expression!");
 
     lldb_eval::Interpreter eval(ctx);
@@ -291,6 +294,10 @@ TEST_F(UbDetectionTest, TestInvalidShift) {
   EXPECT_EQ(GetUbStatus("-1LL >> 10"), UbStatus::kOk);
   EXPECT_EQ(GetUbStatus("100U << 30"), UbStatus::kOk);
   EXPECT_EQ(GetUbStatus("100ULL << 60"), UbStatus::kOk);
+
+  // `char` type is implicitly converted to `int`.
+  EXPECT_EQ(GetUbStatus("(char)1 << 31LL"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("(char)1 << 32LL"), UbStatus::kInvalidShift);
 }
 
 // TODO: Add tests with composite assignments (e.g. `i /= 0`, `i -= fmax`).

@@ -273,56 +273,6 @@ Matcher<EvalResult> IsError(std::string value) {
   return MakeMatcher(new IsErrorMatcher(std::move(value)));
 }
 
-class IsTypeMatcher : public MatcherInterface<EvalResult> {
- public:
-  explicit IsTypeMatcher(std::string value) : value_(std::move(value)) {}
-
- public:
-  bool MatchAndExplain(EvalResult result,
-                       MatchResultListener* listener) const override {
-    if (result.lldb_eval_error.GetError()) {
-      PrintError(listener, result.lldb_eval_error.GetCString());
-      return false;
-    }
-
-    std::string actual = result.lldb_eval_value.GetType().GetName();
-    if (actual != value_) {
-      *listener << "evaluated to type '" << actual << "'";
-      return false;
-    }
-
-    // Compare only if we tried to evaluate with LLDB.
-    if (result.lldb_value.has_value()) {
-      if (result.lldb_value.value().GetError().GetError()) {
-        *listener << "types produced by lldb-eval and LLDB don't match\n"
-                  << "lldb-eval: " << actual << "\n"
-                  << "lldb     : "
-                  << result.lldb_value.value().GetError().GetCString();
-        return false;
-      } else if (actual != result.lldb_value.value().GetType().GetName()) {
-        *listener << "types produced by lldb-eval and LLDB don't match\n"
-                  << "lldb-eval: " << actual << "\n"
-                  << "lldb     : "
-                  << result.lldb_value.value().GetType().GetName();
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  void DescribeTo(std::ostream* os) const override {
-    *os << "evaluates with a type: '" << value_ << "'";
-  }
-
- private:
-  std::string value_;
-};
-
-Matcher<EvalResult> IsType(std::string value) {
-  return MakeMatcher(new IsTypeMatcher(std::move(value)));
-}
-
 class EvalTest : public ::testing::Test {
  protected:
   static void SetUpTestSuite() {
@@ -571,8 +521,8 @@ TEST_F(EvalTest, TestBitwiseOperators) {
   EXPECT_THAT(Eval("(-3 << 6)"), IsEqual("-192"));
   EXPECT_THAT(Eval("(2000000000U << 1)"), IsEqual("4000000000"));
   EXPECT_THAT(Eval("(-1 >> 1U)"), IsEqual("-1"));
-  EXPECT_THAT(Eval("(-1 >> 1U)"), IsType("int"));
-  EXPECT_THAT(Eval("(1 << 1LL)"), IsType("int"));
+  EXPECT_THAT(Eval("(char)1 << 16"), IsEqual("65536"));
+  EXPECT_THAT(Eval("(signed char)-123 >> 8"), IsEqual("-1"));
 
   EXPECT_THAT(Eval("0b1011 & 0xFF"), IsEqual("11"));
   EXPECT_THAT(Eval("0b1011 & mask_ff"), IsEqual("11"));
@@ -1809,13 +1759,8 @@ TEST_F(EvalTest, TestUnscopedEnum) {
   EXPECT_THAT(Eval("enum_two << 1"), IsEqual("4"));
   EXPECT_THAT(Eval("8 >> enum_two"), IsEqual("2"));
   EXPECT_THAT(Eval("1 << enum_two"), IsEqual("4"));
-  EXPECT_THAT(Eval("1 << enum_two"), IsType("int"));
   EXPECT_THAT(Eval("UnscopedEnumUInt8::kTwoU8 << 1"), IsEqual("4"));
-  // TODO: Enable the following test when underlying enumeration type becomes
-  // fully accessible.
-  // EXPECT_THAT(Eval("UnscopedEnumUInt8::kTwoU8 << 1"), IsType("int"));
   EXPECT_THAT(Eval("UnscopedEnumInt8::kTwo8 << 1U"), IsEqual("4"));
-  EXPECT_THAT(Eval("UnscopedEnumInt8::kTwo8 << 1U"), IsType("int"));
   EXPECT_THAT(Eval("+enum_one"), IsEqual("1"));
   EXPECT_THAT(Eval("!enum_one"), IsEqual("false"));
   EXPECT_THAT(Eval("(int*)1 + enum_one"), IsEqual("0x0000000000000005"));
@@ -2366,8 +2311,17 @@ TEST_F(EvalTest, TestCompositeAssignmentBitwise) {
   EXPECT_THAT(EvalWithContext("$i >>= 3", vars_), IsEqual("104"));
   EXPECT_THAT(EvalWithContext("$i <<= eTwo", vars_), IsEqual("208"));
   EXPECT_THAT(EvalWithContext("$i >>= eTwo", vars_), IsEqual("104"));
-  EXPECT_THAT(EvalWithContext("$i <<= 1U", vars_), IsType("int"));
-  EXPECT_THAT(EvalWithContext("$i >>= 1LL", vars_), IsType("int"));
+  EXPECT_THAT(EvalWithContext("$i <<= 1U", vars_), IsEqual("208"));
+  EXPECT_THAT(EvalWithContext("$i >>= 1LL", vars_), IsEqual("104"));
+
+  ASSERT_TRUE(CreateContextVariable("$c", "(signed char)-1"));
+  EXPECT_THAT(EvalWithContext("$c &= 0b11110011", vars_), IsEqual("'\\xf3'"));
+  EXPECT_THAT(EvalWithContext("$c |= 0b01001011", vars_), IsEqual("'\\xfb'"));
+  EXPECT_THAT(EvalWithContext("$c ^= 0b00000110", vars_), IsEqual("'\\xfd'"));
+  EXPECT_THAT(EvalWithContext("$c <<= 5", vars_), IsEqual("'\\xa0'"));
+  EXPECT_THAT(EvalWithContext("$c >>= 20", vars_), IsEqual("'\\xff'"));
+  EXPECT_THAT(EvalWithContext("$c <<= 2U", vars_), IsEqual("'\\xfc'"));
+  EXPECT_THAT(EvalWithContext("$c >>= eTwo", vars_), IsEqual("'\\xfe'"));
 
   ASSERT_TRUE(CreateContextVariable("$f", "1.5f"));
   EXPECT_THAT(
