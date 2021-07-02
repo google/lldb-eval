@@ -96,9 +96,6 @@ class UbDetectionTest : public ::testing::Test {
     lldb_eval::Parser p(ctx);
     lldb_eval::ExprResult tree = p.Run(err);
 
-    if (err) {
-      printf("GRESKA: %s\n", err.message().c_str());
-    }
     assert(!err && "Error while parsing expression!");
 
     lldb_eval::Interpreter eval(ctx);

@@ -296,10 +296,10 @@ class BinaryOpNode : public AstNode {
 
  private:
   lldb::SBType result_type_;
-  lldb::SBType comp_assign_type_;
   BinaryOpKind kind_;
   ExprResult lhs_;
   ExprResult rhs_;
+  lldb::SBType comp_assign_type_;
 };
 
 enum class UnaryOpKind {
