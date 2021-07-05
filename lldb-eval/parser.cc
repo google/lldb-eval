@@ -2625,7 +2625,7 @@ lldb::SBType Parser::PrepareBinaryBitwise(ExprResult& lhs, ExprResult& rhs,
                                           bool is_comp_assign) {
   // Operations {'&', '|', '^'} work for:
   //
-  //  {Integer,unscoped_enum} <-> {Integer,unscoped_enum}
+  //  {integer,unscoped_enum} <-> {integer,unscoped_enum}
   //
   // Note that {'<<', '>>'} are handled in a separate method.
 
@@ -2643,7 +2643,7 @@ lldb::SBType Parser::PrepareBinaryShift(ExprResult& lhs, ExprResult& rhs,
                                         bool is_comp_assign) {
   // Operations {'<<', '>>'} work for:
   //
-  //  {Integer,unscoped_enum} <-> {Integer,unscoped_enum}
+  //  {integer,unscoped_enum} <-> {integer,unscoped_enum}
 
   if (!is_comp_assign) {
     lhs = UsualUnaryConversions(ctx_, std::move(lhs));
@@ -2657,6 +2657,7 @@ lldb::SBType Parser::PrepareBinaryShift(ExprResult& lhs, ExprResult& rhs,
     return kInvalidType;
   }
 
+  // The type of the result is that of the promoted left operand.
   return DoIntegralPromotion(ctx_, lhs_type);
 }
 
