@@ -302,10 +302,11 @@ void Interpreter::Visit(const CStyleCastNode* node) {
     case CStyleCastKind::kPointer: {
       assert(type.IsPointerType() &&
              "invalid ast: target type should be a pointer.");
-      if (rhs.type().IsArrayType()) {
-        rhs = rhs.AddressOf();
-      }
-      result_ = CreateValueFromPointer(target_, rhs.GetUInt64(), type);
+
+      uint64_t addr = rhs.type().IsArrayType()
+                          ? rhs.inner_value().GetLoadAddress()
+                          : rhs.GetUInt64();
+      result_ = CreateValueFromPointer(target_, addr, type);
       return;
     }
     case CStyleCastKind::kNullptr: {
