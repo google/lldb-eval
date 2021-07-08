@@ -2390,3 +2390,56 @@ TEST_F(EvalTest, TestSideEffects) {
   EXPECT_THAT(Eval("*p"), IsEqual("5"));
   EXPECT_THAT(Eval("x"), IsEqual("5"));  // `p` is `&x`
 }
+
+TEST_F(EvalTest, TestBuiltinFunction_findnonnull) {
+  // LLDB doesn't support `__findnonnull` intrinsic function.
+  this->compare_with_lldb_ = false;
+
+  EXPECT_THAT(Eval("__findnonnull(array_of_pointers, 0)"), IsEqual("-1"));
+  EXPECT_THAT(Eval("__findnonnull(array_of_pointers, 1)"), IsEqual("0"));
+  EXPECT_THAT(Eval("__findnonnull(array_of_pointers, 5)"), IsEqual("0"));
+  EXPECT_THAT(Eval("__findnonnull(array_of_pointers+2, 3)"), IsEqual("2"));
+  EXPECT_THAT(Eval("__findnonnull(array_of_pointers+3, 2)"), IsEqual("1"));
+
+  EXPECT_THAT(Eval("__findnonnull(pointer_to_pointers, 0)"), IsEqual("-1"));
+  EXPECT_THAT(Eval("__findnonnull(pointer_to_pointers, 1)"), IsEqual("0"));
+  EXPECT_THAT(Eval("__findnonnull(pointer_to_pointers, 5)"), IsEqual("0"));
+  EXPECT_THAT(Eval("__findnonnull(pointer_to_pointers+2, 3)"), IsEqual("2"));
+  EXPECT_THAT(Eval("__findnonnull(pointer_to_pointers+3, 2)"), IsEqual("1"));
+
+  EXPECT_THAT(Eval("__findnonnull(0, 0)"),
+              IsError("no known conversion from 'int' to 'T*' for 1st argument "
+                      "of __findnonnull()\n"
+                      "__findnonnull(0, 0)\n"
+                      "              ^"));
+  EXPECT_THAT(
+      Eval("__findnonnull(1.0f, 0)"),
+      IsError("no known conversion from 'float' to 'T*' for 1st argument "
+              "of __findnonnull()\n"
+              "__findnonnull(1.0f, 0)\n"
+              "              ^"));
+  EXPECT_THAT(
+      Eval("__findnonnull(array_of_pointers, -1)"),
+      IsError("passing in a buffer size ('-1') that is negative or in excess "
+              "of 100 million to __findnonnull() is not allowed.\n"
+              "__findnonnull(array_of_pointers, -1)\n"
+              "                                 ^"));
+  EXPECT_THAT(
+      Eval("__findnonnull(array_of_pointers, 100000001)"),
+      IsError("passing in a buffer size ('100000001') that is negative "
+              "or in excess of 100 million to __findnonnull() is not allowed.\n"
+              "__findnonnull(array_of_pointers, 100000001)\n"
+              "                                 ^"));
+
+  if (process_.GetAddressByteSize() == 4) {
+    EXPECT_THAT(Eval("__findnonnull(array_of_uint8, 6)"), IsEqual("0"));
+    EXPECT_THAT(Eval("__findnonnull(array_of_uint8+4, 5)"), IsEqual("0"));
+    EXPECT_THAT(Eval("__findnonnull(array_of_uint8+8, 4)"), IsEqual("2"));
+    EXPECT_THAT(Eval("__findnonnull(array_of_uint8+12, 3)"), IsEqual("1"));
+  } else if (process_.GetAddressByteSize() == 8) {
+    EXPECT_THAT(Eval("__findnonnull(array_of_uint8, 3)"), IsEqual("0"));
+    EXPECT_THAT(Eval("__findnonnull(array_of_uint8+8, 2)"), IsEqual("1"));
+  } else {
+    GTEST_FATAL_FAILURE_("Unknown pointer size in the target process");
+  }
+}

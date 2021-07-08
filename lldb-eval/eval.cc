@@ -24,6 +24,7 @@
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
 #include "lldb/lldb-enumerations.h"
+#include "llvm/Support/FormatVariadic.h"
 
 namespace lldb_eval {
 
@@ -199,6 +200,12 @@ Value Interpreter::EvalNode(const AstNode* node, FlowAnalysis* flow) {
   return result_;
 }
 
+void Interpreter::SetError(ErrorCode code, std::string error,
+                           clang::SourceLocation loc) {
+  assert(!error_ && "interpreter can error only once");
+  error_.Set(code, FormatDiagnostics(ctx_->GetSourceManager(), error, loc));
+}
+
 void Interpreter::Visit(const ErrorNode*) {
   // The AST is not valid.
   result_ = Value();
@@ -253,6 +260,79 @@ void Interpreter::Visit(const BuiltinFunctionCallNode* node) {
     // Use Log2_32 to match the behaviour of Visual Studio debugger.
     uint32_t ret = llvm::Log2_32(static_cast<uint32_t>(val.GetUInt64()));
     result_ = CreateValueFromBytes(target_, &ret, lldb::eBasicTypeUnsignedInt);
+    return;
+  }
+
+  if (node->name() == "__findnonnull") {
+    assert(node->arguments().size() == 2 &&
+           "invalid ast: expected exactly two arguments to `__findnonnull`");
+
+    auto& arg1 = node->arguments()[0];
+    Value val1 = EvalNode(arg1.get());
+    if (!val1) {
+      return;
+    }
+
+    // Resolve data address for the first argument.
+    uint64_t addr;
+
+    if (val1.IsPointer()) {
+      addr = val1.inner_value().GetValueAsUnsigned();
+    } else if (val1.type().IsArrayType()) {
+      addr = val1.inner_value().GetLoadAddress();
+    } else {
+      SetError(ErrorCode::kInvalidOperandType,
+               llvm::formatv("no known conversion from '{0}' to 'T*' for 1st "
+                             "argument of __findnonnull()",
+                             val1.type().GetName()),
+               arg1->location());
+      return;
+    }
+
+    auto& arg2 = node->arguments()[1];
+    Value val2 = EvalNode(arg2.get());
+    if (!val2) {
+      return;
+    }
+    int64_t size = val2.inner_value().GetValueAsSigned();
+
+    if (size < 0 || size > 100000000) {
+      SetError(ErrorCode::kInvalidOperandType,
+               llvm::formatv(
+                   "passing in a buffer size ('{0}') that is negative or in "
+                   "excess of 100 million to __findnonnull() is not allowed.",
+                   size),
+               arg2->location());
+      return;
+    }
+
+    lldb::SBProcess process = target_.GetProcess();
+    size_t ptr_size = target_.GetAddressByteSize();
+
+    uint64_t memory = 0;
+    lldb::SBError error;
+
+    for (int i = 0; i < size; ++i) {
+      size_t read =
+          process.ReadMemory(addr + i * ptr_size, &memory, ptr_size, error);
+
+      if (error.Fail() || read != ptr_size) {
+        SetError(ErrorCode::kUnknown,
+                 llvm::formatv("error calling __findnonnull(): {0}",
+                               error.GetCString() ? error.GetCString()
+                                                  : "cannot read memory"),
+                 node->location());
+        return;
+      }
+
+      if (memory != 0) {
+        result_ = CreateValueFromBytes(target_, &i, lldb::eBasicTypeInt);
+        return;
+      }
+    }
+
+    int ret = -1;
+    result_ = CreateValueFromBytes(target_, &ret, lldb::eBasicTypeInt);
     return;
   }
 

@@ -770,6 +770,17 @@ void TestBuiltinFunction_Log2() {
   // BREAK(TestBuiltinFunction_Log2)
 }
 
+void TestBuiltinFunction_findnonnull() {
+  uint8_t array_of_uint8[] = {1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0,
+                              0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1};
+  uint8_t* pointer_to_uint8 = array_of_uint8;
+
+  int* array_of_pointers[] = {(int*)1, (int*)1, (int*)0, (int*)0, (int*)1};
+  int** pointer_to_pointers = array_of_pointers;
+
+  // BREAK(TestBuiltinFunction_findnonnull)
+}
+
 void TestPrefixIncDec() {
   auto enum_foo = ScopedEnum::kFoo;
   int i = 1;
@@ -863,6 +874,7 @@ void main() {
   TestTernaryOperator();
   TestSizeOf();
   TestBuiltinFunction_Log2();
+  TestBuiltinFunction_findnonnull();
   TestArrayDereference();
   TestDereferencedType();
   TestMemberFunctionCall();

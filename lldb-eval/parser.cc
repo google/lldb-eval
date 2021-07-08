@@ -96,36 +96,6 @@ inline std::string TokenKindsJoin(clang::tok::TokenKind k, Ts... ks) {
   return os.str();
 }
 
-std::string FormatDiagnostics(const clang::SourceManager& sm,
-                              const std::string& message,
-                              clang::SourceLocation loc) {
-  // Get the source buffer and the location of the current token.
-  llvm::StringRef text = sm.getBufferData(sm.getFileID(loc));
-  size_t loc_offset = sm.getCharacterData(loc) - text.data();
-
-  // Look for the start of the line.
-  size_t line_start = text.rfind('\n', loc_offset);
-  line_start = line_start == llvm::StringRef::npos ? 0 : line_start + 1;
-
-  // Look for the end of the line.
-  size_t line_end = text.find('\n', loc_offset);
-  line_end = line_end == llvm::StringRef::npos ? text.size() : line_end;
-
-  // Get a view of the current line in the source code and the position of the
-  // diagnostics pointer.
-  llvm::StringRef line = text.slice(line_start, line_end);
-  int32_t arrow = sm.getPresumedColumnNumber(loc);
-
-  // Calculate the padding in case we point outside of the expression (this can
-  // happen if the parser expected something, but got EOF).
-  size_t expr_rpad = std::max(0, arrow - static_cast<int32_t>(line.size()));
-  size_t arrow_rpad = std::max(0, static_cast<int32_t>(line.size()) - arrow);
-
-  return llvm::formatv("{0}: {1}\n{2}\n{3}", loc.printToString(sm), message,
-                       llvm::fmt_pad(line, 0, expr_rpad),
-                       llvm::fmt_pad("^", arrow - 1, arrow_rpad));
-}
-
 }  // namespace
 
 namespace lldb_eval {
@@ -557,6 +527,19 @@ static std::unique_ptr<BuiltinFunctionDef> GetBuiltinFunctionDef(
     lldb::SBType return_type = ctx->GetBasicType(lldb::eBasicTypeUnsignedInt);
     std::vector<lldb::SBType> arguments = {
         ctx->GetBasicType(lldb::eBasicTypeUnsignedInt),
+    };
+    return std::make_unique<BuiltinFunctionDef>(identifier, return_type,
+                                                std::move(arguments));
+  }
+  if (identifier == "__findnonnull") {
+    lldb::SBType return_type = ctx->GetBasicType(lldb::eBasicTypeInt);
+    std::vector<lldb::SBType> arguments = {
+        // The first argument should actually be "T**", but we don't support
+        // templates here.
+        // HACK: Void means "any" and we'll check in runtime. The argument will
+        // be passed as is without any conversions.
+        ctx->GetBasicType(lldb::eBasicTypeVoid),
+        ctx->GetBasicType(lldb::eBasicTypeLongLong),
     };
     return std::make_unique<BuiltinFunctionDef>(identifier, return_type,
                                                 std::move(arguments));
@@ -1979,6 +1962,11 @@ ExprResult Parser::ParseBuiltinFunction(
   // Now check that all arguments are correct types and perform implicit
   // conversions if possible.
   for (size_t i = 0; i < arguments.size(); ++i) {
+    // HACK: Void means "any" and we'll check in runtime. The argument will be
+    // passed as is without any conversions.
+    if (func_def->arguments_[i].GetBasicType() == lldb::eBasicTypeVoid) {
+      continue;
+    }
     arguments[i] = InsertImplicitConversion(std::move(arguments[i]),
                                             func_def->arguments_[i]);
     if (arguments[i]->is_error()) {

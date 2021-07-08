@@ -55,6 +55,9 @@ class Interpreter : Visitor {
   Value Eval(const AstNode* tree, Error& error);
 
  private:
+  void SetError(ErrorCode error_code, std::string error,
+                clang::SourceLocation loc);
+
   void Visit(const ErrorNode* node) override;
   void Visit(const LiteralNode* node) override;
   void Visit(const IdentifierNode* node) override;

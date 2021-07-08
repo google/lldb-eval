@@ -129,6 +129,10 @@ class Context {
   lldb::SBType ptrdiff_type_;
 };
 
+std::string FormatDiagnostics(const clang::SourceManager& sm,
+                              const std::string& message,
+                              clang::SourceLocation loc);
+
 }  // namespace lldb_eval
 
 #endif  // LLDB_EVAL_EXPRESSION_CONTEXT_H_
