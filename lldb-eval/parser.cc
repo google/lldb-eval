@@ -523,6 +523,11 @@ std::string TypeDeclaration::GetBaseName() const {
 
 static std::unique_ptr<BuiltinFunctionDef> GetBuiltinFunctionDef(
     std::shared_ptr<Context> ctx, const std::string& identifier) {
+  //
+  // __log2(unsigned int x) -> unsigned int
+  //
+  //   Calculates the log2(x).
+  //
   if (identifier == "__log2") {
     lldb::SBType return_type = ctx->GetBasicType(lldb::eBasicTypeUnsignedInt);
     std::vector<lldb::SBType> arguments = {
@@ -531,10 +536,16 @@ static std::unique_ptr<BuiltinFunctionDef> GetBuiltinFunctionDef(
     return std::make_unique<BuiltinFunctionDef>(identifier, return_type,
                                                 std::move(arguments));
   }
+  //
+  // __findnonnull(T* ptr, long long buffer_size) -> int
+  //
+  //   Finds the first non-null object pointed by `ptr`. `ptr` is treated as an
+  //   array of pointers of size `buffer_size`.
+  //
   if (identifier == "__findnonnull") {
     lldb::SBType return_type = ctx->GetBasicType(lldb::eBasicTypeInt);
     std::vector<lldb::SBType> arguments = {
-        // The first argument should actually be "T**", but we don't support
+        // The first argument should actually be "T*", but we don't support
         // templates here.
         // HACK: Void means "any" and we'll check in runtime. The argument will
         // be passed as is without any conversions.
