@@ -95,6 +95,7 @@ Categories:
     ```
 
     *   Encountered: 2021 Mar (manual testing)
+    *   Fixed in [#115](https://github.com/google/lldb-eval/pull/115)
 
 *   Member access on class array
 
@@ -113,6 +114,7 @@ Categories:
         element of the array. The final result is the `x` field of the first
         element of the array.
     *   Encountered: 2021 Mar (reported by fuzzer)
+    *   Fixed in [#116](https://github.com/google/lldb-eval/pull/116)
 
 *   Using compatible array and pointer types in conditional expression
 
@@ -150,6 +152,80 @@ Categories:
     *   Encountered: 2021 Mar (manual testing)
     *   Fixed in [#90](https://github.com/google/lldb-eval/pull/90)
 
+*   Subscripting `void*`
+
+    ```cpp
+    &void_ptr[0]
+
+    // lldb      : error: subscript of pointer to incomplete type 'void'
+    // lldb-eval : OK (an address)
+    ```
+
+    *   Encountered: 2021 Apr (reported by fuzzer)
+    *   Fixed in [#128](https://github.com/google/lldb-eval/pull/128)
+
+*   Casting floats to bool
+
+    ```cpp
+    (bool)0.1
+
+    // lldb      : true
+    // lldb-eval : false
+    ```
+
+    *   Reason: Caused by re-implementation of casting logic in
+        [#125](https://github.com/google/lldb-eval/pull/125) to always use types
+        from the target.
+    *   Encountered: 2021 May (reported by fuzzer)
+    *   Fixed in [#133](https://github.com/google/lldb-eval/pull/133)
+
+*   Enumeration comparison
+
+    ```cpp
+    enum Enum : int { A = -1, B }
+
+    > Enum::A < Enum::B
+    // lldb      : true
+    // lldb-eval : false
+    ```
+
+    *   Reason: Unsigned values were used to compare enums' underlying values
+        `Compare(kind, lhs.GetUInt64(), rhs.GetUInt64())`.
+    *   Encountered: 2021 May (reported by fuzzer - enumerations picked up from
+        `namespace std` had negative values on Linux)
+    *   Fixed in [#134](https://github.com/google/lldb-eval/pull/134)
+
+*   Arithmetic vs. logical shift
+
+    ```cpp
+    -4 >> 1
+
+    // lldb      : 2
+    // lldb-eval : 2147483646
+    ```
+
+    *   Reason: Logical right shift was used for all types. Arithmetic right
+        shift was supposed to be used for signed types.
+    *   Encountered: 2021 Jun (manual testing)
+    *   Fixed in [#145](https://github.com/google/lldb-eval/pull/145)
+
+*   Type promotion in shift operation
+
+    ```cpp
+    -1 << 1U
+
+    // lldb      : -2         (int)
+    // lldb-eval : 4294967294 (unsigned int)
+    ```
+
+    *   Reason:
+        [*Usual arithmetic conversions*](https://eel.is/c++draft/expr.arith.conv)
+        were performed to deduce the resulting type and type promotions. This
+        holds for most of the binary operations. However, for shifts the result
+        type is that of the promoted left operand.
+    *   Encountered: 2021 Jun (reported by fuzzer)
+    *   Fixed in [#147](https://github.com/google/lldb-eval/pull/147)
+
 ## Undefined behaviours
 
 *   Division by zero
@@ -161,7 +237,7 @@ Categories:
     // lldb-eval : 0
     ```
 
-    *   Frequently reported by fuzzer
+    *   Prevented by UB detection mechanism in lldb-eval.
     *   Occasionally, LLDB reports `Execution was interrupted, reason: Exception
         0xc0000094 encountered at address 0x19c1f3b0105. The process has been
         returned to the state before expression evaluation.` This process may
@@ -198,7 +274,7 @@ Categories:
     // lldb-eval : 31              (computes __log2 of 4294967295)
     ```
 
-    *   Frequently reported by fuzzer
+    *   Prevented by UB detection mechanism in lldb-eval.
 
 *   Casting to different pointer type and dereferencing
 
@@ -214,6 +290,32 @@ Categories:
     *   Note: the expression violates
         [strict aliasing rule](https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8).
     *   Encountered: 2021 Feb (reported by fuzzer)
+
+*   Null pointer arithmetic
+
+    ```cpp
+    (char*)0 + char_min
+
+    // lldb      : 0x00000000ffffff80
+    // lldb-eval : 0xffffffffffffff80
+    ```
+
+    *   Note: only integer 0 can be added or subtracted from a null pointer.
+    *   Prevented by UB detection mechanism in lldb-eval.
+    *   Encountered: 2021 May (reported by fuzzer)
+
+*   Subtracting ill-formed pointers
+
+    ```cpp
+    (int*)3 - (int*)(5 + __log2(100))
+
+    // lldb      : -3
+    // lldb-eval : -2
+    ```
+
+    *   Note: `sizeof(int)` is 4, and difference of `int*` is expected to be a
+        multiple of 4.
+    *   Encountered: 2021 Jun (reported by fuzzer)
 
 ## Possible bugs in LLDB
 
