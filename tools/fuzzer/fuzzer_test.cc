@@ -963,6 +963,12 @@ std::vector<PrecedenceTestParam> gen_precedence_params() {
     params.emplace_back(std::move(str), std::move(expected));
   }
   {
+    Expr expected = DoubleConstant(0, DoubleConstant::Format::Default,
+                                   DoubleConstant::Length::Float);
+    std::string str = "0.f";
+    params.emplace_back(std::move(str), std::move(expected));
+  }
+  {
     Expr expected = DoubleConstant(0x0.1p-1070, DoubleConstant::Format::Hex,
                                    DoubleConstant::Length::Double);
 

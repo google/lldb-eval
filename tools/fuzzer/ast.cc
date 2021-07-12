@@ -315,9 +315,17 @@ std::ostream& operator<<(std::ostream& os, const DoubleConstant& e) {
 
   auto saved_flags = os.flags();
   switch (e.format_) {
-    case Format::Default:
-      os << std::defaultfloat << e.value_;
-      break;
+    case Format::Default: {
+      std::ostringstream sstream;
+      sstream << std::defaultfloat << e.value_;
+      os << sstream.str();
+      // Handle a corner case where the double constant is an integer (doesn't
+      // contain a decimal point) in order to prevent expressions such as `1f`
+      // which isn't well formed (it should be `1.f` instead).
+      if (sstream.str().find_first_of(".eE") == std::string::npos) {
+        os << ".";
+      }
+    } break;
 
     case Format::Scientific:
       os << std::fixed << e.value_;
