@@ -459,7 +459,35 @@ static lldb::SBTypeMember GetFieldWithNameIndexPath(
         }
         return field;
       }
+    } else if (field.GetType().IsAnonymousType()) {
+      // Every member of an anonymous struct is considered to be a member of
+      // the enclosing struct or union. This applies recursively if the
+      // enclosing struct or union is also anonymous.
+      //
+      //  struct S {
+      //    struct {
+      //      int x;
+      //    };
+      //  } s;
+      //
+      //  s.x = 1;
+
+      assert(field.GetName() == nullptr && "Field should be unnamed.");
+
+      auto field_in_anon_type =
+          GetFieldWithNameIndexPath(field.GetType(), name, idx);
+      if (field_in_anon_type) {
+        if (idx) {
+          idx->push_back(i + GetNumberOfNonEmptyBaseClasses(type));
+        }
+        return field_in_anon_type;
+      }
     }
+  }
+
+  // LLDB can't access inherited fields of anonymous struct members.
+  if (type.IsAnonymousType()) {
+    return lldb::SBTypeMember();
   }
 
   // Go through the base classes and look for the field there.

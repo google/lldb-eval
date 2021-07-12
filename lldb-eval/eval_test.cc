@@ -912,6 +912,42 @@ TEST_F(EvalTest, TestMemberOfInheritance) {
   EXPECT_THAT(Eval("parent->z"), IsEqual("3"));
 }
 
+TEST_F(EvalTest, TestMemberOfAnonymousMember) {
+  EXPECT_THAT(Eval("a.x"), IsEqual("1"));
+  EXPECT_THAT(Eval("a.y"), IsEqual("2"));
+
+  EXPECT_THAT(Eval("b.x"), IsError("no member named 'x' in 'B'"));
+  EXPECT_THAT(Eval("b.y"), IsError("no member named 'y' in 'B'"));
+  EXPECT_THAT(Eval("b.z"), IsEqual("3"));
+  EXPECT_THAT(Eval("b.w"), IsEqual("4"));
+  EXPECT_THAT(Eval("b.a.x"), IsEqual("1"));
+  EXPECT_THAT(Eval("b.a.y"), IsEqual("2"));
+
+  EXPECT_THAT(Eval("c.x"), IsEqual("5"));
+  EXPECT_THAT(Eval("c.y"), IsEqual("6"));
+
+  EXPECT_THAT(Eval("d.x"), IsEqual("7"));
+  EXPECT_THAT(Eval("d.y"), IsEqual("8"));
+  EXPECT_THAT(Eval("d.z"), IsEqual("9"));
+  EXPECT_THAT(Eval("d.w"), IsEqual("10"));
+
+  EXPECT_THAT(Eval("e.x"), IsError("no member named 'x' in 'E'"));
+  EXPECT_THAT(Eval("f.x"), IsError("no member named 'x' in 'F'"));
+  EXPECT_THAT(Eval("f.named_field.x"), IsEqual("12"));
+
+  EXPECT_THAT(Eval("unnamed_derived.x"), IsEqual("1"));
+  EXPECT_THAT(Eval("unnamed_derived.y"), IsEqual("2"));
+  EXPECT_THAT(Eval("unnamed_derived.z"), IsEqual("13"));
+
+  EXPECT_THAT(Eval("derb.x"), IsError("no member named 'x' in 'DerivedB'"));
+  EXPECT_THAT(Eval("derb.y"), IsError("no member named 'y' in 'DerivedB'"));
+  EXPECT_THAT(Eval("derb.z"), IsEqual("3"));
+  EXPECT_THAT(Eval("derb.w"), IsEqual("14"));
+  EXPECT_THAT(Eval("derb.k"), IsEqual("15"));
+  EXPECT_THAT(Eval("derb.a.x"), IsEqual("1"));
+  EXPECT_THAT(Eval("derb.a.y"), IsEqual("2"));
+}
+
 TEST_F(EvalTest, TestGlobalVariableLookup) {
   EXPECT_THAT(Eval("globalVar"), IsEqual("-559038737"));  // 0xDEADBEEF
   EXPECT_THAT(Eval("globalPtr"), IsOk());
