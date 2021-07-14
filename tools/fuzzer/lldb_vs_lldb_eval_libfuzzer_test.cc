@@ -43,30 +43,13 @@ extern "C" const char* __lsan_default_options() {
   return "print_suppressions=0";
 }
 
+// TODO: LSAN suppressions are needed to avoid OSS-Fuzz reports caused by
+// memory leaks in LLDB. Once these leaks are fixed, the function won't be
+// necessary anymore.
 extern "C" const char* __lsan_default_suppressions() {
   return "leak:printNode(llvm::itanium_demangle::Node const*\n"
          "leak:llvm::itanium_demangle::initializeOutputStream";
 }
-
-class UbStats {
- public:
-  void process(lldb_eval::UbStatus status) {
-    total_++;
-    count_[status]++;
-  }
-
-  bool should_report() const {
-    return total_ > 0 && total_ % kUbStatsPeriod == 0;
-  }
-
-  size_t count(lldb_eval::UbStatus status) { return count_[status]; }
-
- private:
-  size_t total_;
-  std::unordered_map<lldb_eval::UbStatus, size_t> count_;
-};
-
-static UbStats g_stats;
 
 const char* maybe_null(const char* str) {
   return str == nullptr ? "null" : str;
@@ -131,15 +114,23 @@ void log_value_mismatch(const std::string& expr, const std::string& lldb_value,
   log_separator();
 }
 
-void log_ub_stats() {
+void report_undefined_behaviour(lldb_eval::UbStatus status) {
   using lldb_eval::UbStatus;
-  log("UB stats: (kOk: %zu, kDivisionByZero: %zu, kInvalidCast: %zu, "
-      "kInvalidShift: %zu, kNullptrArithmetic: %zu)",
-      g_stats.count(UbStatus::kOk), g_stats.count(UbStatus::kDivisionByZero),
-      g_stats.count(UbStatus::kInvalidCast),
-      g_stats.count(UbStatus::kInvalidShift),
-      g_stats.count(UbStatus::kNullptrArithmetic));
-  log_separator();
+  static std::unordered_map<UbStatus, size_t> stats;
+  static size_t count = 0;
+
+  stats[status]++;
+  count++;
+
+  if (count % kUbStatsPeriod == 0) {
+    // Log statistics every `kUbStatsPeriod` iterations.
+    log("UB stats: (kOk: %zu, kDivisionByZero: %zu, kInvalidCast: %zu, "
+        "kInvalidShift: %zu, kNullptrArithmetic: %zu)",
+        stats[UbStatus::kOk], stats[UbStatus::kDivisionByZero],
+        stats[UbStatus::kInvalidCast], stats[UbStatus::kInvalidShift],
+        stats[UbStatus::kNullptrArithmetic]);
+    log_separator();
+  }
 }
 
 extern "C" size_t LLVMFuzzerCustomMutator(uint8_t* data, size_t size,
@@ -171,10 +162,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   lldb_eval::UbStatus ub_status = err.ub_status();
 
   // Process statistics on UB.
-  g_stats.process(ub_status);
-  if (g_stats.should_report()) {
-    log_ub_stats();
-  }
+  report_undefined_behaviour(ub_status);
 
   // LLDB evaluation.
   lldb::SBExpressionOptions opts;
