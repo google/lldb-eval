@@ -162,6 +162,9 @@ cc_fuzz_test(
 cc_fuzz_test(
     name = "lldb_vs_lldb_eval_libfuzzer_test",
     srcs = ["lldb_vs_lldb_eval_libfuzzer_test.cc"],
+    # Allow fprintf with string variables as formats for easier logging
+    # (-Wformat-security only allows string literals, e.g. "%s").
+    copts = ["-Wno-format-security"],
     data = [
         "//testdata:fuzzer_binary_gen",
         "//testdata:fuzzer_binary_srcs",
