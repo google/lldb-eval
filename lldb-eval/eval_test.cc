@@ -1598,7 +1598,7 @@ TEST_F(EvalTest, TestBitFieldPromotion) {
   EXPECT_THAT(Eval("-(true ? bf.b : bf.g)"), IsEqual("4294967287"));
   EXPECT_THAT(Eval("-(true ? bf.b : bf.h)"), IsEqual("-9"));
 
-  if (HAS_METHOD(lldb::SBType, IsScopedEnumerationType())) {
+  if (HAS_METHOD(lldb::SBType, GetEnumerationIntegerType())) {
     EXPECT_THAT(Eval("bf.j - 2"), IsEqual("4294967295"));
     EXPECT_THAT(Eval("-(true ? bf.b : bf.j)"), IsEqual("4294967287"));
     EXPECT_THAT(Eval("-(true ? bf.e : bf.j)"), IsEqual("4294967295"));
