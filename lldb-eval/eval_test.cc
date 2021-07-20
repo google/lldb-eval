@@ -1583,9 +1583,42 @@ TEST_F(EvalTest, TestBitField) {
               IsError("address of bit-field requested"));
 }
 
-// TODO(werat): Enable when bitfield promotion is implemented.
-TEST_F(EvalTest, DISABLED_TestBitFieldPromotion) {
-  EXPECT_THAT(Eval("bf.a - 10"), IsEqual("-1"));
+TEST_F(EvalTest, TestBitFieldPromotion) {
+  EXPECT_THAT(Eval("bf.b - 10"), IsEqual("-1"));
+  EXPECT_THAT(Eval("bf.e - 2"), IsEqual("-1"));
+  EXPECT_THAT(Eval("bf.f - 2"), IsEqual("4294967295"));
+  EXPECT_THAT(Eval("bf.g - 2"), IsEqual("-1"));
+  EXPECT_THAT(Eval("bf.h - 2"), IsEqual("-1"));
+  EXPECT_THAT(Eval("bf.i - 2"), IsEqual("18446744073709551615"));
+  EXPECT_THAT(Eval("bf.g - bf.b"), IsEqual("-8"));
+
+  EXPECT_THAT(Eval("-(true ? bf.b : bf.a)"), IsEqual("-9"));
+  EXPECT_THAT(Eval("-(true ? bf.b : bf.e)"), IsEqual("-9"));
+  EXPECT_THAT(Eval("-(true ? bf.b : bf.f)"), IsEqual("4294967287"));
+  EXPECT_THAT(Eval("-(true ? bf.b : bf.g)"), IsEqual("4294967287"));
+  EXPECT_THAT(Eval("-(true ? bf.b : bf.h)"), IsEqual("-9"));
+
+  if (HAS_METHOD(lldb::SBType, IsScopedEnumerationType())) {
+    EXPECT_THAT(Eval("bf.j - 2"), IsEqual("4294967295"));
+    EXPECT_THAT(Eval("-(true ? bf.b : bf.j)"), IsEqual("4294967287"));
+    EXPECT_THAT(Eval("-(true ? bf.e : bf.j)"), IsEqual("4294967295"));
+  }
+
+  // TODO: Repeat tests in the value context once the bitfield information is
+  // correctly retrieved from identifier lookup.
+}
+
+TEST_F(EvalTest, TestBitFieldWithSideEffects) {
+  this->compare_with_lldb_ = false;
+  this->allow_side_effects_ = true;
+
+  EXPECT_THAT(Eval("bf.b -= 10"), IsEqual("15"));
+  EXPECT_THAT(Eval("bf.e -= 10"), IsEqual("-9"));
+  EXPECT_THAT(Eval("bf.e++"), IsEqual("-9"));
+  EXPECT_THAT(Eval("++bf.e"), IsEqual("-7"));
+
+  // TODO: Enable test once the issue is fixed:
+  // EXPECT_THAT(Eval("bf.b++"), IsEqual("15"));
 }
 
 TEST_F(EvalTest, TestContextVariables) {

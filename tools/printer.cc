@@ -38,6 +38,10 @@ std::string print_common_props(const AstNode* node) {
   ret += " ";
   ret += node->is_rvalue() ? "rvalue" : "lvalue";
 
+  if (node->is_bitfield()) {
+    ret += " bitfield";
+  }
+
   return ret;
 }
 

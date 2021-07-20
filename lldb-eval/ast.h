@@ -44,6 +44,7 @@ class AstNode {
   virtual bool is_bitfield() const { return false; };
   virtual bool is_context_var() const { return false; };
   virtual bool is_literal_zero() const { return false; }
+  virtual uint32_t bitfield_size() const { return 0; }
   virtual lldb::SBType result_type() const = 0;
 
   clang::SourceLocation location() const { return location_; }
@@ -186,18 +187,20 @@ class CStyleCastNode : public AstNode {
 class MemberOfNode : public AstNode {
  public:
   MemberOfNode(clang::SourceLocation location, lldb::SBType result_type,
-               ExprResult lhs, bool is_bitfield,
+               ExprResult lhs, bool is_bitfield, uint32_t bitfield_size,
                std::vector<uint32_t> member_index, bool is_arrow)
       : AstNode(location),
         result_type_(result_type),
         lhs_(std::move(lhs)),
         is_bitfield_(is_bitfield),
+        bitfield_size_(bitfield_size),
         member_index_(std::move(member_index)),
         is_arrow_(is_arrow) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return false; }
   bool is_bitfield() const override { return is_bitfield_; }
+  uint32_t bitfield_size() const override { return bitfield_size_; }
   lldb::SBType result_type() const override { return result_type_; }
 
   AstNode* lhs() const { return lhs_.get(); }
@@ -208,6 +211,7 @@ class MemberOfNode : public AstNode {
   lldb::SBType result_type_;
   ExprResult lhs_;
   bool is_bitfield_;
+  uint32_t bitfield_size_;
   std::vector<uint32_t> member_index_;
   bool is_arrow_;
 };

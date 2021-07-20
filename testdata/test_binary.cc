@@ -719,11 +719,19 @@ void TestValueScope() {
 }
 
 void TestBitField() {
+  enum BitFieldEnum : uint32_t { kZero, kOne };
+
   struct BitFieldStruct {
     uint16_t a : 10;
     uint32_t b : 4;
     bool c : 1;
     bool d : 1;
+    int32_t e : 32;
+    uint32_t f : 32;
+    uint32_t g : 31;
+    uint64_t h : 31;
+    uint64_t i : 33;
+    BitFieldEnum j : 10;
   };
 
   BitFieldStruct bf;
@@ -731,6 +739,12 @@ void TestBitField() {
   bf.b = 0b1001;
   bf.c = 0b0;
   bf.d = 0b1;
+  bf.e = 0b1;
+  bf.f = 0b1;
+  bf.g = 0b1;
+  bf.h = 0b1;
+  bf.i = 0b1;
+  bf.j = BitFieldEnum::kOne;
 
   struct AlignedBitFieldStruct {
     uint16_t a : 10;
@@ -744,6 +758,7 @@ void TestBitField() {
 
   // BREAK(TestBitField)
   // BREAK(TestBitFieldPromotion)
+  // BREAK(TestBitFieldWithSideEffects)
 }
 
 void TestContextVariables() {

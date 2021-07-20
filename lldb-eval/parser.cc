@@ -239,7 +239,31 @@ static ExprResult UsualUnaryConversions(std::shared_ptr<Context> ctx,
   // array-to-pointer and the integral promotion for eligible types.
   Type result_type = expr->result_type_deref();
 
-  // TODO(werat): Promote bitfields: e.g. uint32_t:10 -> int (not unsigned int).
+  if (expr->is_bitfield()) {
+    // Promote bitfields. If `int` can represent the bitfield value, it is
+    // converted to `int`. Otherwise, if `unsigned int` can represent it, it
+    // is converted to `unsigned int`. Otherwise, it is treated as its
+    // underlying type.
+
+    uint32_t bitfield_size = expr->bitfield_size();
+    // Some bitfields have undefined size (e.g. result of ternary operation).
+    // The AST's `bitfield_size` of those is 0, and no promotion takes place.
+    if (bitfield_size > 0 && result_type.IsInteger()) {
+      lldb::SBType int_type = ctx->GetBasicType(lldb::eBasicTypeInt);
+      lldb::SBType uint_type = ctx->GetBasicType(lldb::eBasicTypeUnsignedInt);
+      uint32_t int_bit_size = int_type.GetByteSize() * CHAR_BIT;
+      if (bitfield_size < int_bit_size ||
+          (result_type.IsSigned() && bitfield_size == int_bit_size)) {
+        expr = std::make_unique<CStyleCastNode>(expr->location(), int_type,
+                                                std::move(expr),
+                                                CStyleCastKind::kArithmetic);
+      } else if (bitfield_size <= uint_type.GetByteSize() * CHAR_BIT) {
+        expr = std::make_unique<CStyleCastNode>(expr->location(), uint_type,
+                                                std::move(expr),
+                                                CStyleCastKind::kArithmetic);
+      }
+    }
+  }
 
   if (result_type.IsArrayType()) {
     expr = InsertArrayToPointerConversion(std::move(expr));
@@ -1259,6 +1283,7 @@ ExprResult Parser::ParsePrimaryExpression() {
       return ParseBuiltinFunction(loc, std::move(func_def));
     }
     // Otherwise look for an identifier.
+    // TODO: Handle bitfield identifiers when evaluating in the value context.
     auto value = ctx_->LookupIdentifier(identifier);
     if (!value) {
       BailOut(ErrorCode::kUndeclaredIdentifier,
@@ -3034,9 +3059,17 @@ ExprResult Parser::BuildMemberOf(ExprResult lhs, std::string member_id,
     return std::make_unique<ErrorNode>();
   }
 
-  return std::make_unique<MemberOfNode>(location, member.GetType(),
-                                        std::move(lhs), member.IsBitfield(),
-                                        std::move(idx), is_arrow);
+  uint32_t bitfield_size =
+      member.IsBitfield() ? member.GetBitfieldSizeInBits() : 0;
+  if (bitfield_size > member.GetType().GetByteSize() * CHAR_BIT) {
+    // If the declared bitfield size is exceeding the type size, shrink
+    // the bitfield size to the size of the type in bits.
+    bitfield_size = member.GetType().GetByteSize() * CHAR_BIT;
+  }
+
+  return std::make_unique<MemberOfNode>(
+      location, member.GetType(), std::move(lhs), member.IsBitfield(),
+      bitfield_size, std::move(idx), is_arrow);
 }
 
 }  // namespace lldb_eval
