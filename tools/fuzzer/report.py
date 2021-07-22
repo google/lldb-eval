@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # Copyright 2021 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -122,4 +123,3 @@ if __name__ == "__main__":
   else:
     processor = LogsProcessor(args.disable_ub_stats)
     read_fuzzer_log_lines(files, processor)
-
