@@ -20,9 +20,9 @@
         python report.py --ub-stats *.log
 """
 
+import argparse
 import collections
 import glob
-import sys
 
 
 FUZZER_LOGGING_PREFIX = "[lldb-eval-fuzzer] "
@@ -99,31 +99,27 @@ def print_ub_stats(stats):
 
 
 if __name__ == "__main__":
-  # Filter out UB stats logs.
-  disable_ub_stats = False
-  # Display aggregated UB stats.
-  ub_stats = False
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--disable-ub-stats", action="store_true",
+                      help="discard undefined behaviour logs")
+  parser.add_argument("--ub-stats", action="store_true",
+                      help="show only stats on undefined behaviour")
+
+  # Parse argument options. The remaining arguments are file patterns.
+  args, file_patterns = parser.parse_known_args()
+
+  assert not args.disable_ub_stats or not args.ub_stats, "Wrong configuration!"
 
   files = []
-  for arg in sys.argv[1:]:
-    if arg[0:2] == "--":
-      if arg == "--disable-ub-stats":
-        disable_ub_stats = True
-      elif arg == "--ub-stats":
-        ub_stats = True
-      # Continue, the argument isn't a file.
-      continue
-
-    for filename in glob.glob(arg):
+  for pattern in file_patterns:
+    for filename in glob.glob(pattern):
       files.append(filename)
 
-  assert (not disable_ub_stats or not ub_stats), "Wrong configuration!"
-
-  if ub_stats:
+  if args.ub_stats:
     processor = UbStatsProcessor()
     read_fuzzer_log_lines(files, processor)
     print_ub_stats(processor.ub_stats())
   else:
-    processor = LogsProcessor(disable_ub_stats)
+    processor = LogsProcessor(args.disable_ub_stats)
     read_fuzzer_log_lines(files, processor)
 
