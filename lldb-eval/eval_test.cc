@@ -2512,3 +2512,21 @@ TEST_F(EvalTest, TestBuiltinFunction_findnonnull) {
     GTEST_FATAL_FAILURE_("Unknown pointer size in the target process");
   }
 }
+
+TEST_F(EvalTest, TestUniquePtr) {
+#ifdef _WIN32
+  // On Windows we're not using `libc++` and therefore the layout of
+  // `std::unique_ptr` is different.
+  GTEST_SKIP() << "not supported on Windows";
+#endif
+  // On Linux this assumes the usage of libc++ standard library.
+
+  EXPECT_THAT(Eval("ptr.__ptr_.__value_"), IsOk());
+
+  EXPECT_THAT(Eval("*(Node**)&ptr.__ptr_"), IsOk());
+  EXPECT_THAT(Eval("(*(Node**)&ptr.__ptr_)->value"), IsEqual("1"));
+
+  EXPECT_THAT(Eval("ptr.__ptr_.__value_->value"), IsEqual("1"));
+  EXPECT_THAT(Eval("ptr.__ptr_.__value_->next.__ptr_.__value_->value"),
+              IsEqual("2"));
+}

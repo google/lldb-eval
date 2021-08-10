@@ -16,7 +16,7 @@
 Rules for building test binaries.
 """
 
-def binary_gen(name, srcs):
+def binary_gen(name, srcs, use_libcxx = False):
     native.filegroup(
         name = name + "_srcs",
         srcs = srcs,
@@ -40,7 +40,7 @@ def binary_gen(name, srcs):
             "//conditions:default": build_cmd.format(
                 # Using "-static" prevents fuzzer_binary from using __log2
                 # function from libm.so.
-                platform_opts = "-lstdc++ -static",
+                platform_opts = "-stdlib=libc++ -lc++" if use_libcxx else "-lstdc++ -static",
             ),
         }),
         tags = ["no-sandbox"],

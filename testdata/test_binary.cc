@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <string>
 
 static void TestArithmetic() {
@@ -929,6 +930,18 @@ void TestSideEffects() {
   // BREAK(TestSideEffects)
 }
 
+void TestUniquePtr() {
+  struct Node {
+    std::unique_ptr<Node> next;
+    int value;
+  };
+
+  auto ptr = std::unique_ptr<Node>(new Node{nullptr, 2});
+  ptr = std::unique_ptr<Node>(new Node{std::move(ptr), 1});
+
+  // BREAK(TestUniquePtr)
+}
+
 namespace test_binary {
 
 void main() {
@@ -970,6 +983,7 @@ void main() {
   TestMemberFunctionCall();
   TestCompositeAssignment();
   TestSideEffects();
+  TestUniquePtr();
 
   // BREAK HERE
 }

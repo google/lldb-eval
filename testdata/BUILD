@@ -22,6 +22,7 @@ binary_gen(
         "test_binary.cc",
         "test_library.cc",
     ],
+    use_libcxx=True,
 )
 
 binary_gen(

@@ -425,6 +425,12 @@ void Interpreter::Visit(const MemberOfNode* node) {
   // so we don't need to dereference it explicitely. This also avoid having an
   // "ephemeral" parent Value, representing the dereferenced LHS.
   lldb::SBValue member_val = lhs.inner_value();
+  // Objects from the standard library (e.g. containers, smart pointers) have
+  // synthetic children (e.g. stored values for containers, wrapped object for
+  // smart pointers), but the indexes in `member_index()` array refer to the
+  // actual type members.
+  member_val.SetPreferSyntheticValue(false);
+
   for (uint32_t idx : node->member_index()) {
     // Force static value, otherwise we can end up with the "real" type.
     member_val = member_val.GetChildAtIndex(idx, lldb::eNoDynamicValues,
