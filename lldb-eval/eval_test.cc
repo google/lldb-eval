@@ -2518,7 +2518,7 @@ TEST_F(EvalTest, TestUniquePtr) {
   // On Windows we're not using `libc++` and therefore the layout of
   // `std::unique_ptr` is different.
   GTEST_SKIP() << "not supported on Windows";
-#endif
+#else
   // On Linux this assumes the usage of libc++ standard library.
 
   EXPECT_THAT(Eval("ptr.__ptr_.__value_"), IsOk());
@@ -2529,4 +2529,5 @@ TEST_F(EvalTest, TestUniquePtr) {
   EXPECT_THAT(Eval("ptr.__ptr_.__value_->value"), IsEqual("1"));
   EXPECT_THAT(Eval("ptr.__ptr_.__value_->next.__ptr_.__value_->value"),
               IsEqual("2"));
+#endif
 }

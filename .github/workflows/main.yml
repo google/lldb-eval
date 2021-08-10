@@ -30,10 +30,10 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x ./llvm.sh
           sudo ./llvm.sh ${{ matrix.tag }}
-          sudo apt install -y llvm-${{ matrix.tag }}-dev libclang-${{ matrix.tag }}-dev liblldb-${{ matrix.tag }}-dev
+          sudo apt install -y llvm-${{ matrix.tag }}-dev libclang-${{ matrix.tag }}-dev liblldb-${{ matrix.tag }}-dev libc++-${{ matrix.tag }}-dev libc++abi-${{ matrix.tag }}-dev
           echo "LLVM_INSTALL_PATH=/usr/lib/llvm-${{ matrix.tag }}" >> $GITHUB_ENV
-          echo "CC=gcc-10" >> $GITHUB_ENV
-          echo "CXX=g++-10" >> $GITHUB_ENV
+          echo "CC=clang-${{ matrix.tag }}" >> $GITHUB_ENV
+          echo "CXX=clang++-${{ matrix.tag }}" >> $GITHUB_ENV
 
       - name: Setup LLVM (Windows)
         if: matrix.os == 'windows-latest'
