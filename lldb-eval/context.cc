@@ -297,9 +297,10 @@ lldb::SBValue Context::LookupIdentifier(const std::string& name) const {
     // resolved relative to the current scope. I.e. if the current frame is in
     // "ns1::ns2::Foo()", then "ns2::x" should resolve to "ns1::ns2::x".
 
-    if (scope_ && !name_ref.contains("::")) {
+    if (scope_ && !global_scope) {
       // Try looking for static member of the current scope value, e.g.
-      // `ScopeType::NAME`.
+      // `ScopeType::NAME`. NAME can include nested struct (`Nested::SUBNAME`),
+      // but it cannot be part of the global scope (start with "::").
       std::string name_with_type_prefix =
           llvm::formatv("{0}::{1}", scope_.GetTypeName(), name_ref).str();
       value = LookupStaticIdentifier(ctx_.GetTarget(), name_with_type_prefix);

@@ -537,9 +537,14 @@ class Vars {
   inline static double inline_static = 1.5;
   static constexpr int static_constexpr = 2;
   static const unsigned int static_const;
+
+  struct Nested {
+    static const int static_const;
+  };
 };
 
 const unsigned int Vars::static_const = 3;
+const int Vars::Nested::static_const = 10;
 
 }  // namespace inner
 
@@ -548,9 +553,14 @@ class Vars {
   inline static double inline_static = 4.5;
   static constexpr int static_constexpr = 5;
   static const unsigned int static_const;
+
+  struct Nested {
+    static const int static_const;
+  };
 };
 
 const unsigned int Vars::static_const = 6;
+const int Vars::Nested::static_const = 20;
 
 }  // namespace outer
 
@@ -559,9 +569,14 @@ class Vars {
   inline static double inline_static = 7.5;
   static constexpr int static_constexpr = 8;
   static const unsigned int static_const;
+
+  struct Nested {
+    static const int static_const;
+  };
 };
 
 const unsigned int Vars::static_const = 9;
+const int Vars::Nested::static_const = 30;
 
 static void TestStaticConst() {
   Vars vars;
