@@ -564,6 +564,10 @@ class Vars {
 const unsigned int Vars::static_const = 9;
 
 static void TestStaticConst() {
+  Vars vars;
+  outer::Vars outer_vars;
+  outer::inner::Vars outer_inner_vars;
+
   // BREAK(TestStaticConstDeclaredInline)
   // BREAK(TestStaticConstDeclaredOutsideTheClass)
 }
