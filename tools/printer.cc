@@ -92,6 +92,7 @@ class AstPrinter : Visitor {
   void Visit(const MemberOfNode* node) override {
     std::cout << "MemberOfNode " << print_common_props(node) << " "
               << "member=TODO" << std::endl;
+
     PrintLastChild(node->lhs());
   }
 
@@ -122,6 +123,12 @@ class AstPrinter : Visitor {
     PrintChild(node->cond());
     PrintChild(node->lhs());
     PrintLastChild(node->rhs());
+  }
+
+  void Visit(const SmartPtrToPtrDecay* node) override {
+    std::cout << "SmartPtrToPtrDecay " << print_common_props(node) << std::endl;
+
+    PrintLastChild(node->ptr());
   }
 
  private:

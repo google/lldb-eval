@@ -2521,13 +2521,122 @@ TEST_F(EvalTest, TestUniquePtr) {
 #else
   // On Linux this assumes the usage of libc++ standard library.
 
-  EXPECT_THAT(Eval("ptr.__ptr_.__value_"), IsOk());
+  EXPECT_THAT(Eval("*(NodeU**)&ptr_node.__ptr_"), IsOk());
+  EXPECT_THAT(Eval("(*(NodeU**)&ptr_node.__ptr_)->value"), IsEqual("1"));
 
-  EXPECT_THAT(Eval("*(Node**)&ptr.__ptr_"), IsOk());
-  EXPECT_THAT(Eval("(*(Node**)&ptr.__ptr_)->value"), IsEqual("1"));
-
-  EXPECT_THAT(Eval("ptr.__ptr_.__value_->value"), IsEqual("1"));
-  EXPECT_THAT(Eval("ptr.__ptr_.__value_->next.__ptr_.__value_->value"),
+  EXPECT_THAT(Eval("ptr_node.__ptr_.__value_"), IsOk());
+  EXPECT_THAT(Eval("ptr_node.__ptr_.__value_->value"), IsEqual("1"));
+  EXPECT_THAT(Eval("ptr_node.__ptr_.__value_->next.__ptr_.__value_->value"),
               IsEqual("2"));
+#endif
+}
+
+TEST_F(EvalTest, TestUniquePtrCompare) {
+#ifdef _WIN32
+  // On Windows we're not using `libc++` and therefore the layout of
+  // `std::unique_ptr` is different.
+  GTEST_SKIP() << "not supported on Windows";
+#elif LLVM_VERSION_MAJOR < 11
+  GTEST_SKIP() << "LLDB 10 and earlier doesn't have formatters for "
+                  "std::unique_ptr from libc++";
+#else
+  // On Linux this assumes the usage of libc++ standard library.
+  this->compare_with_lldb_ = false;
+
+  EXPECT_THAT(Eval("ptr_int == nullptr"), IsEqual("false"));
+  EXPECT_THAT(Eval("ptr_int != nullptr"), IsEqual("true"));
+  EXPECT_THAT(Eval("ptr_int == ptr_int"), IsEqual("true"));
+
+  // C++ doesn't allow comparing unique_ptr with raw pointers, but we allow it
+  // for convenience.
+  EXPECT_THAT(Eval("ptr_int == 0"), IsEqual("false"));
+  EXPECT_THAT(Eval("ptr_int == (int*)0"), IsEqual("false"));
+
+  EXPECT_THAT(Eval("ptr_float == nullptr"), IsEqual("false"));
+  EXPECT_THAT(Eval("ptr_float != nullptr"), IsEqual("true"));
+  EXPECT_THAT(Eval("ptr_float == (float*)0"), IsEqual("false"));
+
+  EXPECT_THAT(Eval("ptr_float == (int*)0"),
+              IsError("comparison of distinct pointer types"));
+  EXPECT_THAT(Eval("ptr_int == ptr_float"),
+              IsError("comparison of distinct pointer types"));
+
+  EXPECT_THAT(Eval("ptr_null == nullptr"), IsEqual("true"));
+  EXPECT_THAT(Eval("ptr_null != nullptr"), IsEqual("false"));
+
+  EXPECT_THAT(Eval("ptr_void == nullptr"), IsEqual("false"));
+  EXPECT_THAT(Eval("ptr_void != nullptr"), IsEqual("true"));
+  EXPECT_THAT(Eval("ptr_void == ptr_void"), IsEqual("true"));
+
+  // Void pointer can be compared with everything.
+  EXPECT_THAT(Eval("ptr_void == (int*)0"), IsEqual("false"));
+  EXPECT_THAT(Eval("ptr_void == (void*)0"), IsEqual("false"));
+  EXPECT_THAT(Eval("ptr_int == ptr_void"), IsEqual("false"));
+  EXPECT_THAT(Eval("ptr_float == ptr_void"), IsEqual("false"));
+
+#endif
+}
+
+TEST_F(EvalTest, TestSharedPtr) {
+#ifdef _WIN32
+  // On Windows we're not using `libc++` and therefore the layout of
+  // `std::unique_ptr` is different.
+  GTEST_SKIP() << "not supported on Windows";
+#else
+  // On Linux this assumes the usage of libc++ standard library.
+
+  EXPECT_THAT(Eval("*(NodeS**)&ptr_node.__ptr_"), IsOk());
+  EXPECT_THAT(Eval("(*(NodeS**)&ptr_node.__ptr_)->value"), IsEqual("1"));
+
+  EXPECT_THAT(Eval("ptr_node.__ptr_"), IsOk());
+  EXPECT_THAT(Eval("ptr_node.__ptr_->value"), IsEqual("1"));
+  EXPECT_THAT(Eval("ptr_node.__ptr_->next.__ptr_->value"), IsEqual("2"));
+
+  EXPECT_THAT(Eval("ptr_int.__ptr_"), IsOk());
+  EXPECT_THAT(Eval("*ptr_int.__ptr_"), IsEqual("1"));
+  EXPECT_THAT(Eval("ptr_int_weak.__ptr_"), IsOk());
+  EXPECT_THAT(Eval("*ptr_int_weak.__ptr_"), IsEqual("1"));
+#endif
+}
+
+TEST_F(EvalTest, TestSharedPtrCompare) {
+#ifdef _WIN32
+  // On Windows we're not using `libc++` and therefore the layout of
+  // `std::shared_ptr` is different.
+  GTEST_SKIP() << "not supported on Windows";
+#else
+  // On Linux this assumes the usage of libc++ standard library.
+  this->compare_with_lldb_ = false;
+
+  EXPECT_THAT(Eval("ptr_int == nullptr"), IsEqual("false"));
+  EXPECT_THAT(Eval("ptr_int != nullptr"), IsEqual("true"));
+  EXPECT_THAT(Eval("ptr_int == ptr_int"), IsEqual("true"));
+
+  // C++ doesn't allow comparing shared_ptr with raw pointers, but we allow it
+  // for convenience.
+  EXPECT_THAT(Eval("ptr_int == 0"), IsEqual("false"));
+  EXPECT_THAT(Eval("ptr_int == (int*)0"), IsEqual("false"));
+
+  EXPECT_THAT(Eval("ptr_float == nullptr"), IsEqual("false"));
+  EXPECT_THAT(Eval("ptr_float != nullptr"), IsEqual("true"));
+  EXPECT_THAT(Eval("ptr_float == (float*)0"), IsEqual("false"));
+
+  EXPECT_THAT(Eval("ptr_float == (int*)0"),
+              IsError("comparison of distinct pointer types"));
+  EXPECT_THAT(Eval("ptr_int == ptr_float"),
+              IsError("comparison of distinct pointer types"));
+
+  EXPECT_THAT(Eval("ptr_null == nullptr"), IsEqual("true"));
+  EXPECT_THAT(Eval("ptr_null != nullptr"), IsEqual("false"));
+
+  EXPECT_THAT(Eval("ptr_void == nullptr"), IsEqual("false"));
+  EXPECT_THAT(Eval("ptr_void != nullptr"), IsEqual("true"));
+  EXPECT_THAT(Eval("ptr_void == ptr_void"), IsEqual("true"));
+
+  // Void pointer can be compared with everything.
+  EXPECT_THAT(Eval("ptr_void == (int*)0"), IsEqual("false"));
+  EXPECT_THAT(Eval("ptr_void == (void*)0"), IsEqual("false"));
+  EXPECT_THAT(Eval("ptr_int == ptr_void"), IsEqual("true"));
+  EXPECT_THAT(Eval("ptr_float == ptr_void"), IsEqual("false"));
 #endif
 }

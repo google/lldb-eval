@@ -931,15 +931,42 @@ void TestSideEffects() {
 }
 
 void TestUniquePtr() {
-  struct Node {
-    std::unique_ptr<Node> next;
+  struct NodeU {
+    std::unique_ptr<NodeU> next;
     int value;
   };
+  auto ptr_node = std::unique_ptr<NodeU>(new NodeU{nullptr, 2});
+  ptr_node = std::unique_ptr<NodeU>(new NodeU{std::move(ptr_node), 1});
 
-  auto ptr = std::unique_ptr<Node>(new Node{nullptr, 2});
-  ptr = std::unique_ptr<Node>(new Node{std::move(ptr), 1});
+  std::unique_ptr<char> ptr_null;
+  auto ptr_int = std::make_unique<int>(1);
+  auto ptr_float = std::make_unique<float>(1.1f);
+
+  auto deleter = [](void const* data) { delete static_cast<int const*>(data); };
+  std::unique_ptr<void, decltype(deleter)> ptr_void(new int(42), deleter);
 
   // BREAK(TestUniquePtr)
+  // BREAK(TestUniquePtrCompare)
+}
+
+void TestSharedPtr() {
+  struct NodeS {
+    std::shared_ptr<NodeS> next;
+    int value;
+  };
+  auto ptr_node = std::shared_ptr<NodeS>(new NodeS{nullptr, 2});
+  ptr_node = std::shared_ptr<NodeS>(new NodeS{std::move(ptr_node), 1});
+
+  std::shared_ptr<char> ptr_null;
+  auto ptr_int = std::make_shared<int>(1);
+  auto ptr_float = std::make_shared<float>(1.1f);
+
+  std::weak_ptr<int> ptr_int_weak = ptr_int;
+
+  std::shared_ptr<void> ptr_void = ptr_int;
+
+  // BREAK(TestSharedPtr)
+  // BREAK(TestSharedPtrCompare)
 }
 
 namespace test_binary {
@@ -984,6 +1011,7 @@ void main() {
   TestCompositeAssignment();
   TestSideEffects();
   TestUniquePtr();
+  TestSharedPtr();
 
   // BREAK HERE
 }

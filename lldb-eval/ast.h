@@ -373,6 +373,23 @@ class TernaryOpNode : public AstNode {
   ExprResult rhs_;
 };
 
+class SmartPtrToPtrDecay : public AstNode {
+ public:
+  SmartPtrToPtrDecay(clang::SourceLocation location, lldb::SBType result_type,
+                     ExprResult ptr)
+      : AstNode(location), result_type_(result_type), ptr_(std::move(ptr)) {}
+
+  void Accept(Visitor* v) const override;
+  bool is_rvalue() const override { return false; }
+  lldb::SBType result_type() const override { return result_type_; }
+
+  AstNode* ptr() const { return ptr_.get(); }
+
+ private:
+  lldb::SBType result_type_;
+  ExprResult ptr_;
+};
+
 class Visitor {
  public:
   virtual ~Visitor() {}
@@ -387,6 +404,7 @@ class Visitor {
   virtual void Visit(const BinaryOpNode* node) = 0;
   virtual void Visit(const UnaryOpNode* node) = 0;
   virtual void Visit(const TernaryOpNode* node) = 0;
+  virtual void Visit(const SmartPtrToPtrDecay* node) = 0;
 };
 
 }  // namespace lldb_eval

@@ -21,6 +21,7 @@
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
 #include "lldb/lldb-enumerations.h"
+#include "llvm/Support/Regex.h"
 
 namespace lldb_eval {
 
@@ -89,8 +90,30 @@ bool Type::IsInteger() { return GetTypeFlags() & lldb::eTypeIsInteger; }
 bool Type::IsFloat() { return GetTypeFlags() & lldb::eTypeIsFloat; }
 
 bool Type::IsPointerToVoid() {
-  return IsPointerType() &&
-         GetPointeeType().GetBasicType() == lldb::eBasicTypeVoid;
+  lldb::SBType pointee_type;
+  if (IsPointerType()) {
+    pointee_type = GetPointeeType();
+  }
+  if (IsSmartPtrType()) {
+    pointee_type = GetSmartPtrPointeeType();
+  }
+  return pointee_type.GetBasicType() == lldb::eBasicTypeVoid;
+}
+
+bool Type::IsSmartPtrType() {
+  // Regular expressions are mirrored from LLDB:
+  // https://github.com/llvm/llvm-project/blob/release/13.x/lldb/source/Plugins/Language/CPlusPlus/CPlusPlusLanguage.cpp#L614-L634
+  static llvm::Regex k_libcxx_std_unique_ptr_regex(
+      "^std::__[[:alnum:]]+::unique_ptr<.+>(( )?&)?$");
+  static llvm::Regex k_libcxx_std_shared_ptr_regex(
+      "^std::__[[:alnum:]]+::shared_ptr<.+>(( )?&)?$");
+  static llvm::Regex k_libcxx_std_weak_ptr_regex(
+      "^std::__[[:alnum:]]+::weak_ptr<.+>(( )?&)?$");
+
+  llvm::StringRef name = GetName();
+  return k_libcxx_std_unique_ptr_regex.match(name) ||
+         k_libcxx_std_shared_ptr_regex.match(name) ||
+         k_libcxx_std_weak_ptr_regex.match(name);
 }
 
 bool Type::IsNullPtrType() {
@@ -153,6 +176,13 @@ bool Type::IsPromotableIntegerType() {
 bool Type::IsContextuallyConvertibleToBool() {
   return IsScalar() || IsUnscopedEnum() || IsPointerType() || IsNullPtrType() ||
          IsArrayType();
+}
+
+lldb::SBType Type::GetSmartPtrPointeeType() {
+  assert(IsSmartPtrType() &&
+         "the type should be a smart pointer (std::unique_ptr, std::shared_ptr "
+         "or std::weak_ptr");
+  return GetTemplateArgumentType(0);
 }
 
 lldb::SBType Type::GetEnumerationIntegerType(std::shared_ptr<Context> ctx) {

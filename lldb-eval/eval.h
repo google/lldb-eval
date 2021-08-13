@@ -69,6 +69,7 @@ class Interpreter : Visitor {
   void Visit(const BinaryOpNode* node) override;
   void Visit(const UnaryOpNode* node) override;
   void Visit(const TernaryOpNode* node) override;
+  void Visit(const SmartPtrToPtrDecay* node) override;
 
   Value EvalNode(const AstNode* node, FlowAnalysis* flow = nullptr);
 

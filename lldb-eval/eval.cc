@@ -677,6 +677,22 @@ void Interpreter::Visit(const TernaryOpNode* node) {
   }
 }
 
+void Interpreter::Visit(const SmartPtrToPtrDecay* node) {
+  auto ptr = EvalNode(node->ptr());
+  if (!ptr) {
+    return;
+  }
+
+  assert(ptr.type().IsSmartPtrType() && "invalid ast: must be a smart pointer");
+
+  lldb::SBType pointer_type =
+      ptr.type().GetSmartPtrPointeeType().GetPointerType();
+  lldb::addr_t base_addr =
+      ptr.inner_value().GetChildAtIndex(0).GetValueAsUnsigned();
+
+  result_ = CreateValueFromPointer(target_, base_addr, pointer_type);
+}
+
 Value Interpreter::EvaluateComparison(BinaryOpKind kind, Value lhs, Value rhs) {
   // Evaluate arithmetic operation for two integral values.
   if (lhs.IsInteger() && rhs.IsInteger()) {

@@ -158,6 +158,18 @@ static bool TokenEndsTemplateArgumentList(const clang::Token& token) {
                        clang::tok::greatergreater);
 }
 
+static ExprResult InsertSmartPtrToPointerConversion(ExprResult expr) {
+  Type expr_type = expr->result_type_deref();
+
+  assert(
+      expr_type.IsSmartPtrType() &&
+      "an argument to smart-ptr-to-pointer conversion must be a smart pointer");
+
+  return std::make_unique<SmartPtrToPtrDecay>(
+      expr->location(), expr_type.GetSmartPtrPointeeType().GetPointerType(),
+      std::move(expr));
+}
+
 static ExprResult InsertArrayToPointerConversion(ExprResult expr) {
   assert(expr->result_type_deref().IsArrayType() &&
          "an argument to array-to-pointer conversion must be an array");
@@ -2730,6 +2742,14 @@ lldb::SBType Parser::PrepareBinaryComparison(BinaryOpKind kind, ExprResult& lhs,
   // usual arithmetic conversions are performed on both operands following the
   // rules for arithmetic operators.
   Type _ = UsualArithmeticConversions(ctx_, lhs, rhs);
+
+  // Apply smart-pointer-to-pointer conversions.
+  if (Type(lhs->result_type_deref()).IsSmartPtrType()) {
+    lhs = InsertSmartPtrToPointerConversion(std::move(lhs));
+  }
+  if (Type(rhs->result_type_deref()).IsSmartPtrType()) {
+    rhs = InsertSmartPtrToPointerConversion(std::move(rhs));
+  }
 
   Type lhs_type = lhs->result_type_deref();
   Type rhs_type = rhs->result_type_deref();

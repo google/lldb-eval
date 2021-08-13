@@ -161,4 +161,6 @@ void UnaryOpNode::Accept(Visitor* v) const { v->Visit(this); }
 
 void TernaryOpNode::Accept(Visitor* v) const { v->Visit(this); }
 
+void SmartPtrToPtrDecay::Accept(Visitor* v) const { v->Visit(this); }
+
 }  // namespace lldb_eval

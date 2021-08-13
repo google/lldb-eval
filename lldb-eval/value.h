@@ -39,6 +39,7 @@ class Type : public lldb::SBType {
   bool IsInteger();
   bool IsFloat();
   bool IsPointerToVoid();
+  bool IsSmartPtrType();
   bool IsNullPtrType();
   bool IsSigned();
   bool IsBasicType();
@@ -51,6 +52,7 @@ class Type : public lldb::SBType {
   bool IsPromotableIntegerType();
   bool IsContextuallyConvertibleToBool();
 
+  lldb::SBType GetSmartPtrPointeeType();  // std::unique_ptr<T> -> T
   lldb::SBType GetEnumerationIntegerType(std::shared_ptr<Context> ctx);
 };
 
