@@ -13,8 +13,6 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            tag: 10
-          - os: ubuntu-latest
             tag: 11
           - os: windows-latest
             llvm_archive: llvm-11.0.0-x86_64-windows-msvc-release-md

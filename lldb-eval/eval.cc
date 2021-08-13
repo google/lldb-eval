@@ -50,41 +50,6 @@ bool Compare(BinaryOpKind kind, const T& l, const T& r) {
   }
 }
 
-// Comparison operators for llvm::APFloat were introduced in LLVM 11.
-#if LLVM_VERSION_MAJOR < 11
-
-template <>
-bool Compare(BinaryOpKind kind, const llvm::APFloat& l,
-             const llvm::APFloat& r) {
-  switch (kind) {
-    case BinaryOpKind::EQ:
-      return l.compare(r) == llvm::APFloat::cmpEqual;
-    case BinaryOpKind::NE:
-      return l.compare(r) != llvm::APFloat::cmpEqual;
-    case BinaryOpKind::LT:
-      return l.compare(r) == llvm::APFloat::cmpLessThan;
-    case BinaryOpKind::GT:
-      return l.compare(r) == llvm::APFloat::cmpGreaterThan;
-
-    case BinaryOpKind::LE: {
-      llvm::APFloat::cmpResult result = l.compare(r);
-      return result == llvm::APFloat::cmpLessThan ||
-             result == llvm::APFloat::cmpEqual;
-    }
-    case BinaryOpKind::GE: {
-      llvm::APFloat::cmpResult result = l.compare(r);
-      return result == llvm::APFloat::cmpGreaterThan ||
-             result == llvm::APFloat::cmpEqual;
-    }
-
-    default:
-      assert(false && "invalid ast: invalid comparison operation");
-      return false;
-  }
-}
-
-#endif
-
 static Value EvaluateArithmeticOpInteger(lldb::SBTarget target,
                                          BinaryOpKind kind, Value lhs,
                                          Value rhs, lldb::SBType rtype) {

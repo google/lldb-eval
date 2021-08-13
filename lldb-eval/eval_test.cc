@@ -2565,9 +2565,6 @@ TEST_F(EvalTest, TestUniquePtrCompare) {
   // On Windows we're not using `libc++` and therefore the layout of
   // `std::unique_ptr` is different.
   GTEST_SKIP() << "not supported on Windows";
-#elif LLVM_VERSION_MAJOR < 11
-  GTEST_SKIP() << "LLDB 10 and earlier doesn't have formatters for "
-                  "std::unique_ptr from libc++";
 #else
   // On Linux this assumes the usage of libc++ standard library.
   this->compare_with_lldb_ = false;
