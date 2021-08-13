@@ -300,9 +300,9 @@ lldb::SBValue Context::LookupIdentifier(const std::string& name) const {
     if (scope_ && !name_ref.contains("::")) {
       // Try looking for static member of the current scope value, e.g.
       // `ScopeType::NAME`.
-      std::string scope_name_ref =
+      std::string name_with_type_prefix =
           llvm::formatv("{0}::{1}", scope_.GetTypeName(), name_ref).str();
-      value = LookupStaticIdentifier(ctx_.GetTarget(), scope_name_ref);
+      value = LookupStaticIdentifier(ctx_.GetTarget(), name_with_type_prefix);
     }
 
     if (!value) {
