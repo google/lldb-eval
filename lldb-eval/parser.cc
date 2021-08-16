@@ -2114,6 +2114,12 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
 
   // Cast to basic type (integer/float).
   if (type.IsScalar()) {
+    // Before casting arrays to scalar types, array-to-pointer conversion
+    // should be performed.
+    if (rhs_type.IsArrayType()) {
+      rhs = InsertArrayToPointerConversion(std::move(rhs));
+      rhs_type = rhs->result_type_deref();
+    }
     // Pointers can be cast to integers of the same or larger size.
     if (rhs_type.IsPointerType() || rhs_type.IsNullPtrType()) {
       // C-style cast from pointer to float/double is not allowed.

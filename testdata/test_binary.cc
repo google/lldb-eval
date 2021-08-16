@@ -430,6 +430,7 @@ static void TestCStyleCast() {
   int a = 1;
   int* ap = &a;
   void* vp = &a;
+  int arr[2] = {1, 2};
 
   int na = -1;
   float f = 1.1;

@@ -1213,15 +1213,20 @@ TEST_F(EvalTest, TestCStyleCastBasicType) {
               IsEqual("1.2"));
   EXPECT_THAT(Eval("(myint)ns_inner_mydouble_"), IsEqual("1"));
 
-  // Test with pointers.
+  // Test with pointers and arrays.
   EXPECT_THAT(Eval("(long long)ap"), IsOk());
   EXPECT_THAT(Eval("(unsigned long long)vp"), IsOk());
+  EXPECT_THAT(Eval("(long long)arr"), IsOk());
   EXPECT_THAT(Eval("(bool)ap"), IsEqual("true"));
   EXPECT_THAT(Eval("(bool)(int*)0x00000000"), IsEqual("false"));
   EXPECT_THAT(Eval("(bool)nullptr"), IsEqual("false"));
+  EXPECT_THAT(Eval("(bool)arr"), IsEqual("true"));
   EXPECT_THAT(
       Eval("(char)ap"),
       IsError("cast from pointer to smaller type 'char' loses information"));
+  EXPECT_THAT(
+      Eval("(int)arr"),
+      IsError("cast from pointer to smaller type 'int' loses information"));
 
 #ifdef _WIN32
   EXPECT_THAT(
@@ -1230,6 +1235,8 @@ TEST_F(EvalTest, TestCStyleCastBasicType) {
 #endif
 
   EXPECT_THAT(Eval("(float)ap"),
+              IsError("C-style cast from 'int *' to 'float' is not allowed"));
+  EXPECT_THAT(Eval("(float)arr"),
               IsError("C-style cast from 'int *' to 'float' is not allowed"));
 }
 
