@@ -650,10 +650,15 @@ void Interpreter::Visit(const SmartPtrToPtrDecay* node) {
 
   assert(ptr.type().IsSmartPtrType() && "invalid ast: must be a smart pointer");
 
-  lldb::SBType pointer_type =
-      ptr.type().GetSmartPtrPointeeType().GetPointerType();
-  lldb::addr_t base_addr =
-      ptr.inner_value().GetChildAtIndex(0).GetValueAsUnsigned();
+  // Prefer synthetic value because we need LLDB machinery to "dereference" the
+  // pointer for us. This is usually the default, but if the value was obtained
+  // as a field of some other object, it will inherit the value from parent.
+  lldb::SBValue ptr_value = ptr.inner_value();
+  ptr_value.SetPreferSyntheticValue(true);
+  ptr_value = ptr_value.GetChildAtIndex(0);
+
+  lldb::addr_t base_addr = ptr_value.GetValueAsUnsigned();
+  lldb::SBType pointer_type = ptr_value.GetType();
 
   result_ = CreateValueFromPointer(target_, base_addr, pointer_type);
 }

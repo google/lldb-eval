@@ -2284,6 +2284,9 @@ ExprResult Parser::BuildUnaryOp(UnaryOpKind kind, ExprResult rhs,
     case UnaryOpKind::Deref: {
       if (rhs_type.IsPointerType()) {
         result_type = rhs_type.GetPointeeType();
+      } else if (rhs_type.IsSmartPtrType()) {
+        rhs = InsertSmartPtrToPointerConversion(std::move(rhs));
+        result_type = rhs->result_type_deref().GetPointeeType();
       } else if (rhs_type.IsArrayType()) {
         rhs = InsertArrayToPointerConversion(std::move(rhs));
         result_type = rhs->result_type_deref().GetPointeeType();
@@ -3028,7 +3031,8 @@ ExprResult Parser::BuildMemberOf(ExprResult lhs, std::string member_id,
   if (is_arrow) {
     // "member of pointer" operator, check that LHS is a pointer and
     // dereference it.
-    if (!lhs_type.IsPointerType() && !lhs_type.IsArrayType()) {
+    if (!lhs_type.IsPointerType() && !lhs_type.IsSmartPtrType() &&
+        !lhs_type.IsArrayType()) {
       BailOut(ErrorCode::kInvalidOperandType,
               llvm::formatv("member reference type '{0}' is not a pointer; did "
                             "you mean to use '.'?",
@@ -3037,8 +3041,12 @@ ExprResult Parser::BuildMemberOf(ExprResult lhs, std::string member_id,
       return std::make_unique<ErrorNode>();
     }
 
-    // If LHS is an array, convert it to pointer.
-    if (lhs_type.IsArrayType()) {
+    if (lhs_type.IsSmartPtrType()) {
+      // If LHS is a smart pointer, decay it to an underlying object.
+      lhs = InsertSmartPtrToPointerConversion(std::move(lhs));
+      lhs_type = lhs->result_type_deref();
+    } else if (lhs_type.IsArrayType()) {
+      // If LHS is an array, convert it to pointer.
       lhs = InsertArrayToPointerConversion(std::move(lhs));
       lhs_type = lhs->result_type_deref();
     }

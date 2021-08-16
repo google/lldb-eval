@@ -2560,6 +2560,25 @@ TEST_F(EvalTest, TestUniquePtr) {
 #endif
 }
 
+TEST_F(EvalTest, TestUniquePtrDeref) {
+#ifdef _WIN32
+  // On Windows we're not using `libc++` and therefore the layout of
+  // `std::unique_ptr` is different.
+  GTEST_SKIP() << "not supported on Windows";
+#else
+  // On Linux this assumes the usage of libc++ standard library.
+  this->compare_with_lldb_ = false;
+
+  // Test member-of dereference.
+  EXPECT_THAT(Eval("ptr_node->value"), IsEqual("1"));
+  EXPECT_THAT(Eval("ptr_node->next->value"), IsEqual("2"));
+
+  // Test ptr dereference.
+  EXPECT_THAT(Eval("(*ptr_node).value"), IsEqual("1"));
+  EXPECT_THAT(Eval("(*(*ptr_node).next).value"), IsEqual("2"));
+#endif
+}
+
 TEST_F(EvalTest, TestUniquePtrCompare) {
 #ifdef _WIN32
   // On Windows we're not using `libc++` and therefore the layout of
@@ -2622,6 +2641,25 @@ TEST_F(EvalTest, TestSharedPtr) {
   EXPECT_THAT(Eval("*ptr_int.__ptr_"), IsEqual("1"));
   EXPECT_THAT(Eval("ptr_int_weak.__ptr_"), IsOk());
   EXPECT_THAT(Eval("*ptr_int_weak.__ptr_"), IsEqual("1"));
+#endif
+}
+
+TEST_F(EvalTest, TestSharedPtrDeref) {
+#ifdef _WIN32
+  // On Windows we're not using `libc++` and therefore the layout of
+  // `std::shared_ptr` is different.
+  GTEST_SKIP() << "not supported on Windows";
+#else
+  // On Linux this assumes the usage of libc++ standard library.
+  this->compare_with_lldb_ = false;
+
+  // Test member-of dereference.
+  EXPECT_THAT(Eval("ptr_node->value"), IsEqual("1"));
+  EXPECT_THAT(Eval("ptr_node->next->value"), IsEqual("2"));
+
+  // Test ptr dereference.
+  EXPECT_THAT(Eval("(*ptr_node).value"), IsEqual("1"));
+  EXPECT_THAT(Eval("(*(*ptr_node).next).value"), IsEqual("2"));
 #endif
 }
 
