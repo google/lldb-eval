@@ -125,10 +125,10 @@ void report_undefined_behaviour(lldb_eval::UbStatus status) {
   if (count % kUbStatsPeriod == 0) {
     // Log statistics every `kUbStatsPeriod` iterations.
     log("UB stats: (kOk: %zu, kDivisionByZero: %zu, kInvalidCast: %zu, "
-        "kInvalidShift: %zu, kNullptrArithmetic: %zu)",
+        "kInvalidShift: %zu, kNullptrArithmetic: %zu, kInvalidPtrDiff: %zu)",
         stats[UbStatus::kOk], stats[UbStatus::kDivisionByZero],
         stats[UbStatus::kInvalidCast], stats[UbStatus::kInvalidShift],
-        stats[UbStatus::kNullptrArithmetic]);
+        stats[UbStatus::kNullptrArithmetic], stats[UbStatus::kInvalidPtrDiff]);
     log_separator();
   }
 }

@@ -45,6 +45,7 @@ enum class UbStatus : unsigned char {
   kInvalidCast,
   kInvalidShift,
   kNullptrArithmetic,
+  kInvalidPtrDiff,
 };
 
 class Error {

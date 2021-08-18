@@ -817,9 +817,9 @@ Value Interpreter::EvaluateBinaryAddition(Value lhs, Value rhs) {
   assert(ptr.IsPointer() && "invalid ast: ptr must be a pointer");
   assert(offset.IsInteger() && "invalid ast: offset must be an integer");
 
-  if (ptr.GetUInt64() == 0 && offset.GetInteger().isNegative()) {
+  if (ptr.GetUInt64() == 0 && offset.GetUInt64() != 0) {
     // Binary addition with null pointer causes mismatches between LLDB and
-    // lldb-eval if the offset is negative.
+    // lldb-eval if the offset different than zero.
     error_.SetUbStatus(UbStatus::kNullptrArithmetic);
   }
 
@@ -848,10 +848,17 @@ Value Interpreter::EvaluateBinarySubtraction(Value lhs, Value rhs) {
 
   // Since pointers have compatible types, both have the same pointee size.
   uint64_t item_size = lhs.type().GetPointeeType().GetByteSize();
-
   // Pointer difference is a signed value.
-  int64_t diff = static_cast<ptrdiff_t>(lhs.GetUInt64() - rhs.GetUInt64()) /
-                 static_cast<int64_t>(item_size);
+  int64_t diff = static_cast<int64_t>(lhs.GetUInt64() - rhs.GetUInt64());
+
+  if (diff % item_size != 0 && diff < 0) {
+    // If address difference isn't divisible by pointee size then performing
+    // the operation is undefined behaviour. Note: mismatches were encountered
+    // only for negative difference (diff < 0).
+    error_.SetUbStatus(UbStatus::kInvalidPtrDiff);
+  }
+
+  diff /= static_cast<int64_t>(item_size);
 
   // Pointer difference is ptrdiff_t.
   return CreateValueFromBytes(target_, &diff, ctx_->GetPtrDiffType());

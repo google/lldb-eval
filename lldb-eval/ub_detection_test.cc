@@ -234,7 +234,7 @@ TEST_F(UbDetectionTest, TestInvalidCast) {
 }
 
 TEST_F(UbDetectionTest, TestNullptrArithmetic) {
-  EXPECT_EQ(GetUbStatus("(int*)0 + 4"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("(int*)0 + 4"), UbStatus::kNullptrArithmetic);
   EXPECT_EQ(GetUbStatus("(int*)0 + (-4)"), UbStatus::kNullptrArithmetic);
   EXPECT_EQ(GetUbStatus("(int*)0 + 0"), UbStatus::kOk);
   EXPECT_EQ(GetUbStatus("(int*)4 + (-4)"), UbStatus::kOk);
@@ -242,7 +242,7 @@ TEST_F(UbDetectionTest, TestNullptrArithmetic) {
   // Subtraction didn't cause mismatches so far.
   EXPECT_EQ(GetUbStatus("(int*)0 - 4"), UbStatus::kOk);
 
-  EXPECT_EQ(GetUbStatus("inp + 4"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("inp + 4"), UbStatus::kNullptrArithmetic);
   EXPECT_EQ(GetUbStatus("inp + (-4)"), UbStatus::kNullptrArithmetic);
 
   EXPECT_EQ(GetUbStatus("(int*)nullptr + (-4)"), UbStatus::kNullptrArithmetic);
@@ -295,6 +295,21 @@ TEST_F(UbDetectionTest, TestInvalidShift) {
   // `char` type is implicitly converted to `int`.
   EXPECT_EQ(GetUbStatus("(char)1 << 31LL"), UbStatus::kOk);
   EXPECT_EQ(GetUbStatus("(char)1 << 32LL"), UbStatus::kInvalidShift);
+}
+
+TEST_F(UbDetectionTest, TestInvalidPtrDiff) {
+  EXPECT_EQ(GetUbStatus("(int*)4 - (int*)8"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("(int*)4 - (int*)10"), UbStatus::kInvalidPtrDiff);
+  EXPECT_EQ(GetUbStatus("(short*)4 - (short*)10"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("(short*)4 - (short*)5"), UbStatus::kInvalidPtrDiff);
+
+  // The following expressions may not be well defined, but didn't cause
+  // mismatches between LLDB and lldb-eval, so we allow it for now.
+
+  // Pointers that are not correctly aligned.
+  EXPECT_EQ(GetUbStatus("(int*)3 - (int*)7"), UbStatus::kOk);
+  // Invalid difference greater than 0.
+  EXPECT_EQ(GetUbStatus("(int*)7 - (int*)6"), UbStatus::kOk);
 }
 
 // TODO: Add tests with composite assignments (e.g. `i /= 0`, `i -= fmax`).
