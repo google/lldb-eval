@@ -1379,6 +1379,7 @@ TEST_F(EvalTest, TestCxxReinterpretCast) {
   EXPECT_THAT(Eval("reinterpret_cast<long long>(100LL)"), IsEqual("100"));
   EXPECT_THAT(Eval("reinterpret_cast<UEnum>(u_enum)"), IsEqual("kUTwo"));
   EXPECT_THAT(Eval("reinterpret_cast<SEnum>(s_enum)"), IsEqual("kSOne"));
+  EXPECT_THAT(Eval("reinterpret_cast<td_senum_t>(s_enum)"), IsEqual("kSOne"));
   // Other scalar/enum to scalar/enum casts aren't allowed.
   EXPECT_THAT(
       Eval("reinterpret_cast<int>(5U)"),

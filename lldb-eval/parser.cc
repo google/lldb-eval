@@ -2301,7 +2301,7 @@ ExprResult Parser::BuildCxxReinterpretCast(Type type, ExprResult rhs,
     BailOut(ErrorCode::kInvalidOperandType,
             llvm::formatv("reinterpret_cast from '{0}' to 'std::nullptr_t' "
                           "(aka 'nullptr_t') is not allowed",
-                          rhs_type.GetName(), type.GetName()),
+                          rhs_type.GetName()),
             location);
     return std::make_unique<ErrorNode>();
 

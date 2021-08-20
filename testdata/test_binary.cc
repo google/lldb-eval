@@ -499,9 +499,11 @@ static void TestCxxCast() {
   typedef int td_int_t;
   typedef int* td_int_ptr_t;
   typedef int& td_int_ref_t;
+  typedef SEnum td_senum_t;
   td_int_t td_int = 13;
   td_int_ptr_t td_int_ptr = &td_int;
   td_int_ref_t td_int_ref = td_int;
+  td_senum_t td_senum = s_enum;
 
   CxxParent parent;
   parent.a = 1;

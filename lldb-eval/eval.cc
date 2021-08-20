@@ -390,6 +390,8 @@ void Interpreter::Visit(const CxxReinterpretCastNode* node) {
   } else if (type.IsEnum()) {
     assert(CompareTypes(type, rhs.type()) &&
            "invalid ast: operands should have the same type");
+    // Cast value to handle type aliases.
+    result_ = Value(rhs.inner_value().Cast(type));
   } else if (type.IsPointerType()) {
     assert((rhs.IsInteger() || rhs.IsEnum() || rhs.IsPointer() ||
             rhs.type().IsArrayType()) &&
