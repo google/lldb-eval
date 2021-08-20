@@ -490,6 +490,18 @@ static void TestCxxCast() {
     long long c;
     short d;
   };
+  enum UEnum { kUZero, kUOne, kUTwo };
+  enum class SEnum { kCSZero, kSOne };
+
+  UEnum u_enum = kUTwo;
+  SEnum s_enum = SEnum::kSOne;
+
+  typedef int td_int_t;
+  typedef int* td_int_ptr_t;
+  typedef int& td_int_ref_t;
+  td_int_t td_int = 13;
+  td_int_ptr_t td_int_ptr = &td_int;
+  td_int_ref_t td_int_ref = td_int;
 
   CxxParent parent;
   parent.a = 1;
@@ -500,6 +512,7 @@ static void TestCxxCast() {
   CxxBase* base = &parent;
 
   int arr[] = {1, 2, 3, 4, 5};
+  int* ptr = arr;
 
   // BREAK(TestCxxStaticCast)
   // BREAK(TestCxxReinterpretCast)

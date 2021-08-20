@@ -2189,7 +2189,13 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
 
   } else if (type.IsReferenceType()) {
     // Cast to a reference type.
-    // TODO(werat): Do we need to check anything here?
+    if (rhs->is_rvalue()) {
+      BailOut(ErrorCode::kInvalidOperandType,
+              llvm::formatv("C-style cast from rvalue to reference type '{0}'",
+                            type.GetName()),
+              location);
+      return std::make_unique<ErrorNode>();
+    }
     kind = CStyleCastKind::kReference;
 
   } else {
@@ -2216,7 +2222,114 @@ ExprResult Parser::BuildCxxCast(clang::tok::TokenKind kind, Type type,
   if (kind == clang::tok::kw_dynamic_cast) {
     return BuildCxxDynamicCast(type, std::move(rhs), location);
   }
+  if (kind == clang::tok::kw_reinterpret_cast) {
+    return BuildCxxReinterpretCast(type, std::move(rhs), location);
+  }
   return BuildCStyleCast(type, std::move(rhs), location);
+}
+
+ExprResult Parser::BuildCxxReinterpretCast(Type type, ExprResult rhs,
+                                           clang::SourceLocation location) {
+  Type rhs_type = rhs->result_type_deref();
+  bool is_rvalue = true;
+
+  if (type.IsScalar()) {
+    // reinterpret_cast doesn't support non-integral scalar types.
+    if (!type.IsInteger()) {
+      BailOut(
+          ErrorCode::kInvalidOperandType,
+          llvm::formatv("reinterpret_cast from '{0}' to '{1}' is not allowed",
+                        rhs_type.GetName(), type.GetName()),
+          location);
+      return std::make_unique<ErrorNode>();
+    }
+
+    // Perform implicit conversions.
+    if (rhs_type.IsArrayType()) {
+      rhs = InsertArrayToPointerConversion(std::move(rhs));
+      rhs_type = rhs->result_type_deref();
+    }
+
+    if (rhs_type.IsPointerType() || rhs_type.IsNullPtrType()) {
+      // A pointer can be converted to any integral type large enough to hold
+      // its value.
+      if (type.GetByteSize() < rhs_type.GetByteSize()) {
+        BailOut(ErrorCode::kInvalidOperandType,
+                llvm::formatv(
+                    "cast from pointer to smaller type '{0}' loses information",
+                    type.GetName()),
+                location);
+        return std::make_unique<ErrorNode>();
+      }
+    } else if (!CompareTypes(type, rhs_type)) {
+      // Integral type can be converted to its own type.
+      BailOut(
+          ErrorCode::kInvalidOperandType,
+          llvm::formatv("reinterpret_cast from '{0}' to '{1}' is not allowed",
+                        rhs_type.GetName(), type.GetName()),
+          location);
+      return std::make_unique<ErrorNode>();
+    }
+
+  } else if (type.IsEnum()) {
+    // Enumeration type can be converted to its own type.
+    if (!CompareTypes(type, rhs_type)) {
+      BailOut(
+          ErrorCode::kInvalidOperandType,
+          llvm::formatv("reinterpret_cast from '{0}' to '{1}' is not allowed",
+                        rhs_type.GetName(), type.GetName()),
+          location);
+      return std::make_unique<ErrorNode>();
+    }
+
+  } else if (type.IsPointerType()) {
+    // Integral, enumeration and other pointer types can be converted to any
+    // pointer type.
+    // TODO: Implement an explicit node for array-to-pointer conversions.
+    if (!rhs_type.IsInteger() && !rhs_type.IsEnum() &&
+        !rhs_type.IsArrayType() && !rhs_type.IsPointerType()) {
+      BailOut(
+          ErrorCode::kInvalidOperandType,
+          llvm::formatv("reinterpret_cast from '{0}' to '{1}' is not allowed",
+                        rhs_type.GetName(), type.GetName()),
+          location);
+      return std::make_unique<ErrorNode>();
+    }
+
+  } else if (type.IsNullPtrType()) {
+    // reinterpret_cast to nullptr_t isn't allowed (even for nullptr_t).
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv("reinterpret_cast from '{0}' to 'std::nullptr_t' "
+                          "(aka 'nullptr_t') is not allowed",
+                          rhs_type.GetName(), type.GetName()),
+            location);
+    return std::make_unique<ErrorNode>();
+
+  } else if (type.IsReferenceType()) {
+    // L-values can be converted to any reference type.
+    if (rhs->is_rvalue()) {
+      BailOut(
+          ErrorCode::kInvalidOperandType,
+          llvm::formatv("reinterpret_cast from rvalue to reference type '{0}'",
+                        type.GetName()),
+          location);
+      return std::make_unique<ErrorNode>();
+    }
+
+    // Casting to reference types gives an L-value result.
+    is_rvalue = false;
+
+  } else {
+    // Unsupported cast.
+    BailOut(ErrorCode::kNotImplemented,
+            llvm::formatv("casting of '{0}' to '{1}' is not implemented yet",
+                          rhs_type.GetName(), type.GetName()),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  return std::make_unique<CxxReinterpretCastNode>(location, type,
+                                                  std::move(rhs), is_rvalue);
 }
 
 ExprResult Parser::BuildCxxDynamicCast(Type type, ExprResult rhs,

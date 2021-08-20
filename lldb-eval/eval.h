@@ -64,6 +64,7 @@ class Interpreter : Visitor {
   void Visit(const SizeOfNode* node) override;
   void Visit(const BuiltinFunctionCallNode* node) override;
   void Visit(const CStyleCastNode* node) override;
+  void Visit(const CxxReinterpretCastNode* node) override;
   void Visit(const MemberOfNode* node) override;
   void Visit(const ArraySubscriptNode* node) override;
   void Visit(const BinaryOpNode* node) override;

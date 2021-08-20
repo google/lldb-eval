@@ -171,7 +171,9 @@ class CStyleCastNode : public AstNode {
         kind_(kind) {}
 
   void Accept(Visitor* v) const override;
-  bool is_rvalue() const override { return true; }
+  bool is_rvalue() const override {
+    return kind_ != CStyleCastKind::kReference;
+  }
   lldb::SBType result_type() const override { return type_; }
 
   lldb::SBType type() const { return type_; }
@@ -182,6 +184,28 @@ class CStyleCastNode : public AstNode {
   lldb::SBType type_;
   ExprResult rhs_;
   CStyleCastKind kind_;
+};
+
+class CxxReinterpretCastNode : public AstNode {
+ public:
+  CxxReinterpretCastNode(clang::SourceLocation location, lldb::SBType type,
+                         ExprResult rhs, bool is_rvalue)
+      : AstNode(location),
+        type_(std::move(type)),
+        rhs_(std::move(rhs)),
+        is_rvalue_(is_rvalue) {}
+
+  void Accept(Visitor* v) const override;
+  bool is_rvalue() const override { return is_rvalue_; }
+  lldb::SBType result_type() const override { return type_; }
+
+  lldb::SBType type() const { return type_; }
+  AstNode* rhs() const { return rhs_.get(); }
+
+ private:
+  lldb::SBType type_;
+  ExprResult rhs_;
+  bool is_rvalue_;
 };
 
 class MemberOfNode : public AstNode {
@@ -399,6 +423,7 @@ class Visitor {
   virtual void Visit(const SizeOfNode* node) = 0;
   virtual void Visit(const BuiltinFunctionCallNode* node) = 0;
   virtual void Visit(const CStyleCastNode* node) = 0;
+  virtual void Visit(const CxxReinterpretCastNode* node) = 0;
   virtual void Visit(const MemberOfNode* node) = 0;
   virtual void Visit(const ArraySubscriptNode* node) = 0;
   virtual void Visit(const BinaryOpNode* node) = 0;

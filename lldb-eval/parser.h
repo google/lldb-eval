@@ -157,6 +157,9 @@ class Parser {
   ExprResult BuildCxxDynamicCast(Type type, ExprResult rhs,
                                  clang::SourceLocation location);
 
+  ExprResult BuildCxxReinterpretCast(Type type, ExprResult rhs,
+                                     clang::SourceLocation location);
+
   ExprResult BuildUnaryOp(UnaryOpKind kind, ExprResult rhs,
                           clang::SourceLocation location);
   ExprResult BuildIncrementDecrement(UnaryOpKind kind, ExprResult rhs,

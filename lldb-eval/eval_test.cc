@@ -1327,6 +1327,10 @@ TEST_F(EvalTest, TestCStyleCastReference) {
 
   EXPECT_THAT(Eval("(int&)arr_1d[0]"), IsEqual("1"));
   EXPECT_THAT(Eval("(int&)arr_1d[1]"), IsEqual("2"));
+
+  EXPECT_THAT(Eval("(int&)0"),
+              IsError("C-style cast from rvalue to reference type 'int &'"));
+  EXPECT_THAT(Eval("&(int&)arr_1d"), IsOk());
 }
 
 TEST_F(EvalTest, TestCxxStaticCast) {
@@ -1367,15 +1371,106 @@ TEST_F(EvalTest, TestCxxDynamicCast) {
 }
 
 TEST_F(EvalTest, TestCxxReinterpretCast) {
+  // Integers and enums can be converted to its own type.
+  EXPECT_THAT(Eval("reinterpret_cast<bool>(true)"), IsEqual("true"));
+  EXPECT_THAT(Eval("reinterpret_cast<int>(5)"), IsEqual("5"));
+  EXPECT_THAT(Eval("reinterpret_cast<td_int_t>(6)"), IsEqual("6"));
+  EXPECT_THAT(Eval("reinterpret_cast<int>(td_int)"), IsEqual("13"));
+  EXPECT_THAT(Eval("reinterpret_cast<long long>(100LL)"), IsEqual("100"));
+  EXPECT_THAT(Eval("reinterpret_cast<UEnum>(u_enum)"), IsEqual("kUTwo"));
+  EXPECT_THAT(Eval("reinterpret_cast<SEnum>(s_enum)"), IsEqual("kSOne"));
+  // Other scalar/enum to scalar/enum casts aren't allowed.
+  EXPECT_THAT(
+      Eval("reinterpret_cast<int>(5U)"),
+      IsError("reinterpret_cast from 'unsigned int' to 'int' is not allowed"));
+  EXPECT_THAT(Eval("reinterpret_cast<int>(3.14f)"),
+              IsError("reinterpret_cast from 'float' to 'int' is not allowed"));
+  EXPECT_THAT(
+      Eval("reinterpret_cast<double>(2.71)"),
+      IsError("reinterpret_cast from 'double' to 'double' is not allowed"));
+  EXPECT_THAT(Eval("reinterpret_cast<int>(s_enum)"),
+              IsError("reinterpret_cast from 'SEnum' to 'int' is not allowed"));
+  EXPECT_THAT(Eval("reinterpret_cast<UEnum>(0)"),
+              IsError("reinterpret_cast from 'int' to 'UEnum' is not allowed"));
+  EXPECT_THAT(
+      Eval("reinterpret_cast<UEnum>(s_enum)"),
+      IsError("reinterpret_cast from 'SEnum' to 'UEnum' is not allowed"));
+
+  // Pointers should be convertible to large enough integral types.
+  EXPECT_THAT(Eval("reinterpret_cast<long long>(ptr)"), IsOk());
+  EXPECT_THAT(Eval("reinterpret_cast<long long>(arr)"), IsOk());
+  EXPECT_THAT(Eval("reinterpret_cast<long long>(nullptr)"), IsEqual("0"));
+  EXPECT_THAT(
+      Eval("reinterpret_cast<int>(ptr)"),
+      IsError("cast from pointer to smaller type 'int' loses information"));
+  EXPECT_THAT(
+      Eval("reinterpret_cast<bool>(arr)"),
+      IsError("cast from pointer to smaller type 'bool' loses information"));
+  EXPECT_THAT(
+      Eval("reinterpret_cast<td_int_t>(ptr)"),
+      IsError(
+          "cast from pointer to smaller type 'td_int_t' loses information"));
+  EXPECT_THAT(
+      Eval("reinterpret_cast<bool>(nullptr)"),
+      IsError("cast from pointer to smaller type 'bool' loses information"));
+#ifdef _WIN32
+  EXPECT_THAT(
+      Eval("reinterpret_cast<long>(ptr)"),
+      IsError("cast from pointer to smaller type 'long' loses information"));
+#elif
+  EXPECT_THAT(Eval("reinterpret_cast<long>(ptr)"), IsOk());
+#endif
+
+  // Integers, enums and pointers can be converted to pointers.
+  EXPECT_THAT(Eval("reinterpret_cast<int*>(true)"),
+              IsEqual("0x0000000000000001"));
+  EXPECT_THAT(Eval("reinterpret_cast<float*>(6)"),
+              IsEqual("0x0000000000000006"));
+  EXPECT_THAT(Eval("reinterpret_cast<void*>(s_enum)"),
+              IsEqual("0x0000000000000001"));
+  EXPECT_THAT(Eval("reinterpret_cast<CxxBase*>(u_enum)"),
+              IsEqual("0x0000000000000002"));
+  EXPECT_THAT(Eval("reinterpret_cast<td_int_ptr_t>(ptr)"), IsOk());
+  EXPECT_THAT(Eval("*reinterpret_cast<UEnum**>(ptr)"),
+              IsEqual("0x0000000200000001"));
+  EXPECT_THAT(Eval("*reinterpret_cast<int*>(arr)"), IsEqual("1"));
+  EXPECT_THAT(Eval("*reinterpret_cast<long long*>(arr)"),
+              IsEqual("8589934593"));  // 8589934593 == 0x0000000200000001
+
+  // Casting to nullptr_t or nullptr_t to pointer types isn't allowed.
+  EXPECT_THAT(
+      Eval("reinterpret_cast<void*>(nullptr)"),
+      IsError("reinterpret_cast from 'nullptr_t' to 'void *' is not allowed"));
+  EXPECT_THAT(Eval("reinterpret_cast<std::nullptr_t>(ptr)"),
+              IsError("reinterpret_cast from 'int *' to 'std::nullptr_t' (aka "
+                      "'nullptr_t') is not allowed"));
+  EXPECT_THAT(Eval("reinterpret_cast<std::nullptr_t>(0)"),
+              IsError("reinterpret_cast from 'int' to 'std::nullptr_t' (aka "
+                      "'nullptr_t') is not allowed"));
+  EXPECT_THAT(Eval("reinterpret_cast<std::nullptr_t>(nullptr)"),
+              IsError("reinterpret_cast from 'nullptr_t' to 'std::nullptr_t' "
+                      "(aka 'nullptr_t') is not allowed"));
+
+  // L-values can be converted to reference type.
   EXPECT_THAT(Eval("reinterpret_cast<CxxBase&>(arr[0]).a"), IsEqual("1"));
   EXPECT_THAT(Eval("reinterpret_cast<CxxBase&>(arr).b"), IsEqual("2"));
   EXPECT_THAT(Eval("reinterpret_cast<CxxParent&>(arr[0]).c"),
               IsEqual("17179869187"));  // 17179869187 == 0x0000000400000003
   EXPECT_THAT(Eval("reinterpret_cast<CxxParent&>(arr).d"), IsEqual("5"));
+  EXPECT_THAT(Eval("reinterpret_cast<int&>(parent)"), IsOk());
+  EXPECT_THAT(Eval("reinterpret_cast<td_int_ref_t>(ptr)"), IsOk());
+  EXPECT_THAT(
+      Eval("reinterpret_cast<int&>(5)"),
+      IsError("reinterpret_cast from rvalue to reference type 'int &'"));
 
-  EXPECT_THAT(Eval("*reinterpret_cast<int*>(arr)"), IsEqual("1"));
-  EXPECT_THAT(Eval("*reinterpret_cast<long long*>(arr)"),
-              IsEqual("8589934593"));  // 8589934593 == 0x0000000200000001
+  // Is result L-value or R-value?
+  EXPECT_THAT(Eval("&reinterpret_cast<int&>(arr[0])"), IsOk());
+  EXPECT_THAT(Eval("&reinterpret_cast<int>(arr[0])"),
+              IsError("cannot take the address of an rvalue of type 'int'"));
+  EXPECT_THAT(Eval("&reinterpret_cast<UEnum>(u_enum)"),
+              IsError("cannot take the address of an rvalue of type 'UEnum'"));
+  EXPECT_THAT(Eval("&reinterpret_cast<int*>(arr)"),
+              IsError("cannot take the address of an rvalue of type 'int *'"));
 }
 
 TEST_F(EvalTest, TestQualifiedId) {

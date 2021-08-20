@@ -370,6 +370,42 @@ void Interpreter::Visit(const CStyleCastNode* node) {
   result_ = Value();
 }
 
+void Interpreter::Visit(const CxxReinterpretCastNode* node) {
+  // Get the type and the value we need to cast.
+  Type type = node->type();
+  auto rhs = EvalNode(node->rhs());
+  if (!rhs) {
+    return;
+  }
+
+  if (type.IsInteger()) {
+    if (rhs.IsPointer() || rhs.IsNullPtrType()) {
+      result_ = CastPointerToBasicType(target_, rhs, type);
+    } else {
+      assert(CompareTypes(type, rhs.type()) &&
+             "invalid ast: operands should have the same type");
+      // Cast value to handle type aliases.
+      result_ = Value(rhs.inner_value().Cast(type));
+    }
+  } else if (type.IsEnum()) {
+    assert(CompareTypes(type, rhs.type()) &&
+           "invalid ast: operands should have the same type");
+  } else if (type.IsPointerType()) {
+    assert((rhs.IsInteger() || rhs.IsEnum() || rhs.IsPointer() ||
+            rhs.type().IsArrayType()) &&
+           "invalid ast: unexpected operand to reinterpret_cast");
+    uint64_t addr = rhs.type().IsArrayType()
+                        ? rhs.inner_value().GetLoadAddress()
+                        : rhs.GetUInt64();
+    result_ = CreateValueFromPointer(target_, addr, type);
+  } else if (type.IsReferenceType()) {
+    result_ = Value(rhs.inner_value().Cast(type.GetDereferencedType()));
+  } else {
+    assert(false && "invalid ast: unexpected reinterpret_cast kind");
+    result_ = Value();
+  }
+}
+
 void Interpreter::Visit(const MemberOfNode* node) {
   assert(!node->member_index().empty() && "invalid ast: member index is empty");
 
