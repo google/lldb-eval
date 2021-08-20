@@ -1417,7 +1417,7 @@ TEST_F(EvalTest, TestCxxReinterpretCast) {
   EXPECT_THAT(
       Eval("reinterpret_cast<long>(ptr)"),
       IsError("cast from pointer to smaller type 'long' loses information"));
-#elif
+#else
   EXPECT_THAT(Eval("reinterpret_cast<long>(ptr)"), IsOk());
 #endif
 
