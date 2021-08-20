@@ -54,13 +54,13 @@ namespace {
 const lldb_eval::Type kInvalidType = lldb_eval::Type();
 
 const char* kInvalidOperandsToUnaryExpression =
-    "invalid argument type '{0}' to unary expression";
+    "invalid argument type {0} to unary expression";
 
 const char* kInvalidOperandsToBinaryExpression =
-    "invalid operands to binary expression ('{0}' and '{1}')";
+    "invalid operands to binary expression ({0} and {1})";
 
 const char* kValueIsNotConvertibleToBool =
-    "value of type '{0}' is not contextually convertible to 'bool'";
+    "value of type {0} is not contextually convertible to 'bool'";
 
 void StringReplace(std::string& str, const std::string& old_value,
                    const std::string& new_value) {
@@ -621,6 +621,18 @@ static std::unique_ptr<BuiltinFunctionDef> GetBuiltinFunctionDef(
   }
   // Not a builtin function.
   return nullptr;
+}
+
+static std::string TypeDescription(lldb::SBType type) {
+  const char* name = type.GetName();
+  const char* canonical_name = type.GetCanonicalType().GetName();
+  if (name == nullptr || canonical_name == nullptr) {
+    return "''";  // should not happen
+  }
+  if (strcmp(name, canonical_name) == 0) {
+    return llvm::formatv("'{0}'", name);
+  }
+  return llvm::formatv("'{0}' (aka '{1}')", name, canonical_name);
 }
 
 Parser::Parser(std::shared_ptr<Context> ctx) : ctx_(std::move(ctx)) {
@@ -1743,8 +1755,8 @@ lldb::SBType Parser::ResolveTypeDeclarators(lldb::SBType type,
       if (type.IsReferenceType()) {
         BailOut(ErrorCode::kInvalidOperandType,
                 llvm::formatv("'type name' declared as a pointer to a "
-                              "reference of type '{0}'",
-                              type.GetName()),
+                              "reference of type {0}",
+                              TypeDescription(type)),
                 loc);
         return lldb::SBType();
       }
@@ -2076,8 +2088,8 @@ ExprResult Parser::InsertImplicitConversion(ExprResult expr, Type type) {
   }
 
   BailOut(ErrorCode::kInvalidOperandType,
-          llvm::formatv("no known conversion from '{0}' to '{1}'",
-                        expr_type.GetName(), type.GetName()),
+          llvm::formatv("no known conversion from {0} to {1}",
+                        TypeDescription(expr_type), TypeDescription(type)),
           expr->location());
   return std::make_unique<ErrorNode>();
 }
@@ -2125,8 +2137,8 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
       // C-style cast from pointer to float/double is not allowed.
       if (type.IsFloat()) {
         BailOut(ErrorCode::kInvalidOperandType,
-                llvm::formatv("C-style cast from '{0}' to '{1}' is not allowed",
-                              rhs_type.GetName(), type.GetName()),
+                llvm::formatv("C-style cast from {0} to {1} is not allowed",
+                              TypeDescription(rhs_type), TypeDescription(type)),
                 location);
         return std::make_unique<ErrorNode>();
       }
@@ -2135,8 +2147,8 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
       if (!type.IsBool() && type.GetByteSize() < rhs_type.GetByteSize()) {
         BailOut(ErrorCode::kInvalidOperandType,
                 llvm::formatv(
-                    "cast from pointer to smaller type '{0}' loses information",
-                    type.GetName()),
+                    "cast from pointer to smaller type {0} loses information",
+                    TypeDescription(type)),
                 location);
         return std::make_unique<ErrorNode>();
       }
@@ -2144,8 +2156,8 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
       // Otherwise accept only arithmetic types and enums.
       BailOut(ErrorCode::kInvalidOperandType,
               llvm::formatv(
-                  "cannot convert '{0}' to '{1}' without a conversion operator",
-                  rhs_type.GetName(), type.GetName()),
+                  "cannot convert {0} to {1} without a conversion operator",
+                  TypeDescription(rhs_type), TypeDescription(type)),
               location);
       return std::make_unique<ErrorNode>();
     }
@@ -2155,8 +2167,8 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
     // Cast to enum type.
     if (!rhs_type.IsScalar() && !rhs_type.IsEnum()) {
       BailOut(ErrorCode::kInvalidOperandType,
-              llvm::formatv("C-style cast from '{0}' to '{1}' is not allowed",
-                            rhs_type.GetName(), type.GetName()),
+              llvm::formatv("C-style cast from {0} to {1} is not allowed",
+                            TypeDescription(rhs_type), TypeDescription(type)),
               location);
       return std::make_unique<ErrorNode>();
     }
@@ -2168,8 +2180,8 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
         !rhs_type.IsArrayType() && !rhs_type.IsPointerType() &&
         !rhs_type.IsNullPtrType()) {
       BailOut(ErrorCode::kInvalidOperandType,
-              llvm::formatv("cannot cast from type '{0}' to pointer type '{1}'",
-                            rhs_type.GetName(), type.GetName()),
+              llvm::formatv("cannot cast from type {0} to pointer type {1}",
+                            TypeDescription(rhs_type), TypeDescription(type)),
               location);
       return std::make_unique<ErrorNode>();
     }
@@ -2179,9 +2191,8 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
     // Cast to nullptr type.
     if (!rhs_type.IsNullPtrType() && !rhs->is_literal_zero()) {
       BailOut(ErrorCode::kInvalidOperandType,
-              llvm::formatv("C-style cast from '{0}' to 'std::nullptr_t' (aka "
-                            "'nullptr_t') is not allowed",
-                            rhs_type.GetName()),
+              llvm::formatv("C-style cast from {0} to {1} is not allowed",
+                            TypeDescription(rhs_type), TypeDescription(type)),
               location);
       return std::make_unique<ErrorNode>();
     }
@@ -2191,8 +2202,8 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
     // Cast to a reference type.
     if (rhs->is_rvalue()) {
       BailOut(ErrorCode::kInvalidOperandType,
-              llvm::formatv("C-style cast from rvalue to reference type '{0}'",
-                            type.GetName()),
+              llvm::formatv("C-style cast from rvalue to reference type {0}",
+                            TypeDescription(type)),
               location);
       return std::make_unique<ErrorNode>();
     }
@@ -2201,8 +2212,8 @@ ExprResult Parser::BuildCStyleCast(Type type, ExprResult rhs,
   } else {
     // Unsupported cast.
     BailOut(ErrorCode::kNotImplemented,
-            llvm::formatv("casting of '{0}' to '{1}' is not implemented yet",
-                          rhs_type.GetName(), type.GetName()),
+            llvm::formatv("casting of {0} to {1} is not implemented yet",
+                          TypeDescription(rhs_type), TypeDescription(type)),
             location);
     return std::make_unique<ErrorNode>();
   }
@@ -2236,11 +2247,10 @@ ExprResult Parser::BuildCxxReinterpretCast(Type type, ExprResult rhs,
   if (type.IsScalar()) {
     // reinterpret_cast doesn't support non-integral scalar types.
     if (!type.IsInteger()) {
-      BailOut(
-          ErrorCode::kInvalidOperandType,
-          llvm::formatv("reinterpret_cast from '{0}' to '{1}' is not allowed",
-                        rhs_type.GetName(), type.GetName()),
-          location);
+      BailOut(ErrorCode::kInvalidOperandType,
+              llvm::formatv("reinterpret_cast from {0} to {1} is not allowed",
+                            TypeDescription(rhs_type), TypeDescription(type)),
+              location);
       return std::make_unique<ErrorNode>();
     }
 
@@ -2256,29 +2266,27 @@ ExprResult Parser::BuildCxxReinterpretCast(Type type, ExprResult rhs,
       if (type.GetByteSize() < rhs_type.GetByteSize()) {
         BailOut(ErrorCode::kInvalidOperandType,
                 llvm::formatv(
-                    "cast from pointer to smaller type '{0}' loses information",
-                    type.GetName()),
+                    "cast from pointer to smaller type {0} loses information",
+                    TypeDescription(type)),
                 location);
         return std::make_unique<ErrorNode>();
       }
     } else if (!CompareTypes(type, rhs_type)) {
       // Integral type can be converted to its own type.
-      BailOut(
-          ErrorCode::kInvalidOperandType,
-          llvm::formatv("reinterpret_cast from '{0}' to '{1}' is not allowed",
-                        rhs_type.GetName(), type.GetName()),
-          location);
+      BailOut(ErrorCode::kInvalidOperandType,
+              llvm::formatv("reinterpret_cast from {0} to {1} is not allowed",
+                            TypeDescription(rhs_type), TypeDescription(type)),
+              location);
       return std::make_unique<ErrorNode>();
     }
 
   } else if (type.IsEnum()) {
     // Enumeration type can be converted to its own type.
     if (!CompareTypes(type, rhs_type)) {
-      BailOut(
-          ErrorCode::kInvalidOperandType,
-          llvm::formatv("reinterpret_cast from '{0}' to '{1}' is not allowed",
-                        rhs_type.GetName(), type.GetName()),
-          location);
+      BailOut(ErrorCode::kInvalidOperandType,
+              llvm::formatv("reinterpret_cast from {0} to {1} is not allowed",
+                            TypeDescription(rhs_type), TypeDescription(type)),
+              location);
       return std::make_unique<ErrorNode>();
     }
 
@@ -2288,20 +2296,18 @@ ExprResult Parser::BuildCxxReinterpretCast(Type type, ExprResult rhs,
     // TODO: Implement an explicit node for array-to-pointer conversions.
     if (!rhs_type.IsInteger() && !rhs_type.IsEnum() &&
         !rhs_type.IsArrayType() && !rhs_type.IsPointerType()) {
-      BailOut(
-          ErrorCode::kInvalidOperandType,
-          llvm::formatv("reinterpret_cast from '{0}' to '{1}' is not allowed",
-                        rhs_type.GetName(), type.GetName()),
-          location);
+      BailOut(ErrorCode::kInvalidOperandType,
+              llvm::formatv("reinterpret_cast from {0} to {1} is not allowed",
+                            TypeDescription(rhs_type), TypeDescription(type)),
+              location);
       return std::make_unique<ErrorNode>();
     }
 
   } else if (type.IsNullPtrType()) {
     // reinterpret_cast to nullptr_t isn't allowed (even for nullptr_t).
     BailOut(ErrorCode::kInvalidOperandType,
-            llvm::formatv("reinterpret_cast from '{0}' to 'std::nullptr_t' "
-                          "(aka 'nullptr_t') is not allowed",
-                          rhs_type.GetName()),
+            llvm::formatv("reinterpret_cast from {0} to {1} is not allowed",
+                          TypeDescription(rhs_type), TypeDescription(type)),
             location);
     return std::make_unique<ErrorNode>();
 
@@ -2310,8 +2316,8 @@ ExprResult Parser::BuildCxxReinterpretCast(Type type, ExprResult rhs,
     if (rhs->is_rvalue()) {
       BailOut(
           ErrorCode::kInvalidOperandType,
-          llvm::formatv("reinterpret_cast from rvalue to reference type '{0}'",
-                        type.GetName()),
+          llvm::formatv("reinterpret_cast from rvalue to reference type {0}",
+                        TypeDescription(type)),
           location);
       return std::make_unique<ErrorNode>();
     }
@@ -2322,8 +2328,8 @@ ExprResult Parser::BuildCxxReinterpretCast(Type type, ExprResult rhs,
   } else {
     // Unsupported cast.
     BailOut(ErrorCode::kNotImplemented,
-            llvm::formatv("casting of '{0}' to '{1}' is not implemented yet",
-                          rhs_type.GetName(), type.GetName()),
+            llvm::formatv("casting of {0} to {1} is not implemented yet",
+                          TypeDescription(rhs_type), TypeDescription(type)),
             location);
     return std::make_unique<ErrorNode>();
   }
@@ -2343,17 +2349,18 @@ ExprResult Parser::BuildCxxDynamicCast(Type type, ExprResult rhs,
     // Dynamic casts are allowed only for pointers and references.
     BailOut(
         ErrorCode::kInvalidOperandType,
-        llvm::formatv("invalid target type '{0}' for dynamic_cast; target type "
+        llvm::formatv("invalid target type {0} for dynamic_cast; target type "
                       "must be a reference or pointer type to a defined class",
-                      type.GetName()),
+                      TypeDescription(type)),
         location);
     return std::make_unique<ErrorNode>();
   }
   // Dynamic casts are allowed only for record types.
   if (!pointee_type.IsRecordType()) {
-    BailOut(ErrorCode::kInvalidOperandType,
-            llvm::formatv("'{0}' is not a class type", pointee_type.GetName()),
-            location);
+    BailOut(
+        ErrorCode::kInvalidOperandType,
+        llvm::formatv("{0} is not a class type", TypeDescription(pointee_type)),
+        location);
     return std::make_unique<ErrorNode>();
   }
 
@@ -2364,25 +2371,25 @@ ExprResult Parser::BuildCxxDynamicCast(Type type, ExprResult rhs,
     expr_type = expr_type.GetDereferencedType();
   } else {
     // Expression type must be a pointer or a reference.
-    BailOut(
-        ErrorCode::kInvalidOperandType,
-        llvm::formatv("cannot use dynamic_cast to convert from '{0}' to '{1}'",
-                      expr_type.GetName(), type.GetName()),
-        location);
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv("cannot use dynamic_cast to convert from {0} to {1}",
+                          TypeDescription(expr_type), TypeDescription(type)),
+            location);
     return std::make_unique<ErrorNode>();
   }
   // Dynamic casts are allowed only for record types.
   if (!expr_type.IsRecordType()) {
-    BailOut(ErrorCode::kInvalidOperandType,
-            llvm::formatv("'{0}' is not a class type", expr_type.GetName()),
-            location);
+    BailOut(
+        ErrorCode::kInvalidOperandType,
+        llvm::formatv("{0} is not a class type", TypeDescription(expr_type)),
+        location);
     return std::make_unique<ErrorNode>();
   }
 
   // Expr type must be polymorphic.
   if (!expr_type.IsPolymorphicClass()) {
     BailOut(ErrorCode::kInvalidOperandType,
-            llvm::formatv("'{0}' is not polymorphic", expr_type.GetName()),
+            llvm::formatv("{0} is not polymorphic", TypeDescription(expr_type)),
             location);
     return std::make_unique<ErrorNode>();
   }
@@ -2410,11 +2417,11 @@ ExprResult Parser::BuildUnaryOp(UnaryOpKind kind, ExprResult rhs,
         rhs = InsertArrayToPointerConversion(std::move(rhs));
         result_type = rhs->result_type_deref().GetPointeeType();
       } else {
-        BailOut(ErrorCode::kInvalidOperandType,
-                llvm::formatv(
-                    "indirection requires pointer operand ('{0}' invalid)",
-                    rhs_type.GetName()),
-                location);
+        BailOut(
+            ErrorCode::kInvalidOperandType,
+            llvm::formatv("indirection requires pointer operand ({0} invalid)",
+                          TypeDescription(rhs_type)),
+            location);
         return std::make_unique<ErrorNode>();
       }
       break;
@@ -2423,8 +2430,8 @@ ExprResult Parser::BuildUnaryOp(UnaryOpKind kind, ExprResult rhs,
       if (rhs->is_rvalue()) {
         BailOut(
             ErrorCode::kInvalidOperandType,
-            llvm::formatv("cannot take the address of an rvalue of type '{0}'",
-                          rhs_type.GetName()),
+            llvm::formatv("cannot take the address of an rvalue of type {0}",
+                          TypeDescription(rhs_type)),
             location);
         return std::make_unique<ErrorNode>();
       }
@@ -2473,10 +2480,10 @@ ExprResult Parser::BuildUnaryOp(UnaryOpKind kind, ExprResult rhs,
   }
 
   if (!result_type) {
-    BailOut(
-        ErrorCode::kInvalidOperandType,
-        llvm::formatv(kInvalidOperandsToUnaryExpression, rhs_type.GetName()),
-        location);
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv(kInvalidOperandsToUnaryExpression,
+                          TypeDescription(rhs_type)),
+            location);
     return std::make_unique<ErrorNode>();
   }
 
@@ -2663,7 +2670,8 @@ ExprResult Parser::BuildBinaryOp(BinaryOpKind kind, ExprResult lhs,
 
   BailOut(ErrorCode::kInvalidOperandType,
           llvm::formatv(kInvalidOperandsToBinaryExpression,
-                        orig_lhs_type.GetName(), orig_rhs_type.GetName()),
+                        TypeDescription(orig_lhs_type),
+                        TypeDescription(orig_rhs_type)),
           location);
   return std::make_unique<ErrorNode>();
 }
@@ -2754,8 +2762,8 @@ lldb::SBType Parser::PrepareBinarySubtraction(ExprResult& lhs, ExprResult& rhs,
     if (!comparable) {
       BailOut(
           ErrorCode::kInvalidOperandType,
-          llvm::formatv("'{0}' and '{1}' are not pointers to compatible types",
-                        lhs_type.GetName(), rhs_type.GetName()),
+          llvm::formatv("{0} and {1} are not pointers to compatible types",
+                        TypeDescription(lhs_type), TypeDescription(rhs_type)),
           location);
       return kInvalidType;
     }
@@ -2916,11 +2924,11 @@ lldb::SBType Parser::PrepareBinaryComparison(BinaryOpKind kind, ExprResult& lhs,
                        rhs_type.GetCanonicalType().GetUnqualifiedType());
 
       if (!comparable) {
-        BailOut(ErrorCode::kInvalidOperandType,
-                llvm::formatv(
-                    "comparison of distinct pointer types ('{0}' and '{1}')",
-                    lhs_type.GetName(), rhs_type.GetName()),
-                location);
+        BailOut(
+            ErrorCode::kInvalidOperandType,
+            llvm::formatv("comparison of distinct pointer types ({0} and {1})",
+                          TypeDescription(lhs_type), TypeDescription(rhs_type)),
+            location);
         return kInvalidType;
       }
     }
@@ -2946,16 +2954,18 @@ lldb::SBType Parser::PrepareBinaryLogical(const ExprResult& lhs,
   Type rhs_type = rhs->result_type_deref();
 
   if (!lhs_type.IsContextuallyConvertibleToBool()) {
-    BailOut(ErrorCode::kInvalidOperandType,
-            llvm::formatv(kValueIsNotConvertibleToBool, lhs_type.GetName()),
-            lhs->location());
+    BailOut(
+        ErrorCode::kInvalidOperandType,
+        llvm::formatv(kValueIsNotConvertibleToBool, TypeDescription(lhs_type)),
+        lhs->location());
     return kInvalidType;
   }
 
   if (!rhs_type.IsContextuallyConvertibleToBool()) {
-    BailOut(ErrorCode::kInvalidOperandType,
-            llvm::formatv(kValueIsNotConvertibleToBool, rhs_type.GetName()),
-            rhs->location());
+    BailOut(
+        ErrorCode::kInvalidOperandType,
+        llvm::formatv(kValueIsNotConvertibleToBool, TypeDescription(rhs_type)),
+        rhs->location());
     return kInvalidType;
   }
 
@@ -3048,8 +3058,9 @@ lldb::SBType Parser::PrepareCompositeAssignment(
   }
 
   BailOut(ErrorCode::kInvalidOperandType,
-          llvm::formatv("no known conversion from '{0}' to '{1}'",
-                        comp_assign_type.GetName(), lhs_type.GetName()),
+          llvm::formatv("no known conversion from {0} to {1}",
+                        TypeDescription(comp_assign_type),
+                        TypeDescription(lhs_type)),
           location);
   return kInvalidType;
 }
@@ -3060,9 +3071,10 @@ ExprResult Parser::BuildTernaryOp(ExprResult cond, ExprResult lhs,
   // First check if the condition contextually converted to bool.
   Type cond_type = cond->result_type_deref();
   if (!cond_type.IsContextuallyConvertibleToBool()) {
-    BailOut(ErrorCode::kInvalidOperandType,
-            llvm::formatv(kValueIsNotConvertibleToBool, cond_type.GetName()),
-            location);
+    BailOut(
+        ErrorCode::kInvalidOperandType,
+        llvm::formatv(kValueIsNotConvertibleToBool, TypeDescription(cond_type)),
+        location);
     return std::make_unique<ErrorNode>();
   }
 
@@ -3136,8 +3148,8 @@ ExprResult Parser::BuildTernaryOp(ExprResult cond, ExprResult lhs,
   }
 
   BailOut(ErrorCode::kInvalidOperandType,
-          llvm::formatv("incompatible operand types ('{0}' and '{1}')",
-                        lhs_type.GetName(), rhs_type.GetName()),
+          llvm::formatv("incompatible operand types ({0} and {1})",
+                        TypeDescription(lhs_type), TypeDescription(rhs_type)),
           location);
   return std::make_unique<ErrorNode>();
 }
@@ -3153,9 +3165,9 @@ ExprResult Parser::BuildMemberOf(ExprResult lhs, std::string member_id,
     if (!lhs_type.IsPointerType() && !lhs_type.IsSmartPtrType() &&
         !lhs_type.IsArrayType()) {
       BailOut(ErrorCode::kInvalidOperandType,
-              llvm::formatv("member reference type '{0}' is not a pointer; did "
+              llvm::formatv("member reference type {0} is not a pointer; did "
                             "you mean to use '.'?",
-                            lhs_type.GetName()),
+                            TypeDescription(lhs_type)),
               location);
       return std::make_unique<ErrorNode>();
     }
@@ -3175,9 +3187,9 @@ ExprResult Parser::BuildMemberOf(ExprResult lhs, std::string member_id,
     // "member of object" operator, check that LHS is an object.
     if (lhs_type.IsPointerType()) {
       BailOut(ErrorCode::kInvalidOperandType,
-              llvm::formatv("member reference type '{0}' is a pointer; "
+              llvm::formatv("member reference type {0} is a pointer; "
                             "did you mean to use '->'?",
-                            lhs_type.GetName()),
+                            TypeDescription(lhs_type)),
               location);
       return std::make_unique<ErrorNode>();
     }
@@ -3187,8 +3199,8 @@ ExprResult Parser::BuildMemberOf(ExprResult lhs, std::string member_id,
   if (!lhs_type.IsRecordType()) {
     BailOut(ErrorCode::kInvalidOperandType,
             llvm::formatv(
-                "member reference base type '{0}' is not a structure or union",
-                lhs_type.GetName()),
+                "member reference base type {0} is not a structure or union",
+                TypeDescription(lhs_type)),
             location);
     return std::make_unique<ErrorNode>();
   }
@@ -3196,8 +3208,8 @@ ExprResult Parser::BuildMemberOf(ExprResult lhs, std::string member_id,
   auto [member, idx] = GetFieldWithName(lhs_type, member_id);
   if (!member) {
     BailOut(ErrorCode::kInvalidOperandType,
-            llvm::formatv("no member named '{0}' in '{1}'", member_id,
-                          lhs_type.GetUnqualifiedType().GetName()),
+            llvm::formatv("no member named '{0}' in {1}", member_id,
+                          TypeDescription(lhs_type.GetUnqualifiedType())),
             location);
     return std::make_unique<ErrorNode>();
   }

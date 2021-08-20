@@ -1407,10 +1407,9 @@ TEST_F(EvalTest, TestCxxReinterpretCast) {
   EXPECT_THAT(
       Eval("reinterpret_cast<bool>(arr)"),
       IsError("cast from pointer to smaller type 'bool' loses information"));
-  EXPECT_THAT(
-      Eval("reinterpret_cast<td_int_t>(ptr)"),
-      IsError(
-          "cast from pointer to smaller type 'td_int_t' loses information"));
+  EXPECT_THAT(Eval("reinterpret_cast<td_int_t>(ptr)"),
+              IsError("cast from pointer to smaller type 'td_int_t' (aka "
+                      "'int') loses information"));
   EXPECT_THAT(
       Eval("reinterpret_cast<bool>(nullptr)"),
       IsError("cast from pointer to smaller type 'bool' loses information"));
