@@ -357,7 +357,7 @@ void Interpreter::Visit(const CStyleCastNode* node) {
     case CStyleCastKind::kNullptr: {
       assert(type.IsNullPtrType() &&
              "invalid ast: target type should be a nullptr_t.");
-      result_ = CreateValueNullptr(target_);
+      result_ = CreateValueNullptr(target_, type);
       return;
     }
     case CStyleCastKind::kReference: {
@@ -840,7 +840,7 @@ Value Interpreter::EvaluateBinaryAddition(Value lhs, Value rhs) {
     assert(CompareTypes(lhs.type(), rhs.type()) &&
            "invalid ast: operand must have the same type");
     return EvaluateArithmeticOp(target_, BinaryOpKind::Add, lhs, rhs,
-                                lhs.type());
+                                lhs.type().GetCanonicalType());
   }
 
   // Here one of the operands must be a pointer and the other one an integer.
@@ -869,7 +869,7 @@ Value Interpreter::EvaluateBinarySubtraction(Value lhs, Value rhs) {
     assert(CompareTypes(lhs.type(), rhs.type()) &&
            "invalid ast: operand must have the same type");
     return EvaluateArithmeticOp(target_, BinaryOpKind::Sub, lhs, rhs,
-                                lhs.type());
+                                lhs.type().GetCanonicalType());
   }
   assert(lhs.IsPointer() && "invalid ast: lhs must be a pointer");
 
@@ -906,7 +906,8 @@ Value Interpreter::EvaluateBinaryMultiplication(Value lhs, Value rhs) {
   assert((lhs.IsScalar() && CompareTypes(lhs.type(), rhs.type())) &&
          "invalid ast: operands must be arithmetic and have the same type");
 
-  return EvaluateArithmeticOp(target_, BinaryOpKind::Mul, lhs, rhs, lhs.type());
+  return EvaluateArithmeticOp(target_, BinaryOpKind::Mul, lhs, rhs,
+                              lhs.type().GetCanonicalType());
 }
 
 Value Interpreter::EvaluateBinaryDivision(Value lhs, Value rhs) {
@@ -924,7 +925,8 @@ Value Interpreter::EvaluateBinaryDivision(Value lhs, Value rhs) {
     return rhs;
   }
 
-  return EvaluateArithmeticOp(target_, BinaryOpKind::Div, lhs, rhs, lhs.type());
+  return EvaluateArithmeticOp(target_, BinaryOpKind::Div, lhs, rhs,
+                              lhs.type().GetCanonicalType());
 }
 
 Value Interpreter::EvaluateBinaryRemainder(Value lhs, Value rhs) {
@@ -953,7 +955,8 @@ Value Interpreter::EvaluateBinaryBitwise(BinaryOpKind kind, Value lhs,
           kind == BinaryOpKind::Xor) &&
          "invalid ast: operation must be '&', '|' or '^'");
 
-  return EvaluateArithmeticOpInteger(target_, kind, lhs, rhs, lhs.type());
+  return EvaluateArithmeticOpInteger(target_, kind, lhs, rhs,
+                                     lhs.type().GetCanonicalType());
 }
 
 Value Interpreter::EvaluateBinaryShift(BinaryOpKind kind, Value lhs,

@@ -528,9 +528,10 @@ Value CreateValueFromBool(lldb::SBTarget target, bool value) {
   return CreateValueFromBytes(target, &value, lldb::eBasicTypeBool);
 }
 
-Value CreateValueNullptr(lldb::SBTarget target) {
+Value CreateValueNullptr(lldb::SBTarget target, lldb::SBType type) {
+  assert(Type(type).IsNullPtrType() && "target type must be nullptr");
   uintptr_t zero = 0;
-  return CreateValueFromBytes(target, &zero, lldb::eBasicTypeNullPtr);
+  return CreateValueFromBytes(target, &zero, type);
 }
 
 }  // namespace lldb_eval

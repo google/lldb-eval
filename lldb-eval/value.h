@@ -131,7 +131,7 @@ Value CreateValueFromPointer(lldb::SBTarget target, uintptr_t addr,
 
 Value CreateValueFromBool(lldb::SBTarget target, bool value);
 
-Value CreateValueNullptr(lldb::SBTarget target);
+Value CreateValueNullptr(lldb::SBTarget target, lldb::SBType type);
 
 }  // namespace lldb_eval
 

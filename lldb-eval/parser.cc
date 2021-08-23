@@ -1882,8 +1882,10 @@ ExprResult Parser::ParsePointerLiteral() {
   Expect(clang::tok::kw_nullptr);
   clang::SourceLocation loc = token_.getLocation();
   ConsumeToken();
-  return std::make_unique<LiteralNode>(loc, CreateValueNullptr(target_),
-                                       /*is_literal_zero*/ false);
+  return std::make_unique<LiteralNode>(
+      loc,
+      CreateValueNullptr(target_, ctx_->GetBasicType(lldb::eBasicTypeNullPtr)),
+      /*is_literal_zero*/ false);
 }
 
 ExprResult Parser::ParseNumericConstant(clang::Token token) {
