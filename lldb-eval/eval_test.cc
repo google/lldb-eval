@@ -1375,20 +1375,161 @@ TEST_F(EvalTest, TestCStyleCastReference) {
 }
 
 TEST_F(EvalTest, TestCxxStaticCast) {
+  // Cast to scalars.
   EXPECT_THAT(Eval("static_cast<int>(1.1)"), IsEqual("1"));
   EXPECT_THAT(Eval("static_cast<double>(1)"), IsEqual("1"));
   EXPECT_THAT(Eval("static_cast<char>(128)"), IsEqual("'\\x80'"));
+  EXPECT_THAT(Eval("static_cast<bool>(nullptr)"), IsEqual("false"));
+  EXPECT_THAT(Eval("static_cast<bool>((int*)0)"), IsEqual("false"));
+  EXPECT_THAT(Eval("static_cast<bool>(arr)"), IsEqual("true"));
+  EXPECT_THAT(Eval("static_cast<int>(u_enum)"), IsEqual("2"));
+  EXPECT_THAT(Eval("static_cast<float>(s_enum)"), IsEqual("1"));
+  EXPECT_THAT(Eval("static_cast<td_int_t>(5.3)"), IsEqual("5"));
+  EXPECT_THAT(Eval("static_cast<td_int_t>(4)"), IsEqual("4"));
+  EXPECT_THAT(Eval("static_cast<int>(td_int)"), IsEqual("13"));
+
+  EXPECT_THAT(
+      Eval("static_cast<long long>(nullptr)"),
+      IsError("static_cast from 'nullptr_t' to 'long long' is not allowed"));
+  EXPECT_THAT(
+      Eval("static_cast<long long>(ptr)"),
+      IsError("static_cast from 'int *' to 'long long' is not allowed"));
+  EXPECT_THAT(
+      Eval("static_cast<long long>(arr)"),
+      IsError("static_cast from 'int *' to 'long long' is not allowed"));
+  EXPECT_THAT(
+      Eval("static_cast<int>(parent)"),
+      IsError(
+          "cannot convert 'CxxParent' to 'int' without a conversion operator"));
+  EXPECT_THAT(
+      Eval("static_cast<long long>(base)"),
+      IsError("static_cast from 'CxxBase *' to 'long long' is not allowed"));
+
+  // Cast to enums.
+  EXPECT_THAT(Eval("static_cast<UEnum>(0)"), IsEqual("kUZero"));
+  EXPECT_THAT(Eval("static_cast<UEnum>(s_enum)"), IsEqual("kUOne"));
+  EXPECT_THAT(Eval("static_cast<UEnum>(2.1)"), IsEqual("kUTwo"));
+  EXPECT_THAT(Eval("static_cast<SEnum>(true)"), IsEqual("kSOne"));
+  EXPECT_THAT(Eval("static_cast<SEnum>(0.4f)"), IsEqual("kSZero"));
+  EXPECT_THAT(Eval("static_cast<SEnum>(td_senum)"), IsEqual("kSOne"));
+  EXPECT_THAT(Eval("static_cast<td_senum_t>(UEnum::kUOne)"), IsEqual("kSOne"));
+
+  EXPECT_THAT(
+      Eval("static_cast<UEnum>(nullptr)"),
+      IsError("static_cast from 'nullptr_t' to 'UEnum' is not allowed"));
+  EXPECT_THAT(Eval("static_cast<UEnum>(ptr)"),
+              IsError("static_cast from 'int *' to 'UEnum' is not allowed"));
+  EXPECT_THAT(
+      Eval("static_cast<SEnum>(parent)"),
+      IsError("static_cast from 'CxxParent' to 'SEnum' is not allowed"));
+
+  // Cast to pointers.
   EXPECT_THAT(Eval("static_cast<char*>(0)"), IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("static_cast<long*>(nullptr)"),
+              IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("*static_cast<int*>(arr)"), IsEqual("1"));
+  EXPECT_THAT(Eval("*static_cast<td_int_ptr_t>(arr)"), IsEqual("1"));
+  EXPECT_THAT(Eval("static_cast<void*>(ptr)"), IsOk());
+  EXPECT_THAT(Eval("static_cast<int*>((void*)4)"),
+              IsEqual("0x0000000000000004"));
+  EXPECT_THAT(Eval("static_cast<long*>(ptr)"),
+              IsError("static_cast from 'int *' to 'long *' is not allowed"));
+  EXPECT_THAT(Eval("static_cast<float*>(arr)"),
+              IsError("static_cast from 'int *' to 'float *' is not allowed"));
 
-  EXPECT_THAT(Eval("static_cast<void*>(&parent)"), IsOk());
-  EXPECT_THAT(Eval("static_cast<CxxBase*>(&parent)"), IsOk());
-  EXPECT_THAT(Eval("static_cast<CxxBase*>(&parent)->a"), IsEqual("1"));
-  EXPECT_THAT(Eval("static_cast<CxxBase*>(&parent)->b"), IsEqual("2"));
-  EXPECT_THAT(Eval("static_cast<CxxBase*>(&parent)->c"),
-              IsError("no member named 'c' in 'CxxBase'"));
+  // Cast to nullptr.
+  EXPECT_THAT(Eval("static_cast<std::nullptr_t>(nullptr)"),
+              IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("static_cast<std::nullptr_t>(0)"),
+              IsEqual("0x0000000000000000"));
+  EXPECT_THAT(Eval("static_cast<std::nullptr_t>((int)0)"),
+              IsError("static_cast from 'int' to 'std::nullptr_t' (aka "
+                      "'nullptr_t') is not allowed"));
+  EXPECT_THAT(Eval("static_cast<std::nullptr_t>((void*)0)"),
+              IsError("static_cast from 'void *' to 'std::nullptr_t' (aka "
+                      "'nullptr_t') is not allowed"));
 
-  EXPECT_THAT(Eval("static_cast<CxxBase&>(parent).a"), IsEqual("1"));
-  EXPECT_THAT(Eval("static_cast<CxxBase&>(parent).b"), IsEqual("2"));
+  // Cast to references.
+  EXPECT_THAT(Eval("static_cast<int&>(parent.b)"), IsEqual("2"));
+  EXPECT_THAT(Eval("&static_cast<int&>(parent.b)"), IsOk());
+  EXPECT_THAT(
+      Eval("static_cast<int&>(parent.c)"),
+      IsError(
+          "static_cast from 'long long' to 'int &' is not implemented yet"));
+  EXPECT_THAT(Eval("static_cast<int&>(5)"),
+              IsError("static_cast from rvalue of type 'int' to reference type "
+                      "'int &' is not implemented yet"));
+}
+
+TEST_F(EvalTest, TestCastDerivedToBase) {
+  EXPECT_THAT(Eval("static_cast<CxxA*>(&a)->a"), IsEqual("1"));
+  EXPECT_THAT(Eval("static_cast<CxxA*>(&c)->a"), IsEqual("3"));
+  EXPECT_THAT(Eval("static_cast<CxxB*>(&c)->b"), IsEqual("4"));
+  EXPECT_THAT(Eval("static_cast<CxxB*>(&c)->c"),
+              IsError("no member named 'c' in 'CxxB'"));
+  EXPECT_THAT(Eval("static_cast<CxxB*>(&e)->b"), IsEqual("8"));
+  EXPECT_THAT(Eval("static_cast<CxxC*>(&e)->a"), IsEqual("7"));
+  EXPECT_THAT(Eval("static_cast<CxxC*>(&e)->b"), IsEqual("8"));
+  EXPECT_THAT(Eval("static_cast<CxxC*>(&e)->c"), IsEqual("9"));
+  EXPECT_THAT(Eval("static_cast<CxxB*>(&d)"),
+              IsError("static_cast from 'CxxD *' to 'CxxB *', which are not "
+                      "related by inheritance, is not allowed"));
+
+  // Cast via virtual inheritance.
+  EXPECT_THAT(Eval("static_cast<CxxA*>(&vc)->a"), IsEqual("12"));
+  EXPECT_THAT(Eval("static_cast<CxxB*>(&vc)->b"), IsEqual("13"));
+  EXPECT_THAT(Eval("static_cast<CxxB*>(&vc)->c"),
+              IsError("no member named 'c' in 'CxxB'"));
+  EXPECT_THAT(Eval("static_cast<CxxB*>(&ve)->b"), IsEqual("16"));
+  EXPECT_THAT(Eval("static_cast<CxxC*>(&ve)"),
+              IsError("static_cast from 'CxxVE *' to 'CxxC *', which are not "
+                      "related by inheritance, is not allowed"));
+
+  // Same with references.
+  EXPECT_THAT(Eval("static_cast<CxxA&>(a).a"), IsEqual("1"));
+  EXPECT_THAT(Eval("static_cast<CxxA&>(c).a"), IsEqual("3"));
+  EXPECT_THAT(Eval("static_cast<CxxB&>(c).b"), IsEqual("4"));
+  EXPECT_THAT(Eval("static_cast<CxxB&>(c).c"),
+              IsError("no member named 'c' in 'CxxB'"));
+  EXPECT_THAT(Eval("static_cast<CxxB&>(e).b"), IsEqual("8"));
+  EXPECT_THAT(Eval("static_cast<CxxC&>(e).a"), IsEqual("7"));
+  EXPECT_THAT(Eval("static_cast<CxxC&>(e).b"), IsEqual("8"));
+  EXPECT_THAT(Eval("static_cast<CxxC&>(e).c"), IsEqual("9"));
+  EXPECT_THAT(Eval("static_cast<CxxB&>(d)"),
+              IsError("static_cast from 'CxxD' to 'CxxB &', which are not "
+                      "related by inheritance, is not allowed"));
+
+  EXPECT_THAT(Eval("static_cast<CxxA&>(vc).a"), IsEqual("12"));
+  EXPECT_THAT(Eval("static_cast<CxxB&>(vc).b"), IsEqual("13"));
+  EXPECT_THAT(Eval("static_cast<CxxB&>(vc).c"),
+              IsError("no member named 'c' in 'CxxB'"));
+  EXPECT_THAT(Eval("static_cast<CxxB&>(ve).b"), IsEqual("16"));
+  EXPECT_THAT(Eval("static_cast<CxxC&>(ve)"),
+              IsError("static_cast from 'CxxVE' to 'CxxC &', which are not "
+                      "related by inheritance, is not allowed"));
+}
+
+TEST_F(EvalTest, TestCastBaseToDerived) {
+  EXPECT_THAT(Eval("static_cast<CxxE*>(e_as_b)->a"), IsEqual("7"));
+  EXPECT_THAT(Eval("static_cast<CxxE*>(e_as_b)->b"), IsEqual("8"));
+  EXPECT_THAT(Eval("static_cast<CxxE*>(e_as_b)->c"), IsEqual("9"));
+  EXPECT_THAT(Eval("static_cast<CxxE*>(e_as_b)->d"), IsEqual("10"));
+  EXPECT_THAT(Eval("static_cast<CxxE*>(e_as_b)->e"), IsEqual("11"));
+
+  // Same with references.
+  EXPECT_THAT(Eval("static_cast<CxxE&>(*e_as_b).a"), IsEqual("7"));
+  EXPECT_THAT(Eval("static_cast<CxxE&>(*e_as_b).b"), IsEqual("8"));
+  EXPECT_THAT(Eval("static_cast<CxxE&>(*e_as_b).c"), IsEqual("9"));
+  EXPECT_THAT(Eval("static_cast<CxxE&>(*e_as_b).d"), IsEqual("10"));
+  EXPECT_THAT(Eval("static_cast<CxxE&>(*e_as_b).e"), IsEqual("11"));
+
+  // Base-to-derived conversion isn't possible for virtually inhertied types.
+  EXPECT_THAT(
+      Eval("static_cast<CxxVE*>(ve_as_b)"),
+      IsError("cannot cast 'CxxB *' to 'CxxVE *' via virtual base 'CxxB'"));
+  EXPECT_THAT(
+      Eval("static_cast<CxxVE&>(*ve_as_b)"),
+      IsError("cannot cast 'CxxB' to 'CxxVE &' via virtual base 'CxxB'"));
 }
 
 TEST_F(EvalTest, TestCxxDynamicCast) {

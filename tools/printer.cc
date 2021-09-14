@@ -89,6 +89,13 @@ class AstPrinter : Visitor {
     PrintLastChild(node->rhs());
   }
 
+  void Visit(const CxxStaticCastNode* node) override {
+    std::cout << "CxxStaticCastNode " << print_common_props(node) << " "
+              << "type=" << node->type().GetName() << std::endl;
+
+    PrintLastChild(node->rhs());
+  }
+
   void Visit(const CxxReinterpretCastNode* node) override {
     std::cout << "CxxReinterpretCastNode " << print_common_props(node) << " "
               << "type=" << node->type().GetName() << std::endl;

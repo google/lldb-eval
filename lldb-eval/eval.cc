@@ -163,6 +163,62 @@ static bool IsInvalidDivisionByMinusOne(Value lhs, Value rhs) {
   return lhs.GetValueAsSigned() + (1LLU << (bit_size - 1)) == 0;
 }
 
+static Value CastDerivedToBaseType(lldb::SBTarget target, Value value,
+                                   Type type,
+                                   const std::vector<uint32_t>& idx) {
+  assert((type.IsPointerType() || type.IsReferenceType()) &&
+         "invalid ast: target type should be a pointer or a reference");
+  assert(!idx.empty() && "invalid ast: children sequence should be non-empty");
+
+  // The `value` can be a pointer, but GetChildAtIndex works for pointers too.
+  lldb::SBValue inner_value = value.inner_value();
+  inner_value.SetPreferSyntheticValue(false);
+  for (const uint32_t i : idx) {
+    // Force static value, otherwise we can end up with the "real" type.
+    inner_value = inner_value.GetChildAtIndex(i, lldb::eNoDynamicValues,
+                                              /*can_create_synthetic*/ false);
+  }
+
+  // At this point type of `inner_value` should be the dereferenced target type.
+  if (type.IsPointerType()) {
+    assert(CompareTypes(inner_value.GetType(), type.GetPointeeType()) &&
+           "casted value doesn't match the desired type");
+
+    uintptr_t addr = inner_value.GetLoadAddress();
+    return CreateValueFromPointer(target, addr, type);
+  }
+
+  // At this point the target type should be a reference.
+  assert(CompareTypes(inner_value.GetType(), type.GetDereferencedType()) &&
+         "casted value doesn't match the desired type");
+
+  return Value(inner_value.Cast(type.GetDereferencedType()));
+}
+
+static Value CastBaseToDerivedType(lldb::SBTarget target, Value value,
+                                   Type type, uint64_t offset) {
+  assert((type.IsPointerType() || type.IsReferenceType()) &&
+         "invalid ast: target type should be a pointer or a reference");
+
+  Type pointer_type =
+      type.IsPointerType() ? type : type.GetDereferencedType().GetPointerType();
+
+  uintptr_t addr = type.IsPointerType() ? value.GetUInt64()
+                                        : value.inner_value().GetLoadAddress();
+
+  value = CreateValueFromPointer(target, addr - offset, pointer_type);
+
+  if (type.IsPointerType()) {
+    return value;
+  }
+
+  // At this point the target type is a reference. Since `value` is a pointer,
+  // it has to be dereferenced.
+  value = value.Dereference();
+
+  return Value(value.inner_value().Cast(type.GetDereferencedType()));
+}
+
 Value Interpreter::Eval(const AstNode* tree, Error& error) {
   error_.Clear();
   // Evaluate an AST.
@@ -388,6 +444,78 @@ void Interpreter::Visit(const CStyleCastNode* node) {
 
   assert(false && "invalid ast: unexpected c-style cast kind");
   result_ = Value();
+}
+
+void Interpreter::Visit(const CxxStaticCastNode* node) {
+  // Get the type and the value we need to cast.
+  Type type = node->type();
+  auto rhs = EvalNode(node->rhs());
+  if (!rhs) {
+    return;
+  }
+
+  switch (node->kind()) {
+    case CxxStaticCastKind::kNoOp: {
+      assert(CompareTypes(type, rhs.type()) &&
+             "invalid ast: types should be the same");
+      result_ = Value(rhs.inner_value().Cast(type));
+      return;
+    }
+
+    case CxxStaticCastKind::kArithmetic: {
+      assert(type.IsScalar());
+      if (rhs.IsPointer() || rhs.type().IsNullPtrType()) {
+        assert(type.IsBool() && "invalid ast: target type should be bool");
+        result_ = CastPointerToBasicType(target_, rhs, type);
+      } else if (rhs.IsScalar()) {
+        result_ = CastScalarToBasicType(target_, rhs, type, error_);
+      } else if (rhs.IsEnum()) {
+        result_ = CastEnumToBasicType(target_, rhs, type);
+      } else {
+        assert(false &&
+               "invalid ast: operand is not convertible to arithmetic type");
+      }
+      return;
+    }
+
+    case CxxStaticCastKind::kEnumeration: {
+      if (rhs.IsFloat()) {
+        result_ = CastFloatToEnumType(target_, rhs, type, error_);
+      } else if (rhs.IsInteger() || rhs.IsEnum()) {
+        result_ = CastIntegerOrEnumToEnumType(target_, rhs, type);
+      } else {
+        assert(false &&
+               "invalid ast: operand is not convertible to enumeration type");
+      }
+      return;
+    }
+
+    case CxxStaticCastKind::kPointer: {
+      assert(type.IsPointerType() &&
+             "invalid ast: target type should be a pointer.");
+
+      uint64_t addr = rhs.type().IsArrayType()
+                          ? rhs.inner_value().GetLoadAddress()
+                          : rhs.GetUInt64();
+      result_ = CreateValueFromPointer(target_, addr, type);
+      return;
+    }
+
+    case CxxStaticCastKind::kNullptr: {
+      result_ = CreateValueNullptr(target_, type);
+      return;
+    }
+
+    case CxxStaticCastKind::kDerivedToBase: {
+      result_ = CastDerivedToBaseType(target_, rhs, type, node->idx());
+      return;
+    }
+
+    case CxxStaticCastKind::kBaseToDerived: {
+      result_ = CastBaseToDerivedType(target_, rhs, type, node->offset());
+      return;
+    }
+  }
 }
 
 void Interpreter::Visit(const CxxReinterpretCastNode* node) {

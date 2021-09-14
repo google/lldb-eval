@@ -186,6 +186,67 @@ class CStyleCastNode : public AstNode {
   CStyleCastKind kind_;
 };
 
+enum class CxxStaticCastKind {
+  kNoOp,
+  kArithmetic,
+  kEnumeration,
+  kPointer,
+  kNullptr,
+  kBaseToDerived,
+  kDerivedToBase,
+};
+
+class CxxStaticCastNode : public AstNode {
+ public:
+  CxxStaticCastNode(clang::SourceLocation location, lldb::SBType type,
+                    ExprResult rhs, CxxStaticCastKind kind, bool is_rvalue)
+      : AstNode(location),
+        type_(std::move(type)),
+        rhs_(std::move(rhs)),
+        kind_(kind),
+        is_rvalue_(is_rvalue) {
+    assert(kind != CxxStaticCastKind::kBaseToDerived &&
+           kind != CxxStaticCastKind::kDerivedToBase &&
+           "invalid constructor for base-to-derived and derived-to-base casts");
+  }
+
+  CxxStaticCastNode(clang::SourceLocation location, lldb::SBType type,
+                    ExprResult rhs, std::vector<uint32_t> idx, bool is_rvalue)
+      : AstNode(location),
+        type_(std::move(type)),
+        rhs_(std::move(rhs)),
+        idx_(std::move(idx)),
+        kind_(CxxStaticCastKind::kDerivedToBase),
+        is_rvalue_(is_rvalue) {}
+
+  CxxStaticCastNode(clang::SourceLocation location, lldb::SBType type,
+                    ExprResult rhs, uint64_t offset, bool is_rvalue)
+      : AstNode(location),
+        type_(std::move(type)),
+        rhs_(std::move(rhs)),
+        offset_(offset),
+        kind_(CxxStaticCastKind::kBaseToDerived),
+        is_rvalue_(is_rvalue) {}
+
+  void Accept(Visitor* v) const override;
+  bool is_rvalue() const override { return is_rvalue_; }
+  lldb::SBType result_type() const override { return type_; }
+
+  lldb::SBType type() const { return type_; }
+  AstNode* rhs() const { return rhs_.get(); }
+  const std::vector<uint32_t>& idx() const { return idx_; }
+  uint64_t offset() const { return offset_; }
+  CxxStaticCastKind kind() const { return kind_; }
+
+ private:
+  lldb::SBType type_;
+  ExprResult rhs_;
+  std::vector<uint32_t> idx_;
+  uint64_t offset_ = 0;
+  CxxStaticCastKind kind_;
+  bool is_rvalue_;
+};
+
 class CxxReinterpretCastNode : public AstNode {
  public:
   CxxReinterpretCastNode(clang::SourceLocation location, lldb::SBType type,
@@ -423,6 +484,7 @@ class Visitor {
   virtual void Visit(const SizeOfNode* node) = 0;
   virtual void Visit(const BuiltinFunctionCallNode* node) = 0;
   virtual void Visit(const CStyleCastNode* node) = 0;
+  virtual void Visit(const CxxStaticCastNode* node) = 0;
   virtual void Visit(const CxxReinterpretCastNode* node) = 0;
   virtual void Visit(const MemberOfNode* node) = 0;
   virtual void Visit(const ArraySubscriptNode* node) = 0;

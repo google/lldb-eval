@@ -151,6 +151,8 @@ void BuiltinFunctionCallNode::Accept(Visitor* v) const { v->Visit(this); }
 
 void CStyleCastNode::Accept(Visitor* v) const { v->Visit(this); }
 
+void CxxStaticCastNode::Accept(Visitor* v) const { return v->Visit(this); }
+
 void CxxReinterpretCastNode::Accept(Visitor* v) const { v->Visit(this); }
 
 void MemberOfNode::Accept(Visitor* v) const { v->Visit(this); }

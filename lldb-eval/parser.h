@@ -157,6 +157,21 @@ class Parser {
   ExprResult BuildCxxDynamicCast(Type type, ExprResult rhs,
                                  clang::SourceLocation location);
 
+  ExprResult BuildCxxStaticCast(Type type, ExprResult rhs,
+                                clang::SourceLocation location);
+  ExprResult BuildCxxStaticCastToScalar(Type type, ExprResult rhs,
+                                        clang::SourceLocation location);
+  ExprResult BuildCxxStaticCastToEnum(Type type, ExprResult rhs,
+                                      clang::SourceLocation location);
+  ExprResult BuildCxxStaticCastToPointer(Type type, ExprResult rhs,
+                                         clang::SourceLocation location);
+  ExprResult BuildCxxStaticCastToNullPtr(Type type, ExprResult rhs,
+                                         clang::SourceLocation location);
+  ExprResult BuildCxxStaticCastToReference(Type type, ExprResult rhs,
+                                           clang::SourceLocation location);
+  ExprResult BuildCxxStaticCastForInheritedTypes(
+      Type type, ExprResult rhs, clang::SourceLocation location);
+
   ExprResult BuildCxxReinterpretCast(Type type, ExprResult rhs,
                                      clang::SourceLocation location);
 

@@ -635,6 +635,73 @@ static std::string TypeDescription(lldb::SBType type) {
   return llvm::formatv("'{0}' (aka '{1}')", name, canonical_name);
 }
 
+// Checks whether `target_base` is a virtual base of `type` (direct or
+// indirect). If it is, stores the first virtual base type on the path from
+// `type` to `target_type`.
+static bool IsVirtualBase(lldb::SBType type, lldb::SBType target_base,
+                          lldb::SBType* virtual_base,
+                          bool carry_virtual = false) {
+  if (CompareTypes(type, target_base)) {
+    return carry_virtual;
+  }
+
+  if (!carry_virtual) {
+    uint32_t num_virtual_bases = type.GetNumberOfVirtualBaseClasses();
+    for (uint32_t i = 0; i < num_virtual_bases; ++i) {
+      lldb::SBType base = type.GetVirtualBaseClassAtIndex(i).GetType();
+      if (IsVirtualBase(base, target_base, virtual_base,
+                        /*carry_virtual*/ true)) {
+        if (virtual_base) {
+          *virtual_base = base;
+        }
+        return true;
+      }
+    }
+  }
+
+  uint32_t num_direct_bases = type.GetNumberOfDirectBaseClasses();
+  for (uint32_t i = 0; i < num_direct_bases; ++i) {
+    lldb::SBType base = type.GetDirectBaseClassAtIndex(i).GetType();
+    if (IsVirtualBase(base, target_base, virtual_base, carry_virtual)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Checks whether `target_base` is a direct or indirect base of `type`.
+// If `idx` is provided, it stores the sequence of direct base types from
+// `target_base` to `type`. If `offset` is provided, it stores the positive
+// offset of the inherited type in bytes.
+static bool GetPathToBaseClass(lldb::SBType type, lldb::SBType target_base,
+                               std::vector<uint32_t>* idx, uint64_t* offset) {
+  if (CompareTypes(type, target_base)) {
+    return true;
+  }
+
+  uint32_t num_non_empty_bases = 0;
+  uint32_t num_direct_bases = type.GetNumberOfDirectBaseClasses();
+  for (uint32_t i = 0; i < num_direct_bases; ++i) {
+    lldb::SBTypeMember member = type.GetDirectBaseClassAtIndex(i);
+    lldb::SBType base = member.GetType();
+    if (GetPathToBaseClass(base, target_base, idx, offset)) {
+      if (idx) {
+        idx->push_back(num_non_empty_bases);
+      }
+      if (offset) {
+        *offset += member.GetOffsetInBytes();
+      }
+      return true;
+    }
+    if (base.GetNumberOfFields() > 0) {
+      num_non_empty_bases++;
+    }
+  }
+
+  return false;
+}
+
 Parser::Parser(std::shared_ptr<Context> ctx) : ctx_(std::move(ctx)) {
   target_ = ctx_->GetExecutionContext().GetTarget();
 
@@ -2238,7 +2305,231 @@ ExprResult Parser::BuildCxxCast(clang::tok::TokenKind kind, Type type,
   if (kind == clang::tok::kw_reinterpret_cast) {
     return BuildCxxReinterpretCast(type, std::move(rhs), location);
   }
+  if (kind == clang::tok::kw_static_cast) {
+    return BuildCxxStaticCast(type, std::move(rhs), location);
+  }
   return BuildCStyleCast(type, std::move(rhs), location);
+}
+
+ExprResult Parser::BuildCxxStaticCast(Type type, ExprResult rhs,
+                                      clang::SourceLocation location) {
+  Type rhs_type = rhs->result_type_deref();
+
+  // Perform implicit array-to-pointer conversion.
+  if (rhs_type.IsArrayType()) {
+    rhs = InsertArrayToPointerConversion(std::move(rhs));
+    rhs_type = rhs->result_type_deref();
+  }
+
+  if (CompareTypes(rhs_type, type)) {
+    return std::make_unique<CxxStaticCastNode>(location, type, std::move(rhs),
+                                               CxxStaticCastKind::kNoOp,
+                                               /*is_rvalue*/ true);
+  }
+
+  if (type.IsScalar()) {
+    return BuildCxxStaticCastToScalar(type, std::move(rhs), location);
+  } else if (type.IsEnum()) {
+    return BuildCxxStaticCastToEnum(type, std::move(rhs), location);
+  } else if (type.IsPointerType()) {
+    return BuildCxxStaticCastToPointer(type, std::move(rhs), location);
+  } else if (type.IsNullPtrType()) {
+    return BuildCxxStaticCastToNullPtr(type, std::move(rhs), location);
+  } else if (type.IsReferenceType()) {
+    return BuildCxxStaticCastToReference(type, std::move(rhs), location);
+  }
+
+  // Unsupported cast.
+  BailOut(ErrorCode::kNotImplemented,
+          llvm::formatv("casting of {0} to {1} is not implemented yet",
+                        TypeDescription(rhs_type), TypeDescription(type)),
+          location);
+  return std::make_unique<ErrorNode>();
+}
+
+ExprResult Parser::BuildCxxStaticCastToScalar(Type type, ExprResult rhs,
+                                              clang::SourceLocation location) {
+  Type rhs_type = rhs->result_type_deref();
+
+  if (rhs_type.IsPointerType() || rhs_type.IsNullPtrType()) {
+    // Pointers can be casted to bools.
+    if (!type.IsBool()) {
+      BailOut(ErrorCode::kInvalidOperandType,
+              llvm::formatv("static_cast from {0} to {1} is not allowed",
+                            TypeDescription(rhs_type), TypeDescription(type)),
+              location);
+      return std::make_unique<ErrorNode>();
+    }
+  } else if (!rhs_type.IsScalar() && !rhs_type.IsEnum()) {
+    // Otherwise accept only arithmetic types and enums.
+    BailOut(
+        ErrorCode::kInvalidOperandType,
+        llvm::formatv("cannot convert {0} to {1} without a conversion operator",
+                      TypeDescription(rhs_type), TypeDescription(type)),
+        location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  return std::make_unique<CxxStaticCastNode>(location, type, std::move(rhs),
+                                             CxxStaticCastKind::kArithmetic,
+                                             /*is_rvalue*/ true);
+}
+
+ExprResult Parser::BuildCxxStaticCastToEnum(Type type, ExprResult rhs,
+                                            clang::SourceLocation location) {
+  Type rhs_type = rhs->result_type_deref();
+
+  if (!rhs_type.IsScalar() && !rhs_type.IsEnum()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv("static_cast from {0} to {1} is not allowed",
+                          TypeDescription(rhs_type), TypeDescription(type)),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  return std::make_unique<CxxStaticCastNode>(location, type, std::move(rhs),
+                                             CxxStaticCastKind::kEnumeration,
+                                             /*is_rvalue*/ true);
+}
+
+ExprResult Parser::BuildCxxStaticCastToPointer(Type type, ExprResult rhs,
+                                               clang::SourceLocation location) {
+  Type rhs_type = rhs->result_type_deref();
+
+  if (rhs_type.IsPointerType()) {
+    Type type_pointee = type.GetPointeeType();
+    Type rhs_type_pointee = rhs_type.GetPointeeType();
+
+    if (type_pointee.IsRecordType() && rhs_type_pointee.IsRecordType()) {
+      return BuildCxxStaticCastForInheritedTypes(type, std::move(rhs),
+                                                 location);
+    }
+
+    if (!type.IsPointerToVoid() && !rhs_type.IsPointerToVoid()) {
+      BailOut(ErrorCode::kInvalidOperandType,
+              llvm::formatv("static_cast from {0} to {1} is not allowed",
+                            TypeDescription(rhs_type), TypeDescription(type)),
+              location);
+      return std::make_unique<ErrorNode>();
+    }
+  } else if (!rhs_type.IsNullPtrType() && !rhs->is_literal_zero()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv("cannot cast from type {0} to pointer type '{1}'",
+                          TypeDescription(rhs_type), TypeDescription(type)),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  return std::make_unique<CxxStaticCastNode>(location, type, std::move(rhs),
+                                             CxxStaticCastKind::kPointer,
+                                             /*is_rvalue*/ true);
+}
+
+ExprResult Parser::BuildCxxStaticCastToNullPtr(Type type, ExprResult rhs,
+                                               clang::SourceLocation location) {
+  Type rhs_type = rhs->result_type_deref();
+
+  if (!rhs_type.IsNullPtrType() && !rhs->is_literal_zero()) {
+    BailOut(ErrorCode::kInvalidOperandType,
+            llvm::formatv("static_cast from {0} to {1} is not allowed",
+                          TypeDescription(rhs_type), TypeDescription(type)),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  return std::make_unique<CxxStaticCastNode>(location, type, std::move(rhs),
+                                             CxxStaticCastKind::kNullptr,
+                                             /*is_rvalue*/ true);
+}
+
+ExprResult Parser::BuildCxxStaticCastToReference(
+    Type type, ExprResult rhs, clang::SourceLocation location) {
+  Type rhs_type = rhs->result_type_deref();
+  Type type_deref = type.GetDereferencedType();
+
+  if (rhs->is_rvalue()) {
+    BailOut(ErrorCode::kNotImplemented,
+            llvm::formatv("static_cast from rvalue of type {0} to reference "
+                          "type {1} is not implemented yet",
+                          TypeDescription(rhs_type), TypeDescription(type)),
+            location);
+    return std::make_unique<ErrorNode>();
+  }
+
+  if (CompareTypes(type_deref, rhs_type)) {
+    return std::make_unique<CxxStaticCastNode>(
+        location, type_deref, std::move(rhs), CxxStaticCastKind::kNoOp,
+        /*is_rvalue*/ false);
+  }
+
+  if (type_deref.IsRecordType() && rhs_type.IsRecordType()) {
+    return BuildCxxStaticCastForInheritedTypes(type, std::move(rhs), location);
+  }
+
+  BailOut(ErrorCode::kNotImplemented,
+          llvm::formatv("static_cast from {0} to {1} is not implemented yet",
+                        TypeDescription(rhs_type), TypeDescription(type)),
+          location);
+  return std::make_unique<ErrorNode>();
+}
+
+ExprResult Parser::BuildCxxStaticCastForInheritedTypes(
+    Type type, ExprResult rhs, clang::SourceLocation location) {
+  assert((type.IsPointerType() || type.IsReferenceType()) &&
+         "target type should either be a pointer or a reference");
+
+  Type rhs_type = rhs->result_type_deref();
+  Type record_type =
+      type.IsPointerType() ? type.GetPointeeType() : type.GetDereferencedType();
+  Type rhs_record_type =
+      rhs_type.IsPointerType() ? rhs_type.GetPointeeType() : rhs_type;
+
+  assert(record_type.IsRecordType() && rhs_record_type.IsRecordType() &&
+         "underlying RHS and target types should be record types");
+  assert(!CompareTypes(record_type, rhs_record_type) &&
+         "underlying RHS and target types should be different");
+
+  // Result of cast to reference type is an lvalue.
+  bool is_rvalue = !type.IsReferenceType();
+
+  // Handle derived-to-base conversion.
+  std::vector<uint32_t> idx;
+  if (GetPathToBaseClass(rhs_record_type, record_type, &idx,
+                         /*offset*/ nullptr)) {
+    std::reverse(idx.begin(), idx.end());
+    // At this point `idx` represents indices of direct base classes on path
+    // from the `rhs` type to the target `type`.
+    return std::make_unique<CxxStaticCastNode>(location, type, std::move(rhs),
+                                               std::move(idx), is_rvalue);
+  }
+
+  // Handle base-to-derived conversion.
+  uint64_t offset = 0;
+  if (GetPathToBaseClass(record_type, rhs_record_type, /*idx*/ nullptr,
+                         &offset)) {
+    lldb::SBType virtual_base;
+    if (IsVirtualBase(record_type, rhs_record_type, &virtual_base)) {
+      // Base-to-derived conversion isn't possible for virtually inherited
+      // types (either directly or indirectly).
+      assert(virtual_base.IsValid() && "virtual base should be valid");
+      BailOut(ErrorCode::kInvalidOperandType,
+              llvm::formatv("cannot cast {0} to {1} via virtual base {2}",
+                            TypeDescription(rhs_type), TypeDescription(type),
+                            TypeDescription(virtual_base)),
+              location);
+      return std::make_unique<ErrorNode>();
+    }
+
+    return std::make_unique<CxxStaticCastNode>(location, type, std::move(rhs),
+                                               offset, is_rvalue);
+  }
+
+  BailOut(ErrorCode::kInvalidOperandType,
+          llvm::formatv("static_cast from {0} to {1}, which are not "
+                        "related by inheritance, is not allowed",
+                        TypeDescription(rhs_type), TypeDescription(type)),
+          location);
+  return std::make_unique<ErrorNode>();
 }
 
 ExprResult Parser::BuildCxxReinterpretCast(Type type, ExprResult rhs,
@@ -2323,7 +2614,6 @@ ExprResult Parser::BuildCxxReinterpretCast(Type type, ExprResult rhs,
           location);
       return std::make_unique<ErrorNode>();
     }
-
     // Casting to reference types gives an L-value result.
     is_rvalue = false;
 
