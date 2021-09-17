@@ -37,25 +37,67 @@
 
 namespace lldb_eval {
 
-// TypeDeclaration holds information about the literal type definition. It
-// doesn't perform semantic analysis of the type -- e.g. "long long long" and
-// "char&&&" are valid type declarations.
+// TypeDeclaration builds information about the literal type definition as type
+// is being parsed. It doesn't perform semantic analysis for non-basic types --
+// e.g. "char&&&" is a valid type declaration.
 // NOTE: CV qualifiers are ignored.
 class TypeDeclaration {
  public:
-  // Type declaration is considered valid if it contains at least one typename.
-  bool IsValid() const { return typenames_.size() > 0; }
+  enum class TypeSpecifier {
+    kUnknown,
+    kVoid,
+    kBool,
+    kChar,
+    kShort,
+    kInt,
+    kLong,
+    kLongLong,
+    kFloat,
+    kDouble,
+    kWChar,
+    kChar16,
+    kChar32,
+  };
+
+  enum class SignSpecifier {
+    kUnknown,
+    kSigned,
+    kUnsigned,
+  };
+
+  // Type declaration is considered valid if it contains either a basic type
+  // declaration, or user-defined typename, but not both.
+  bool IsValid() const {
+    return user_typename_.empty() ? IsBasicType() : !IsBasicType();
+  }
 
   std::string GetName() const;
   std::string GetBaseName() const;
 
+  bool IsBasicType() const {
+    return type_specifier_ != TypeSpecifier::kUnknown ||
+           sign_specifier_ != SignSpecifier::kUnknown;
+  }
+
  public:
-  // List of base typenames, e.g. ["long", "long"] or ["uint64_t"].
-  std::vector<std::string> typenames_;
+  // Indicates user-defined typename (e.g. "MyClass", "MyTmpl<int>").
+  std::string user_typename_;
 
   // Pointer and reference operators (* and &).
   std::vector<std::tuple<clang::tok::TokenKind, clang::SourceLocation>>
       ptr_operators_;
+
+  // Basic type specifier ("void", "char", "int", "long", "long long", etc).
+  TypeSpecifier type_specifier_ = TypeSpecifier::kUnknown;
+
+  // Signedness specifier ("signed", "unsigned").
+  SignSpecifier sign_specifier_ = SignSpecifier::kUnknown;
+
+  // Does the type declaration includes "int" specifier?
+  // This is different than `type_specifier_` and is used to detect "int"
+  // duplication for types that can be combined with "int" specifier (e.g.
+  // "short int", "long int").
+  bool has_int_specifier_ = false;
 };
 
 class BuiltinFunctionDef {
@@ -116,6 +158,7 @@ class Parser {
   bool IsSimpleTypeSpecifierKeyword(clang::Token token) const;
   bool IsCvQualifier(clang::Token token) const;
   bool IsPtrOperator(clang::Token token) const;
+  bool HandleSimpleTypeSpecifier(TypeDeclaration* type_decl);
 
   std::string ParseIdExpression();
   std::string ParseUnqualifiedId();
