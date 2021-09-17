@@ -62,14 +62,6 @@ const char* kInvalidOperandsToBinaryExpression =
 const char* kValueIsNotConvertibleToBool =
     "value of type {0} is not contextually convertible to 'bool'";
 
-void StringReplace(std::string& str, const std::string& old_value,
-                   const std::string& new_value) {
-  size_t pos = str.find(old_value);
-  if (pos != std::string::npos) {
-    str.replace(pos, old_value.length(), new_value);
-  }
-}
-
 template <typename T>
 constexpr unsigned type_width() {
   return static_cast<unsigned>(sizeof(T)) * CHAR_BIT;
