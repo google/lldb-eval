@@ -550,7 +550,6 @@ static const char* ToString(TypeDeclaration::TypeSpecifier type_spec) {
   using TypeSpecifier = TypeDeclaration::TypeSpecifier;
   switch (type_spec) {
       // clang-format off
-    case TypeSpecifier::kUnknown:  return nullptr;
     case TypeSpecifier::kVoid:     return "void";
     case TypeSpecifier::kBool:     return "bool";
     case TypeSpecifier::kChar:     return "char";
@@ -574,7 +573,6 @@ static const char* ToString(TypeDeclaration::SignSpecifier sign_spec) {
   using SignSpecifier = TypeDeclaration::SignSpecifier;
   switch (sign_spec) {
       // clang-format off
-    case SignSpecifier::kUnknown:  return nullptr;
     case SignSpecifier::kSigned:   return "signed";
     case SignSpecifier::kUnsigned: return "unsigned";
       // clang-format on

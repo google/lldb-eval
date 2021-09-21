@@ -1732,7 +1732,13 @@ TEST_F(EvalTest, TestBasicTypeDeclaration) {
   EXPECT_THAT(Eval("(char)65"), IsEqual("'A'"));
   EXPECT_THAT(Eval("(char unsigned)65"), IsEqual("'A'"));
   EXPECT_THAT(Eval("(signed char)65"), IsEqual("'A'"));
+#ifdef _WIN32
+  // Size of "wchar_t" is 2 bytes on Windows.
   EXPECT_THAT(Eval("(wchar_t)0x4141"), IsEqual("AA"));
+#else
+  // Size of "wchar_t" is 4 bytes on Linux.
+  EXPECT_THAT(Eval("(wchar_t)0x41414141"), IsEqual("AAAA"));
+#endif
   EXPECT_THAT(Eval("(char16_t)0x4141"), IsEqual("U+4141"));
   EXPECT_THAT(Eval("(char32_t)0x4141"), IsEqual("U+0x00004141"));
   EXPECT_THAT(Eval("(int short)-1"), IsEqual("-1"));
@@ -1750,9 +1756,11 @@ TEST_F(EvalTest, TestBasicTypeDeclaration) {
   EXPECT_THAT(Eval("(signed long)-1"), IsEqual("-1"));
   EXPECT_THAT(Eval("(long int signed)-1"), IsEqual("-1"));
 #ifdef _WIN32
+  // Size of "long" is 4 bytes on Windows.
   EXPECT_THAT(Eval("(unsigned long)-1"), IsEqual("4294967295"));
   EXPECT_THAT(Eval("(int long unsigned)-1"), IsEqual("4294967295"));
 #else
+  // Size of "long" is 8 bytes on Linux.
   EXPECT_THAT(Eval("(unsigned long)-1"), IsEqual("18446744073709551615"));
   EXPECT_THAT(Eval("(int long unsigned)-1"), IsEqual("18446744073709551615"));
 #endif
