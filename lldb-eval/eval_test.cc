@@ -2150,6 +2150,14 @@ TEST_F(EvalTest, TestTernaryOperator) {
   EXPECT_THAT(Eval("pi ? 1 : 2"), IsEqual("1"));
   EXPECT_THAT(Eval("nullptr ? 1 : 2"), IsEqual("2"));
   EXPECT_THAT(Eval("arr2 ? 1 : 2"), IsEqual("1"));
+
+  // Ensure that "signed char" and "char" are different types.
+  EXPECT_THAT(Eval("true ? c : sc"), IsEqual("2"));  // int
+  EXPECT_THAT(Eval("true ? sc : (signed char)67"), IsEqual("'A'"));
+  EXPECT_THAT(Eval("true ? (char)66 : (signed char)65"), IsEqual("66"));
+  EXPECT_THAT(Eval("&(true ? c : c)"), IsOk());
+  EXPECT_THAT(Eval("&(true ? c : sc)"),
+              IsError("cannot take the address of an rvalue of type 'int'"));
 }
 
 TEST_F(EvalTest, TestSizeOf) {

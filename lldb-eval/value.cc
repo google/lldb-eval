@@ -212,6 +212,15 @@ bool CompareTypes(lldb::SBType lhs, lldb::SBType rhs) {
   lldb::BasicType rhs_basic_type = rhs.GetCanonicalType().GetBasicType();
   if (lhs_basic_type != lldb::eBasicTypeInvalid &&
       lhs_basic_type == rhs_basic_type) {
+    // Handle "char" and "signed char" separately. It's possible that resulting
+    // BasicType enumerations are the same, but the name is different. In that
+    // case, compare names, since these two types are not the same according to
+    // the C++ standard.
+    if (lhs_basic_type == lldb::eBasicTypeChar ||
+        lhs_basic_type == lldb::eBasicTypeSignedChar) {
+      return strcmp(lhs.GetName(), rhs.GetName()) == 0;
+    }
+
     return true;
   }
 
