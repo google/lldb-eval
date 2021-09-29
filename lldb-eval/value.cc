@@ -265,6 +265,8 @@ uint64_t Value::GetUInt64() {
   return IsSigned() ? value_.GetValueAsSigned() : GetValueAsUnsigned(value_);
 }
 
+int64_t Value::GetValueAsSigned() { return value_.GetValueAsSigned(); }
+
 Value Value::AddressOf() { return Value(value_.AddressOf()); }
 
 Value Value::Dereference() { return Value(value_.Dereference()); }

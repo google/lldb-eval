@@ -143,6 +143,26 @@ static Value EvaluateArithmeticOp(lldb::SBTarget target, BinaryOpKind kind,
   return Value();
 }
 
+static bool IsInvalidDivisionByMinusOne(Value lhs, Value rhs) {
+  assert(lhs.IsInteger() && rhs.IsInteger() && "operands should be integers");
+
+  // The result type should be signed integer.
+  auto basic_type = rhs.type().GetBasicType();
+  if (basic_type != lldb::eBasicTypeInt && basic_type != lldb::eBasicTypeLong &&
+      basic_type != lldb::eBasicTypeLongLong) {
+    return false;
+  }
+
+  // The RHS should be equal to -1.
+  if (rhs.GetValueAsSigned() != -1) {
+    return false;
+  }
+
+  // The LHS should be equal to the minimum value the result type can hold.
+  auto bit_size = rhs.type().GetByteSize() * CHAR_BIT;
+  return lhs.GetValueAsSigned() + (1LLU << (bit_size - 1)) == 0;
+}
+
 Value Interpreter::Eval(const AstNode* tree, Error& error) {
   error_.Clear();
   // Evaluate an AST.
@@ -925,6 +945,10 @@ Value Interpreter::EvaluateBinaryDivision(Value lhs, Value rhs) {
     return rhs;
   }
 
+  if (rhs.IsInteger() && IsInvalidDivisionByMinusOne(lhs, rhs)) {
+    error_.SetUbStatus(UbStatus::kDivisionByMinusOne);
+  }
+
   return EvaluateArithmeticOp(target_, BinaryOpKind::Div, lhs, rhs,
                               lhs.type().GetCanonicalType());
 }
@@ -941,6 +965,10 @@ Value Interpreter::EvaluateBinaryRemainder(Value lhs, Value rhs) {
     error_.SetUbStatus(UbStatus::kDivisionByZero);
 
     return rhs;
+  }
+
+  if (IsInvalidDivisionByMinusOne(lhs, rhs)) {
+    error_.SetUbStatus(UbStatus::kDivisionByMinusOne);
   }
 
   return EvaluateArithmeticOpInteger(target_, BinaryOpKind::Rem, lhs, rhs,

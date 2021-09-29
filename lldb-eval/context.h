@@ -42,6 +42,10 @@ enum class ErrorCode : unsigned char {
 enum class UbStatus : unsigned char {
   kOk = 0,
   kDivisionByZero,
+  // If "a / b" isn't representable in its result type, then results of "a / b"
+  // and "a % b" are undefined behaviour. This happens when "a" is equal to the
+  // minimum value of the result type and "b" is equal to -1.
+  kDivisionByMinusOne,
   kInvalidCast,
   kInvalidShift,
   kNullptrArithmetic,

@@ -27,6 +27,12 @@ int main() {
 
   auto scoped_enum = ScopedEnum::kZero;
 
+  int int_min = std::numeric_limits<int>::min();
+  long long_min = std::numeric_limits<long>::min();
+  long long llong_min = std::numeric_limits<long long>::min();
+  using myint = int;
+  myint myint_min = std::numeric_limits<int>::min();
+
   // BREAK HERE
 
   return 0;

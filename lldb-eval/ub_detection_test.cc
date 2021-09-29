@@ -44,10 +44,16 @@ std::ostream& operator<<(std::ostream& os, UbStatus status) {
       return os << "UbStatus::kOk";
     case UbStatus::kDivisionByZero:
       return os << "UbStatus::kDivisionByZero";
+    case UbStatus::kDivisionByMinusOne:
+      return os << "UbStatus::kDivisionByMinusOne";
     case UbStatus::kInvalidCast:
       return os << "UbStatus::kInvalidCast";
+    case UbStatus::kInvalidShift:
+      return os << "UbStatus::kInvalidShift";
     case UbStatus::kNullptrArithmetic:
       return os << "UbStatus::kNullptrArithmetic";
+    case UbStatus::kInvalidPtrDiff:
+      return os << "UbStatus::kInvalidPtrDiff";
 
     default:
       assert(false && "Did you introduce a new UbStatus?");
@@ -142,6 +148,28 @@ TEST_F(UbDetectionTest, TestDivisionByZero) {
   EXPECT_EQ(GetUbStatus("1 >> 0"), UbStatus::kOk);
   EXPECT_EQ(GetUbStatus("1 || 0"), UbStatus::kOk);
   EXPECT_EQ(GetUbStatus("1 && 0"), UbStatus::kOk);
+}
+
+TEST_F(UbDetectionTest, TestDivisionByMinusOne) {
+  EXPECT_EQ(GetUbStatus("int_min / -1"), UbStatus::kDivisionByMinusOne);
+  EXPECT_EQ(GetUbStatus("long_min / -1"), UbStatus::kDivisionByMinusOne);
+  EXPECT_EQ(GetUbStatus("llong_min / -1"), UbStatus::kDivisionByMinusOne);
+  EXPECT_EQ(GetUbStatus("myint_min / -1"), UbStatus::kDivisionByMinusOne);
+  EXPECT_EQ(GetUbStatus("int_min % -1"), UbStatus::kDivisionByMinusOne);
+  EXPECT_EQ(GetUbStatus("long_min % -1"), UbStatus::kDivisionByMinusOne);
+  EXPECT_EQ(GetUbStatus("llong_min % -1"), UbStatus::kDivisionByMinusOne);
+  EXPECT_EQ(GetUbStatus("myint_min % -1"), UbStatus::kDivisionByMinusOne);
+
+  EXPECT_EQ(GetUbStatus("int_min / -2"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("(int_min + 1) / -1"), UbStatus::kOk);
+  // Note that 2147483648 is an unsigned integer.
+  EXPECT_EQ(GetUbStatus("-2147483648 / -1"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("(-2147483647 -1) / -1"),
+            UbStatus::kDivisionByMinusOne);
+
+  EXPECT_EQ(GetUbStatus("(unsigned int)int_min / -1"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("int_min / 4294967295U"), UbStatus::kOk);
+  EXPECT_EQ(GetUbStatus("llong_min / 18446744073709551615LLU"), UbStatus::kOk);
 }
 
 TEST_F(UbDetectionTest, TestInvalidCast) {

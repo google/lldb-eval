@@ -86,6 +86,7 @@ class Value {
 
   bool GetBool();
   uint64_t GetUInt64();
+  int64_t GetValueAsSigned();
 
   Value AddressOf();
   Value Dereference();
