@@ -203,36 +203,9 @@ bool CompareTypes(lldb::SBType lhs, lldb::SBType rhs) {
   // In LLDB the type name is stored as `llvm_private::ConstString`, which
   // points to global pool of unique strings. The equal names will point to the
   // same "const char*" object, so we can just check the pointers for equality.
-  if (lhs.GetCanonicalType().GetName() == rhs.GetCanonicalType().GetName()) {
-    return true;
-  }
-
-  // Comparing underlying types for builtins and pointers.
-  lldb::BasicType lhs_basic_type = lhs.GetCanonicalType().GetBasicType();
-  lldb::BasicType rhs_basic_type = rhs.GetCanonicalType().GetBasicType();
-  if (lhs_basic_type != lldb::eBasicTypeInvalid &&
-      lhs_basic_type == rhs_basic_type) {
-    // Handle "char" and "signed char" separately. It's possible that resulting
-    // BasicType enumerations are the same, but the name is different. In that
-    // case, compare names, since these two types are not the same according to
-    // the C++ standard.
-    if (lhs_basic_type == lldb::eBasicTypeChar ||
-        lhs_basic_type == lldb::eBasicTypeSignedChar) {
-      return strcmp(lhs.GetName(), rhs.GetName()) == 0;
-    }
-
-    return true;
-  }
-
-  if (lhs.IsPointerType() && rhs.IsPointerType()) {
-    lldb::SBType lhs_pointee = lhs.GetPointeeType().GetCanonicalType();
-    lldb::SBType rhs_pointee = rhs.GetPointeeType().GetCanonicalType();
-    if (CompareTypes(lhs_pointee, rhs_pointee)) {
-      return true;
-    }
-  }
-
-  return false;
+  const char* lhs_name = lhs.GetCanonicalType().GetUnqualifiedType().GetName();
+  const char* rhs_name = rhs.GetCanonicalType().GetUnqualifiedType().GetName();
+  return lhs_name == rhs_name;
 }
 
 bool Value::IsScalar() { return type_.IsScalar(); }

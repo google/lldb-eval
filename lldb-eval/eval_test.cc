@@ -2155,6 +2155,9 @@ TEST_F(EvalTest, TestTernaryOperator) {
   EXPECT_THAT(Eval("true ? c : sc"), IsEqual("2"));  // int
   EXPECT_THAT(Eval("true ? sc : (signed char)67"), IsEqual("'A'"));
   EXPECT_THAT(Eval("true ? (char)66 : (signed char)65"), IsEqual("66"));
+  EXPECT_THAT(Eval("true ? cc : mc"), IsEqual("'B'"));
+  EXPECT_THAT(Eval("true ? cc : sc"), IsEqual("66"));
+  EXPECT_THAT(Eval("true ? sc : mc"), IsEqual("65"));
   EXPECT_THAT(Eval("&(true ? c : c)"), IsOk());
   EXPECT_THAT(Eval("&(true ? c : sc)"),
               IsError("cannot take the address of an rvalue of type 'int'"));

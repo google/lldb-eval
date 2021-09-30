@@ -861,6 +861,9 @@ void TestTernaryOperator() {
   int* pi = &i;
   char c = 2;
   signed char sc = 65;
+  const char cc = 66;
+  using mychar = char;
+  mychar mc = 67;
   int arr2[2] = {1, 2};
   int arr3[3] = {1, 2, 3};
   double dbl_arr[2] = {1.0, 2.0};
