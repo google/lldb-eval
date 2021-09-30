@@ -196,9 +196,6 @@ bool CompareTypes(lldb::SBType lhs, lldb::SBType rhs) {
 
   // Comparing two lldb::SBType doesn't always work reliably:
   // https://github.com/google/lldb-eval/blob/master/docs/lldb-bugs.md#comparing-lldbsbtype-objects-representing-the-same-type-doesnt-always-work
-  //
-  // As a workaround we also compare typenames and drill down to the underlying
-  // types to check if two objects refer to the same type.
 
   // In LLDB the type name is stored as `llvm_private::ConstString`, which
   // points to global pool of unique strings. The equal names will point to the
