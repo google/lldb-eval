@@ -860,10 +860,6 @@ void TestTernaryOperator() {
   int i = 1;
   int* pi = &i;
   char c = 2;
-  signed char sc = 65;
-  const char cc = 66;
-  using mychar = char;
-  mychar mc = 67;
   int arr2[2] = {1, 2};
   int arr3[3] = {1, 2, 3};
   double dbl_arr[2] = {1.0, 2.0};
@@ -1010,6 +1006,30 @@ void TestSharedPtr() {
   // BREAK(TestSharedPtrCompare)
 }
 
+void TestTypeComparison() {
+  int i = 1;
+  int const* const icpc = &i;
+  int* ip = &i;
+  int const* const* const icpcpc = &icpc;
+  int** ipp = &ip;
+
+  using MyInt = int;
+  using MyPtr = MyInt*;
+  MyPtr* mipp = ipp;
+
+  using MyConstInt = const int;
+  using MyConstPtr = MyConstInt* const;
+  MyConstPtr* const micpcpc = icpcpc;
+
+  char c = 2;
+  signed char sc = 65;
+  const char cc = 66;
+  using mychar = char;
+  mychar mc = 67;
+
+  // BREAK(TestTypeComparison)
+}
+
 namespace test_binary {
 
 void main() {
@@ -1053,6 +1073,7 @@ void main() {
   TestSideEffects();
   TestUniquePtr();
   TestSharedPtr();
+  TestTypeComparison();
 
   // BREAK HERE
 }

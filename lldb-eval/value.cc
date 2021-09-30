@@ -203,6 +203,9 @@ bool CompareTypes(lldb::SBType lhs, lldb::SBType rhs) {
   // In LLDB the type name is stored as `llvm_private::ConstString`, which
   // points to global pool of unique strings. The equal names will point to the
   // same "const char*" object, so we can just check the pointers for equality.
+  // Note that `GetCanonicalType()` and `GetUnqualifiedType()` fully
+  // canonizes and removes qualifiers from the type, e.g. "int **" and
+  // "int const * const * const" will be matched as the same type.
   const char* lhs_name = lhs.GetCanonicalType().GetUnqualifiedType().GetName();
   const char* rhs_name = rhs.GetCanonicalType().GetUnqualifiedType().GetName();
   return lhs_name == rhs_name;

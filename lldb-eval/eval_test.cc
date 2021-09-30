@@ -2150,17 +2150,6 @@ TEST_F(EvalTest, TestTernaryOperator) {
   EXPECT_THAT(Eval("pi ? 1 : 2"), IsEqual("1"));
   EXPECT_THAT(Eval("nullptr ? 1 : 2"), IsEqual("2"));
   EXPECT_THAT(Eval("arr2 ? 1 : 2"), IsEqual("1"));
-
-  // Ensure that "signed char" and "char" are different types.
-  EXPECT_THAT(Eval("true ? c : sc"), IsEqual("2"));  // int
-  EXPECT_THAT(Eval("true ? sc : (signed char)67"), IsEqual("'A'"));
-  EXPECT_THAT(Eval("true ? (char)66 : (signed char)65"), IsEqual("66"));
-  EXPECT_THAT(Eval("true ? cc : mc"), IsEqual("'B'"));
-  EXPECT_THAT(Eval("true ? cc : sc"), IsEqual("66"));
-  EXPECT_THAT(Eval("true ? sc : mc"), IsEqual("65"));
-  EXPECT_THAT(Eval("&(true ? c : c)"), IsOk());
-  EXPECT_THAT(Eval("&(true ? c : sc)"),
-              IsError("cannot take the address of an rvalue of type 'int'"));
 }
 
 TEST_F(EvalTest, TestSizeOf) {
@@ -2865,4 +2854,31 @@ TEST_F(EvalTest, TestSharedPtrCompare) {
   EXPECT_THAT(Eval("ptr_int == ptr_void"), IsEqual("true"));
   EXPECT_THAT(Eval("ptr_float == ptr_void"), IsEqual("false"));
 #endif
+}
+
+TEST_F(EvalTest, TestTypeComparison) {
+  // This test is for border-case situations in the CompareTypes function.
+
+  // Taking an address of ternary expression require operands of the same type.
+  EXPECT_THAT(Eval("&(true ? ip : icpc)"), IsOk());
+  EXPECT_THAT(Eval("&(true ? mipp : ipp)"), IsOk());
+  EXPECT_THAT(Eval("&(true ? ipp : icpcpc)"), IsOk());
+  EXPECT_THAT(Eval("&(true ? ipp : mipp)"), IsOk());
+  EXPECT_THAT(Eval("&(true ? ipp : micpcpc)"), IsOk());
+  // TODO: Enable type comparison once the type mismatch is fixed.
+  // LLDB results in "int ***", while lldb-eval results in "MyInt ***".
+  EXPECT_THAT(Eval("&(true ? mipp : icpcpc)"), IsOk(/*compare_types*/ false));
+  EXPECT_THAT(Eval("&(true ? mipp : micpcpc)"), IsOk(/*compare_types*/ false));
+  EXPECT_THAT(Eval("&(true ? icpcpc : micpcpc)"), IsOk());
+
+  // Ensure that "signed char" and "char" are different types.
+  EXPECT_THAT(Eval("true ? c : sc"), IsEqual("2"));  // int
+  EXPECT_THAT(Eval("true ? sc : (signed char)67"), IsEqual("'A'"));
+  EXPECT_THAT(Eval("true ? (char)66 : (signed char)65"), IsEqual("66"));
+  EXPECT_THAT(Eval("true ? cc : mc"), IsEqual("'B'"));
+  EXPECT_THAT(Eval("true ? cc : sc"), IsEqual("66"));
+  EXPECT_THAT(Eval("true ? sc : mc"), IsEqual("65"));
+  EXPECT_THAT(Eval("&(true ? c : c)"), IsOk());
+  EXPECT_THAT(Eval("&(true ? c : sc)"),
+              IsError("cannot take the address of an rvalue of type 'int'"));
 }
