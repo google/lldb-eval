@@ -214,9 +214,7 @@ static Value CastBaseToDerivedType(lldb::SBTarget target, Value value,
 
   // At this point the target type is a reference. Since `value` is a pointer,
   // it has to be dereferenced.
-  value = value.Dereference();
-
-  return Value(value.inner_value().Cast(type.GetDereferencedType()));
+  return value.Dereference();
 }
 
 Value Interpreter::Eval(const AstNode* tree, Error& error) {
