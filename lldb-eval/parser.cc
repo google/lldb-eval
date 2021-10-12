@@ -628,7 +628,7 @@ std::string TypeDeclaration::GetBaseName() const {
   if (IsBasicType()) {
     TypeSpecifier type_spec = type_specifier_;
     if (type_spec == TypeSpecifier::kUnknown) {
-      // "signed" and "unsigned" type declarations implicily assume "int".
+      // "signed" and "unsigned" type declarations implicitly assume "int".
       assert(sign_specifier_ != SignSpecifier::kUnknown &&
              "sign specifier should be defined");
       type_spec = TypeSpecifier::kInt;
