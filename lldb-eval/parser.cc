@@ -550,18 +550,19 @@ static const char* ToString(TypeDeclaration::TypeSpecifier type_spec) {
   using TypeSpecifier = TypeDeclaration::TypeSpecifier;
   switch (type_spec) {
       // clang-format off
-    case TypeSpecifier::kVoid:     return "void";
-    case TypeSpecifier::kBool:     return "bool";
-    case TypeSpecifier::kChar:     return "char";
-    case TypeSpecifier::kShort:    return "short";
-    case TypeSpecifier::kInt:      return "int";
-    case TypeSpecifier::kLong:     return "long";
-    case TypeSpecifier::kLongLong: return "long long";
-    case TypeSpecifier::kFloat:    return "float";
-    case TypeSpecifier::kDouble:   return "double";
-    case TypeSpecifier::kWChar:    return "wchar_t";
-    case TypeSpecifier::kChar16:   return "char16_t";
-    case TypeSpecifier::kChar32:   return "char32_t";
+    case TypeSpecifier::kVoid:       return "void";
+    case TypeSpecifier::kBool:       return "bool";
+    case TypeSpecifier::kChar:       return "char";
+    case TypeSpecifier::kShort:      return "short";
+    case TypeSpecifier::kInt:        return "int";
+    case TypeSpecifier::kLong:       return "long";
+    case TypeSpecifier::kLongLong:   return "long long";
+    case TypeSpecifier::kFloat:      return "float";
+    case TypeSpecifier::kDouble:     return "double";
+    case TypeSpecifier::kLongDouble: return "long double";
+    case TypeSpecifier::kWChar:      return "wchar_t";
+    case TypeSpecifier::kChar16:     return "char16_t";
+    case TypeSpecifier::kChar32:     return "char32_t";
       // clang-format on
     default:
       assert(false && "invalid type specifier");
@@ -646,6 +647,58 @@ std::string TypeDeclaration::GetBaseName() const {
 
   // If it's not a basic type, it has to be user-defined type.
   return user_typename_;
+}
+
+lldb::BasicType TypeDeclaration::GetBasicType() const {
+  if (!IsBasicType()) return lldb::eBasicTypeInvalid;
+
+  if (sign_specifier_ == SignSpecifier::kSigned &&
+      type_specifier_ == TypeSpecifier::kChar) {
+    return lldb::eBasicTypeSignedChar;
+  }
+
+  if (sign_specifier_ == SignSpecifier::kUnsigned) {
+    switch (type_specifier_) {
+      // clang-format off
+      // "unsigned" is "unsigned int"
+      case TypeSpecifier::kUnknown:  return lldb::eBasicTypeUnsignedInt;
+      case TypeSpecifier::kChar:     return lldb::eBasicTypeUnsignedChar;
+      case TypeSpecifier::kShort:    return lldb::eBasicTypeUnsignedShort;
+      case TypeSpecifier::kInt:      return lldb::eBasicTypeUnsignedInt;
+      case TypeSpecifier::kLong:     return lldb::eBasicTypeUnsignedLong;
+      case TypeSpecifier::kLongLong: return lldb::eBasicTypeUnsignedLongLong;
+      // clang-format on
+      default:
+        assert(false && "unknown unsigned basic type");
+        return lldb::eBasicTypeInvalid;
+    }
+  }
+
+  switch (type_specifier_) {
+      // clang-format off
+    case TypeSpecifier::kUnknown:
+      // "signed" is "signed int"
+      assert(sign_specifier_ == SignSpecifier::kSigned &&
+             "invalid basic type declaration");
+      return lldb::eBasicTypeInt;
+    case TypeSpecifier::kVoid:       return lldb::eBasicTypeVoid;
+    case TypeSpecifier::kBool:       return lldb::eBasicTypeBool;
+    case TypeSpecifier::kChar:       return lldb::eBasicTypeChar;
+    case TypeSpecifier::kShort:      return lldb::eBasicTypeShort;
+    case TypeSpecifier::kInt:        return lldb::eBasicTypeInt;
+    case TypeSpecifier::kLong:       return lldb::eBasicTypeLong;
+    case TypeSpecifier::kLongLong:   return lldb::eBasicTypeLongLong;
+    case TypeSpecifier::kFloat:      return lldb::eBasicTypeFloat;
+    case TypeSpecifier::kDouble:     return lldb::eBasicTypeDouble;
+    case TypeSpecifier::kLongDouble: return lldb::eBasicTypeLongDouble;
+    case TypeSpecifier::kWChar:      return lldb::eBasicTypeWChar;
+    case TypeSpecifier::kChar16:     return lldb::eBasicTypeChar16;
+    case TypeSpecifier::kChar32:     return lldb::eBasicTypeChar32;
+      // clang-format on
+  }
+
+  assert(false && "unknown basic type");
+  return lldb::eBasicTypeInvalid;
 }
 
 static std::unique_ptr<BuiltinFunctionDef> GetBuiltinFunctionDef(
@@ -1878,8 +1931,11 @@ lldb::SBType Parser::ResolveTypeFromTypeDecl(const TypeDeclaration& type_decl) {
     return lldb::SBType();
   }
 
-  // Resolve the type in the current expression context.
-  return ctx_->ResolveTypeByName(type_decl.GetBaseName());
+  if (type_decl.IsBasicType()) {
+    return ctx_->GetBasicType(type_decl.GetBasicType());
+  }
+
+  return ctx_->ResolveTypeByName(type_decl.user_typename_);
 }
 
 lldb::SBType Parser::ResolveTypeDeclarators(lldb::SBType type,
@@ -1977,6 +2033,9 @@ bool Parser::HandleSimpleTypeSpecifier(TypeDeclaration* type_decl) {
       } else if (type_spec == TypeSpecifier::kLong) {
         type_decl->type_specifier_ = TypeSpecifier::kLongLong;
         return true;
+      } else if (type_spec == TypeSpecifier::kDouble) {
+        type_decl->type_specifier_ = TypeSpecifier::kLongDouble;
+        return true;
       }
       BailOut(ErrorCode::kInvalidOperandType,
               llvm::formatv(
@@ -2005,7 +2064,30 @@ bool Parser::HandleSimpleTypeSpecifier(TypeDeclaration* type_decl) {
       // "char" can have signedness, but it cannot be combined with any other
       // type specifier.
       if (type_spec == TypeSpecifier::kUnknown) {
-        type_decl->type_specifier_ = ToTypeSpecifier(kind);
+        type_decl->type_specifier_ = TypeSpecifier::kChar;
+        return true;
+      }
+      BailOut(ErrorCode::kInvalidOperandType,
+              llvm::formatv(
+                  "cannot combine with previous '{0}' declaration specifier",
+                  ToString(type_spec)),
+              loc);
+      return false;
+    }
+
+    case clang::tok::kw_double: {
+      // "double" can be combined with "long" to form "long double", but it
+      // cannot be combined with signedness specifier.
+      if (type_decl->sign_specifier_ != SignSpecifier::kUnknown) {
+        BailOut(ErrorCode::kInvalidOperandType,
+                "'double' cannot be signed or unsigned", loc);
+        return false;
+      }
+      if (type_spec == TypeSpecifier::kUnknown) {
+        type_decl->type_specifier_ = TypeSpecifier::kDouble;
+        return true;
+      } else if (type_spec == TypeSpecifier::kLong) {
+        type_decl->type_specifier_ = TypeSpecifier::kLongDouble;
         return true;
       }
       BailOut(ErrorCode::kInvalidOperandType,
@@ -2019,7 +2101,6 @@ bool Parser::HandleSimpleTypeSpecifier(TypeDeclaration* type_decl) {
     case clang::tok::kw_bool:
     case clang::tok::kw_void:
     case clang::tok::kw_float:
-    case clang::tok::kw_double:
     case clang::tok::kw_wchar_t:
     case clang::tok::kw_char16_t:
     case clang::tok::kw_char32_t: {
@@ -2059,6 +2140,7 @@ bool Parser::HandleSimpleTypeSpecifier(TypeDeclaration* type_decl) {
           type_spec == TypeSpecifier::kBool ||
           type_spec == TypeSpecifier::kFloat ||
           type_spec == TypeSpecifier::kDouble ||
+          type_spec == TypeSpecifier::kLongDouble ||
           type_spec == TypeSpecifier::kWChar ||
           type_spec == TypeSpecifier::kChar16 ||
           type_spec == TypeSpecifier::kChar32) {

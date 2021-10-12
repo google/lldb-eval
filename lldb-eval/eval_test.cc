@@ -1775,6 +1775,8 @@ TEST_F(EvalTest, TestBasicTypeDeclaration) {
 
   EXPECT_THAT(Eval("(float)1.5"), IsEqual("1.5"));
   EXPECT_THAT(Eval("(double)1.5"), IsEqual("1.5"));
+  EXPECT_THAT(Eval("(long double)1.5"), IsEqual("1.5"));
+  EXPECT_THAT(Eval("(double long)1.5"), IsEqual("1.5"));
   EXPECT_THAT(Eval("(bool)1.5"), IsEqual("true"));
 
   EXPECT_THAT(Eval("(void*)0"), IsEqual("0x0000000000000000"));
@@ -1795,6 +1797,18 @@ TEST_F(EvalTest, TestBasicTypeDeclaration) {
       Eval("(long long long)0"),
       IsError(
           "cannot combine with previous 'long long' declaration specifier"));
+  EXPECT_THAT(
+      Eval("(long long double)0"),
+      IsError(
+          "cannot combine with previous 'long long' declaration specifier"));
+  EXPECT_THAT(
+      Eval("(long double long)0"),
+      IsError(
+          "cannot combine with previous 'long double' declaration specifier"));
+  EXPECT_THAT(Eval("(unsigned long double)0"),
+              IsError("'double' cannot be signed or unsigned"));
+  EXPECT_THAT(Eval("(long double signed)0"),
+              IsError("'long double' cannot be signed or unsigned"));
   EXPECT_THAT(
       Eval("(short float)0"),
       IsError("cannot combine with previous 'short' declaration specifier"));

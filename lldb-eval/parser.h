@@ -54,6 +54,7 @@ class TypeDeclaration {
     kLongLong,
     kFloat,
     kDouble,
+    kLongDouble,
     kWChar,
     kChar16,
     kChar32,
@@ -73,6 +74,7 @@ class TypeDeclaration {
 
   std::string GetName() const;
   std::string GetBaseName() const;
+  lldb::BasicType GetBasicType() const;
 
   bool IsBasicType() const {
     return type_specifier_ != TypeSpecifier::kUnknown ||
