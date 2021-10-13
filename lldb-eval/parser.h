@@ -43,6 +43,9 @@ namespace lldb_eval {
 // NOTE: CV qualifiers are ignored.
 class TypeDeclaration {
  public:
+  explicit TypeDeclaration(std::shared_ptr<Context> ctx)
+      : ctx_(std::move(ctx)) {}
+
   enum class TypeSpecifier {
     kUnknown,
     kVoid,
@@ -72,7 +75,7 @@ class TypeDeclaration {
     return user_typename_.empty() ? IsBasicType() : !IsBasicType();
   }
 
-  std::string GetName() const;
+  lldb::SBType GetBaseType() const;
   std::string GetBaseName() const;
   lldb::BasicType GetBasicType() const;
 
@@ -100,6 +103,9 @@ class TypeDeclaration {
   // duplication for types that can be combined with "int" specifier (e.g.
   // "short int", "long int").
   bool has_int_specifier_ = false;
+
+ private:
+  std::shared_ptr<Context> ctx_;
 };
 
 class BuiltinFunctionDef {

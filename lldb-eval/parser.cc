@@ -606,46 +606,24 @@ static TypeDeclaration::TypeSpecifier ToTypeSpecifier(
   }
 }
 
-std::string TypeDeclaration::GetName() const {
-  // Full name is a combination of a base name and pointer operators.
-  std::string name = GetBaseName();
+lldb::SBType TypeDeclaration::GetBaseType() const {
+  if (!IsValid()) {
+    return lldb::SBType();
+  }
 
-  // In LLDB pointer operators are separated with a single whitespace.
-  if (ptr_operators_.size() > 0) {
-    name.append(" ");
+  if (IsBasicType()) {
+    return ctx_->GetBasicType(GetBasicType());
   }
-  for (auto& [tok, _] : ptr_operators_) {
-    if (tok == clang::tok::star) {
-      name.append("*");
-    } else if (tok == clang::tok::amp) {
-      name.append("&");
-    }
-  }
-  return name;
+
+  // If it's not a basic type, it has to be user-defined type.
+  return ctx_->ResolveTypeByName(user_typename_);
 }
 
 std::string TypeDeclaration::GetBaseName() const {
   if (IsBasicType()) {
-    TypeSpecifier type_spec = type_specifier_;
-    if (type_spec == TypeSpecifier::kUnknown) {
-      // "signed" and "unsigned" type declarations implicitly assume "int".
-      assert(sign_specifier_ != SignSpecifier::kUnknown &&
-             "sign specifier should be defined");
-      type_spec = TypeSpecifier::kInt;
-    }
-
-    const char* prefix =
-        sign_specifier_ == SignSpecifier::kUnsigned ? "unsigned " : "";
-    if (sign_specifier_ == SignSpecifier::kSigned &&
-        type_specifier_ == TypeSpecifier::kChar) {
-      // "signed char" and "char" are different types.
-      prefix = "signed ";
-    }
-
-    return llvm::formatv("{0}{1}", prefix, ToString(type_spec));
+    return GetBaseType().GetName();
   }
 
-  // If it's not a basic type, it has to be user-defined type.
   return user_typename_;
 }
 
@@ -1207,7 +1185,7 @@ ExprResult Parser::ParseCastExpression() {
     // Try resolving base type of the type declaration.
     // TODO(werat): Resolve the type and the declarators during parsing to save
     // time and produce more accurate diagnostics.
-    lldb::SBType type = ResolveTypeFromTypeDecl(type_decl);
+    lldb::SBType type = type_decl.GetBaseType();
 
     if (type) {
       // Successfully parsed the type declaration. Commit the backtracked
@@ -1309,7 +1287,7 @@ ExprResult Parser::ParseUnaryExpression() {
 
       // Parse the type definition and resolve the type.
       TypeDeclaration type_decl = ParseTypeId();
-      lldb::SBType type = ResolveTypeFromTypeDecl(type_decl);
+      lldb::SBType type = type_decl.GetBaseType();
       if (type) {
         tentative_parsing.Commit();
 
@@ -1374,7 +1352,7 @@ ExprResult Parser::ParsePostfixExpression() {
     clang::SourceLocation type_loc = token_.getLocation();
     TypeDeclaration type_decl = ParseTypeId();
 
-    lldb::SBType type = ResolveTypeFromTypeDecl(type_decl);
+    lldb::SBType type = type_decl.GetBaseType();
     if (!type) {
       BailOut(ErrorCode::kUndeclaredIdentifier,
               llvm::formatv("unknown type name '{0}'", type_decl.GetBaseName()),
@@ -1536,7 +1514,7 @@ ExprResult Parser::ParsePrimaryExpression() {
 //    type_specifier_seq [abstract_declarator]
 //
 TypeDeclaration Parser::ParseTypeId() {
-  TypeDeclaration type_decl;
+  TypeDeclaration type_decl(ctx_);
 
   // type_specifier_seq is required here, start with trying to parse it.
   ParseTypeSpecifierSeq(&type_decl);
@@ -1831,13 +1809,18 @@ std::string Parser::ParseTemplateArgument() {
 
     TypeDeclaration type_decl = ParseTypeId();
 
-    if (type_decl.IsValid() && ResolveTypeFromTypeDecl(type_decl)) {
+    Type type = type_decl.GetBaseType();
+    if (type) {
       // Successfully parsed a type_id, check if the next token can finish the
       // template_argument. If so, commit the parsed tokens and return parsed
       // template_argument.
       if (TokenEndsTemplateArgumentList(token_)) {
         tentative_parsing.Commit();
-        return type_decl.GetName();
+        type = ResolveTypeDeclarators(type, type_decl);
+        if (!type) {
+          return "";
+        }
+        return type.GetName();
       }
     }
     // Failed to parse a type_id. Rollback the parser and try something else.
@@ -1924,18 +1907,6 @@ void Parser::ParsePtrOperator(TypeDeclaration* type_decl) {
                                            token_.getLocation());
     ConsumeToken();
   }
-}
-
-lldb::SBType Parser::ResolveTypeFromTypeDecl(const TypeDeclaration& type_decl) {
-  if (!type_decl.IsValid()) {
-    return lldb::SBType();
-  }
-
-  if (type_decl.IsBasicType()) {
-    return ctx_->GetBasicType(type_decl.GetBasicType());
-  }
-
-  return ctx_->ResolveTypeByName(type_decl.user_typename_);
 }
 
 lldb::SBType Parser::ResolveTypeDeclarators(lldb::SBType type,
