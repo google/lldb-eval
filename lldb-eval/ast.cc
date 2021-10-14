@@ -134,9 +134,9 @@ std::string to_string(UnaryOpKind kind) {
   lldb_eval_unreachable("did you add an element to UnaryOpKind?");
 }
 
-lldb::SBType AstNode::result_type_deref() const {
-  lldb::SBType type = result_type();
-  return type.IsReferenceType() ? type.GetDereferencedType() : type;
+TypeSP AstNode::result_type_deref() const {
+  auto type = result_type();
+  return type->IsReferenceType() ? type->GetDereferencedType() : type;
 }
 
 void ErrorNode::Accept(Visitor* v) const { v->Visit(this); }

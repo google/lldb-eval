@@ -17,6 +17,8 @@ cc_library(
         "context.cc",
         "eval.cc",
         "parser.cc",
+        "parser-context.cc",
+        "type.cc",
         "value.cc",
     ],
     hdrs = [
@@ -25,7 +27,9 @@ cc_library(
         "context.h",
         "eval.h",
         "parser.h",
+        "parser-context.h",
         "traits.h",
+        "type.h",
         "value.h",
     ],
     deps = [

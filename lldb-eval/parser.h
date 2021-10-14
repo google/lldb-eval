@@ -32,9 +32,7 @@
 #include "clang/Lex/ModuleLoader.h"
 #include "clang/Lex/Preprocessor.h"
 #include "lldb-eval/ast.h"
-#include "lldb-eval/context.h"
-#include "lldb/API/SBTarget.h"
-#include "lldb/API/SBType.h"
+#include "lldb-eval/parser-context.h"
 
 namespace lldb_eval {
 
@@ -99,15 +97,15 @@ class TypeDeclaration {
 
 class BuiltinFunctionDef {
  public:
-  BuiltinFunctionDef(std::string name, lldb::SBType return_type,
-                     std::vector<lldb::SBType> arguments)
+  BuiltinFunctionDef(std::string name, TypeSP return_type,
+                     std::vector<TypeSP> arguments)
       : name_(std::move(name)),
         return_type_(std::move(return_type)),
         arguments_(std::move(arguments)) {}
 
   std::string name_;
-  lldb::SBType return_type_;
-  std::vector<lldb::SBType> arguments_;
+  TypeSP return_type_;
+  std::vector<TypeSP> arguments_;
 };
 
 // Pure recursive descent parser for C++ like expressions.
@@ -115,7 +113,7 @@ class BuiltinFunctionDef {
 // docs/expr-ebnf.txt
 class Parser {
  public:
-  explicit Parser(std::shared_ptr<Context> ctx);
+  explicit Parser(std::shared_ptr<ParserContext> ctx);
 
   ExprResult Run(Error& error);
 
@@ -139,7 +137,7 @@ class Parser {
   ExprResult ParsePostfixExpression();
   ExprResult ParsePrimaryExpression();
 
-  std::optional<lldb::SBType> ParseTypeId(bool must_be_type_id = false);
+  std::optional<TypeSP> ParseTypeId(bool must_be_type_id = false);
   void ParseTypeSpecifierSeq(TypeDeclaration* type_decl);
   bool ParseTypeSpecifier(TypeDeclaration* type_decl);
   std::string ParseNestedNameSpecifier();
@@ -150,9 +148,9 @@ class Parser {
 
   PtrOperator ParsePtrOperator();
 
-  lldb::SBType ResolveTypeFromTypeDecl(const TypeDeclaration& type_decl);
-  lldb::SBType ResolveTypeDeclarators(
-      lldb::SBType type, const std::vector<PtrOperator>& ptr_operators);
+  TypeSP ResolveTypeFromTypeDecl(const TypeDeclaration& type_decl);
+  TypeSP ResolveTypeDeclarators(TypeSP type,
+                                const std::vector<PtrOperator>& ptr_operators);
 
   bool IsSimpleTypeSpecifierKeyword(clang::Token token) const;
   bool IsCvQualifier(clang::Token token) const;
@@ -175,9 +173,9 @@ class Parser {
   ExprResult ParseBuiltinFunction(clang::SourceLocation loc,
                                   std::unique_ptr<BuiltinFunctionDef> func_def);
 
-  bool ImplicitConversionIsAllowed(Type src, Type dst,
+  bool ImplicitConversionIsAllowed(TypeSP src, TypeSP dst,
                                    bool is_src_literal_zero = false);
-  ExprResult InsertImplicitConversion(ExprResult expr, Type type);
+  ExprResult InsertImplicitConversion(ExprResult expr, TypeSP type);
 
   void ConsumeToken();
   void BailOut(ErrorCode error_code, const std::string& error,
@@ -190,31 +188,31 @@ class Parser {
 
   std::string TokenDescription(const clang::Token& token);
 
-  ExprResult BuildCStyleCast(Type type, ExprResult rhs,
+  ExprResult BuildCStyleCast(TypeSP type, ExprResult rhs,
                              clang::SourceLocation location);
 
-  ExprResult BuildCxxCast(clang::tok::TokenKind kind, Type type, ExprResult rhs,
-                          clang::SourceLocation location);
+  ExprResult BuildCxxCast(clang::tok::TokenKind kind, TypeSP type,
+                          ExprResult rhs, clang::SourceLocation location);
 
-  ExprResult BuildCxxDynamicCast(Type type, ExprResult rhs,
+  ExprResult BuildCxxDynamicCast(TypeSP type, ExprResult rhs,
                                  clang::SourceLocation location);
 
-  ExprResult BuildCxxStaticCast(Type type, ExprResult rhs,
+  ExprResult BuildCxxStaticCast(TypeSP type, ExprResult rhs,
                                 clang::SourceLocation location);
-  ExprResult BuildCxxStaticCastToScalar(Type type, ExprResult rhs,
+  ExprResult BuildCxxStaticCastToScalar(TypeSP type, ExprResult rhs,
                                         clang::SourceLocation location);
-  ExprResult BuildCxxStaticCastToEnum(Type type, ExprResult rhs,
+  ExprResult BuildCxxStaticCastToEnum(TypeSP type, ExprResult rhs,
                                       clang::SourceLocation location);
-  ExprResult BuildCxxStaticCastToPointer(Type type, ExprResult rhs,
+  ExprResult BuildCxxStaticCastToPointer(TypeSP type, ExprResult rhs,
                                          clang::SourceLocation location);
-  ExprResult BuildCxxStaticCastToNullPtr(Type type, ExprResult rhs,
+  ExprResult BuildCxxStaticCastToNullPtr(TypeSP type, ExprResult rhs,
                                          clang::SourceLocation location);
-  ExprResult BuildCxxStaticCastToReference(Type type, ExprResult rhs,
+  ExprResult BuildCxxStaticCastToReference(TypeSP type, ExprResult rhs,
                                            clang::SourceLocation location);
   ExprResult BuildCxxStaticCastForInheritedTypes(
-      Type type, ExprResult rhs, clang::SourceLocation location);
+      TypeSP type, ExprResult rhs, clang::SourceLocation location);
 
-  ExprResult BuildCxxReinterpretCast(Type type, ExprResult rhs,
+  ExprResult BuildCxxReinterpretCast(TypeSP type, ExprResult rhs,
                                      clang::SourceLocation location);
 
   ExprResult BuildUnaryOp(UnaryOpKind kind, ExprResult rhs,
@@ -225,32 +223,31 @@ class Parser {
   ExprResult BuildBinaryOp(BinaryOpKind kind, ExprResult lhs, ExprResult rhs,
                            clang::SourceLocation location);
 
-  lldb::SBType PrepareBinaryAddition(ExprResult& lhs, ExprResult& rhs,
-                                     clang::SourceLocation location,
-                                     bool is_comp_assign);
-  lldb::SBType PrepareBinarySubtraction(ExprResult& lhs, ExprResult& rhs,
-                                        clang::SourceLocation location,
-                                        bool is_comp_assign);
-  lldb::SBType PrepareBinaryMulDiv(ExprResult& lhs, ExprResult& rhs,
-                                   bool is_comp_assign);
-  lldb::SBType PrepareBinaryRemainder(ExprResult& lhs, ExprResult& rhs,
-                                      bool is_comp_assign);
-  lldb::SBType PrepareBinaryBitwise(ExprResult& lhs, ExprResult& rhs,
-                                    bool is_comp_assign);
-  lldb::SBType PrepareBinaryShift(ExprResult& lhs, ExprResult& rhs,
+  TypeSP PrepareBinaryAddition(ExprResult& lhs, ExprResult& rhs,
+                               clang::SourceLocation location,
+                               bool is_comp_assign);
+  TypeSP PrepareBinarySubtraction(ExprResult& lhs, ExprResult& rhs,
+                                  clang::SourceLocation location,
                                   bool is_comp_assign);
-  lldb::SBType PrepareBinaryComparison(BinaryOpKind kind, ExprResult& lhs,
-                                       ExprResult& rhs,
-                                       clang::SourceLocation location);
-  lldb::SBType PrepareBinaryLogical(const ExprResult& lhs,
-                                    const ExprResult& rhs);
+  TypeSP PrepareBinaryMulDiv(ExprResult& lhs, ExprResult& rhs,
+                             bool is_comp_assign);
+  TypeSP PrepareBinaryRemainder(ExprResult& lhs, ExprResult& rhs,
+                                bool is_comp_assign);
+  TypeSP PrepareBinaryBitwise(ExprResult& lhs, ExprResult& rhs,
+                              bool is_comp_assign);
+  TypeSP PrepareBinaryShift(ExprResult& lhs, ExprResult& rhs,
+                            bool is_comp_assign);
+  TypeSP PrepareBinaryComparison(BinaryOpKind kind, ExprResult& lhs,
+                                 ExprResult& rhs,
+                                 clang::SourceLocation location);
+  TypeSP PrepareBinaryLogical(const ExprResult& lhs, const ExprResult& rhs);
 
   ExprResult BuildBinarySubscript(ExprResult lhs, ExprResult rhs,
                                   clang::SourceLocation location);
 
-  lldb::SBType PrepareCompositeAssignment(Type comp_assign_type,
-                                          const ExprResult& lhs,
-                                          clang::SourceLocation location);
+  TypeSP PrepareCompositeAssignment(TypeSP comp_assign_type,
+                                    const ExprResult& lhs,
+                                    clang::SourceLocation location);
 
   ExprResult BuildTernaryOp(ExprResult cond, ExprResult lhs, ExprResult rhs,
                             clang::SourceLocation location);
@@ -264,11 +261,7 @@ class Parser {
   // Parser doesn't own the evaluation context. The produced AST may depend on
   // it (for example, for source locations), so it's expected that expression
   // context will outlive the parser.
-  std::shared_ptr<Context> ctx_;
-
-  // Convenience references, used by the interpreter to lookup variables and
-  // types, create objects, perform casts, etc.
-  lldb::SBTarget target_;
+  std::shared_ptr<ParserContext> ctx_;
 
   // The token lexer is stopped at (aka "current token").
   clang::Token token_;

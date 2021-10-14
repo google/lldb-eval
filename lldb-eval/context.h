@@ -21,60 +21,31 @@
 #include <string>
 #include <unordered_map>
 
+#include "ast.h"
 #include "clang/Basic/SourceManager.h"
 #include "lldb/API/SBExecutionContext.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
+#include "parser-context.h"
+#include "parser.h"
+#include "value.h"
 
 namespace lldb_eval {
 
-enum class ErrorCode : unsigned char {
-  kOk = 0,
-  kInvalidExpressionSyntax,
-  kInvalidNumericLiteral,
-  kInvalidOperandType,
-  kUndeclaredIdentifier,
-  kNotImplemented,
-  kUnknown,
-};
-
-enum class UbStatus : unsigned char {
-  kOk = 0,
-  kDivisionByZero,
-  // If "a / b" isn't representable in its result type, then results of "a / b"
-  // and "a % b" are undefined behaviour. This happens when "a" is equal to the
-  // minimum value of the result type and "b" is equal to -1.
-  kDivisionByMinusOne,
-  kInvalidCast,
-  kInvalidShift,
-  kNullptrArithmetic,
-  kInvalidPtrDiff,
-};
-
-class Error {
+class Context : public ParserContext {
  public:
-  void Set(ErrorCode code, std::string message) {
-    code_ = code;
-    message_ = std::move(message);
-  }
-  void SetUbStatus(UbStatus status) { ub_status_ = status; }
-  void Clear() { *this = {}; }
+  class IdentifierInfo : public ParserContext::IdentifierInfo {
+   public:
+    IdentifierInfo(lldb::SBValue value) : value_(std::move(value)) {}
 
-  ErrorCode code() const { return code_; }
-  const std::string& message() const { return message_; }
-  UbStatus ub_status() const { return ub_status_; }
+    TypeSP GetType() override { return value_.type(); }
+    Value GetValue() const { return value_; }
+    bool IsValid() const override { return !!value_.inner_value(); }
 
-  explicit operator bool() const { return code_ != ErrorCode::kOk; }
-
- private:
-  ErrorCode code_ = ErrorCode::kOk;
-  std::string message_;
-  UbStatus ub_status_ = UbStatus::kOk;
-};
-
-class Context {
- public:
+   private:
+    Value value_;
+  };
   static std::shared_ptr<Context> Create(std::string expr, lldb::SBFrame frame);
   static std::shared_ptr<Context> Create(std::string expr, lldb::SBValue scope);
 
@@ -84,21 +55,23 @@ class Context {
   Context(const Context&) = delete;
   Context& operator=(Context const&) = delete;
 
-  clang::SourceManager& GetSourceManager() const { return smff_->get(); }
+  clang::SourceManager& GetSourceManager() const override {
+    return smff_->get();
+  }
   lldb::SBExecutionContext GetExecutionContext() const { return ctx_; }
 
   void SetContextVars(
       std::unordered_map<std::string, lldb::SBValue> context_vars);
-  void SetAllowSideEffects(bool allow_side_effects);
 
  public:
-  lldb::SBType GetBasicType(lldb::BasicType basic_type);
-  lldb::SBType GetSizeType();
-  lldb::SBType GetPtrDiffType();
-  lldb::SBType ResolveTypeByName(const std::string& name) const;
-  lldb::SBValue LookupIdentifier(const std::string& name) const;
-  bool IsContextVar(const std::string& name) const;
-  bool AllowSideEffects() const;
+  TypeSP GetBasicType(lldb::BasicType basic_type) override;
+  TypeSP GetEmptyType() override;
+  lldb::BasicType GetSizeType() override;
+  lldb::BasicType GetPtrDiffType() override;
+  TypeSP ResolveTypeByName(const std::string& name) const override;
+  std::unique_ptr<ParserContext::IdentifierInfo> LookupIdentifier(
+      const std::string& name) const override;
+  bool IsContextVar(const std::string& name) const override;
 
  private:
   Context(std::string expr, lldb::SBExecutionContext ctx, lldb::SBValue scope);
@@ -121,11 +94,8 @@ class Context {
   // Context variables used for identifier lookup.
   std::unordered_map<std::string, lldb::SBValue> context_vars_;
 
-  // Whether side effects should be allowed.
-  bool allow_side_effects_ = false;
-
   // Cache of the basic types for the current target.
-  std::unordered_map<lldb::BasicType, lldb::SBType> basic_types_;
+  std::unordered_map<lldb::BasicType, TypeSP> basic_types_;
 
   // Cache of the `size_t` type.
   lldb::SBType size_type_;

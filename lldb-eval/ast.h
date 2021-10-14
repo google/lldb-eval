@@ -19,12 +19,13 @@
 
 #include <memory>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/TokenKinds.h"
-#include "lldb-eval/value.h"
-#include "lldb/API/SBType.h"
+#include "lldb-eval/parser-context.h"
+#include "lldb-eval/type.h"
 
 namespace lldb_eval {
 
@@ -45,14 +46,14 @@ class AstNode {
   virtual bool is_context_var() const { return false; };
   virtual bool is_literal_zero() const { return false; }
   virtual uint32_t bitfield_size() const { return 0; }
-  virtual lldb::SBType result_type() const = 0;
+  virtual TypeSP result_type() const = 0;
 
   clang::SourceLocation location() const { return location_; }
 
   // The expression result type, but dereferenced in case it's a reference. This
   // is for convenience, since for the purposes of the semantic analysis only
   // the dereferenced type matters.
-  lldb::SBType result_type_deref() const;
+  TypeSP result_type_deref() const;
 
  private:
   clang::SourceLocation location_;
@@ -62,93 +63,111 @@ using ExprResult = std::unique_ptr<AstNode>;
 
 class ErrorNode : public AstNode {
  public:
-  ErrorNode() : AstNode(clang::SourceLocation()) {}
+  ErrorNode(TypeSP empty_type)
+      : AstNode(clang::SourceLocation()), empty_type_(std::move(empty_type)) {}
   void Accept(Visitor* v) const override;
   bool is_error() const override { return true; }
   bool is_rvalue() const override { return false; }
-  lldb::SBType result_type() const override { return lldb::SBType(); }
+  TypeSP result_type() const override { return empty_type_; }
+
+ private:
+  TypeSP empty_type_;
 };
 
 class LiteralNode : public AstNode {
  public:
-  LiteralNode(clang::SourceLocation location, Value value, bool is_literal_zero)
+  template <typename ValueT>
+  LiteralNode(clang::SourceLocation location, TypeSP type, ValueT&& value,
+              bool is_literal_zero)
       : AstNode(location),
-        value_(std::move(value)),
+        type_(std::move(type)),
+        value_(std::forward<ValueT>(value)),
         is_literal_zero_(is_literal_zero) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return true; }
   bool is_literal_zero() const override { return is_literal_zero_; }
-  lldb::SBType result_type() const override { return value_.type(); }
+  TypeSP result_type() const override { return type_; }
 
-  Value value() const { return value_; }
+  template <typename ValueT>
+  ValueT value() const {
+    return std::get<ValueT>(value_);
+  }
+
+  auto value() const { return value_; }
 
  private:
-  Value value_;
+  TypeSP type_;
+  std::conditional_t<
+      std::is_same_v<uintptr_t, uint64_t>,
+      std::variant<int64_t, uint64_t, float, double, bool>,
+      std::variant<int64_t, uint64_t, uintptr_t, float, double, bool>>
+      value_;
   bool is_literal_zero_;
 };
 
 class IdentifierNode : public AstNode {
  public:
-  IdentifierNode(clang::SourceLocation location, std::string name, Value value,
+  IdentifierNode(clang::SourceLocation location, std::string name,
+                 std::unique_ptr<ParserContext::IdentifierInfo> identifier,
                  bool is_rvalue, bool is_context_var)
       : AstNode(location),
         is_rvalue_(is_rvalue),
         is_context_var_(is_context_var),
         name_(std::move(name)),
-        value_(std::move(value)) {}
+        identifier_(std::move(identifier)) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return is_rvalue_; }
   bool is_context_var() const override { return is_context_var_; };
-  lldb::SBType result_type() const override { return value_.type(); }
+  TypeSP result_type() const override { return identifier_->GetType(); }
 
   std::string name() const { return name_; }
-  Value value() const { return value_; }
+  const ParserContext::IdentifierInfo& info() const { return *identifier_; }
 
  private:
   bool is_rvalue_;
   bool is_context_var_;
   std::string name_;
-  Value value_;
+  std::unique_ptr<ParserContext::IdentifierInfo> identifier_;
 };
 
 class SizeOfNode : public AstNode {
  public:
-  SizeOfNode(clang::SourceLocation location, lldb::SBType type,
-             lldb::SBType operand)
-      : AstNode(location), type_(type), operand_(operand) {}
+  SizeOfNode(clang::SourceLocation location, TypeSP type, TypeSP operand)
+      : AstNode(location),
+        type_(std::move(type)),
+        operand_(std::move(operand)) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return true; }
-  lldb::SBType result_type() const override { return type_; }
+  TypeSP result_type() const override { return type_; }
 
-  lldb::SBType operand() const { return operand_; }
+  TypeSP operand() const { return operand_; }
 
  private:
-  lldb::SBType type_;
-  lldb::SBType operand_;
+  TypeSP type_;
+  TypeSP operand_;
 };
 
 class BuiltinFunctionCallNode : public AstNode {
  public:
-  BuiltinFunctionCallNode(clang::SourceLocation location,
-                          lldb::SBType result_type, std::string name,
-                          std::vector<ExprResult> arguments)
+  BuiltinFunctionCallNode(clang::SourceLocation location, TypeSP result_type,
+                          std::string name, std::vector<ExprResult> arguments)
       : AstNode(location),
-        result_type_(result_type),
+        result_type_(std::move(result_type)),
         name_(std::move(name)),
         arguments_(std::move(arguments)) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return true; }
-  lldb::SBType result_type() const override { return result_type_; }
+  TypeSP result_type() const override { return result_type_; }
 
   std::string name() const { return name_; }
   const std::vector<ExprResult>& arguments() const { return arguments_; };
 
  private:
-  lldb::SBType result_type_;
+  TypeSP result_type_;
   std::string name_;
   std::vector<ExprResult> arguments_;
 };
@@ -163,8 +182,8 @@ enum class CStyleCastKind {
 
 class CStyleCastNode : public AstNode {
  public:
-  CStyleCastNode(clang::SourceLocation location, lldb::SBType type,
-                 ExprResult rhs, CStyleCastKind kind)
+  CStyleCastNode(clang::SourceLocation location, TypeSP type, ExprResult rhs,
+                 CStyleCastKind kind)
       : AstNode(location),
         type_(std::move(type)),
         rhs_(std::move(rhs)),
@@ -174,14 +193,14 @@ class CStyleCastNode : public AstNode {
   bool is_rvalue() const override {
     return kind_ != CStyleCastKind::kReference;
   }
-  lldb::SBType result_type() const override { return type_; }
+  TypeSP result_type() const override { return type_; }
 
-  lldb::SBType type() const { return type_; }
+  TypeSP type() const { return type_; }
   AstNode* rhs() const { return rhs_.get(); }
   CStyleCastKind kind() const { return kind_; }
 
  private:
-  lldb::SBType type_;
+  TypeSP type_;
   ExprResult rhs_;
   CStyleCastKind kind_;
 };
@@ -198,8 +217,8 @@ enum class CxxStaticCastKind {
 
 class CxxStaticCastNode : public AstNode {
  public:
-  CxxStaticCastNode(clang::SourceLocation location, lldb::SBType type,
-                    ExprResult rhs, CxxStaticCastKind kind, bool is_rvalue)
+  CxxStaticCastNode(clang::SourceLocation location, TypeSP type, ExprResult rhs,
+                    CxxStaticCastKind kind, bool is_rvalue)
       : AstNode(location),
         type_(std::move(type)),
         rhs_(std::move(rhs)),
@@ -210,8 +229,8 @@ class CxxStaticCastNode : public AstNode {
            "invalid constructor for base-to-derived and derived-to-base casts");
   }
 
-  CxxStaticCastNode(clang::SourceLocation location, lldb::SBType type,
-                    ExprResult rhs, std::vector<uint32_t> idx, bool is_rvalue)
+  CxxStaticCastNode(clang::SourceLocation location, TypeSP type, ExprResult rhs,
+                    std::vector<uint32_t> idx, bool is_rvalue)
       : AstNode(location),
         type_(std::move(type)),
         rhs_(std::move(rhs)),
@@ -219,8 +238,8 @@ class CxxStaticCastNode : public AstNode {
         kind_(CxxStaticCastKind::kDerivedToBase),
         is_rvalue_(is_rvalue) {}
 
-  CxxStaticCastNode(clang::SourceLocation location, lldb::SBType type,
-                    ExprResult rhs, uint64_t offset, bool is_rvalue)
+  CxxStaticCastNode(clang::SourceLocation location, TypeSP type, ExprResult rhs,
+                    uint64_t offset, bool is_rvalue)
       : AstNode(location),
         type_(std::move(type)),
         rhs_(std::move(rhs)),
@@ -230,16 +249,16 @@ class CxxStaticCastNode : public AstNode {
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return is_rvalue_; }
-  lldb::SBType result_type() const override { return type_; }
+  TypeSP result_type() const override { return type_; }
 
-  lldb::SBType type() const { return type_; }
+  TypeSP type() const { return type_; }
   AstNode* rhs() const { return rhs_.get(); }
   const std::vector<uint32_t>& idx() const { return idx_; }
   uint64_t offset() const { return offset_; }
   CxxStaticCastKind kind() const { return kind_; }
 
  private:
-  lldb::SBType type_;
+  TypeSP type_;
   ExprResult rhs_;
   std::vector<uint32_t> idx_;
   uint64_t offset_ = 0;
@@ -249,7 +268,7 @@ class CxxStaticCastNode : public AstNode {
 
 class CxxReinterpretCastNode : public AstNode {
  public:
-  CxxReinterpretCastNode(clang::SourceLocation location, lldb::SBType type,
+  CxxReinterpretCastNode(clang::SourceLocation location, TypeSP type,
                          ExprResult rhs, bool is_rvalue)
       : AstNode(location),
         type_(std::move(type)),
@@ -258,24 +277,24 @@ class CxxReinterpretCastNode : public AstNode {
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return is_rvalue_; }
-  lldb::SBType result_type() const override { return type_; }
+  TypeSP result_type() const override { return type_; }
 
-  lldb::SBType type() const { return type_; }
+  TypeSP type() const { return type_; }
   AstNode* rhs() const { return rhs_.get(); }
 
  private:
-  lldb::SBType type_;
+  TypeSP type_;
   ExprResult rhs_;
   bool is_rvalue_;
 };
 
 class MemberOfNode : public AstNode {
  public:
-  MemberOfNode(clang::SourceLocation location, lldb::SBType result_type,
+  MemberOfNode(clang::SourceLocation location, TypeSP result_type,
                ExprResult lhs, bool is_bitfield, uint32_t bitfield_size,
                std::vector<uint32_t> member_index, bool is_arrow)
       : AstNode(location),
-        result_type_(result_type),
+        result_type_(std::move(result_type)),
         lhs_(std::move(lhs)),
         is_bitfield_(is_bitfield),
         bitfield_size_(bitfield_size),
@@ -286,14 +305,14 @@ class MemberOfNode : public AstNode {
   bool is_rvalue() const override { return false; }
   bool is_bitfield() const override { return is_bitfield_; }
   uint32_t bitfield_size() const override { return bitfield_size_; }
-  lldb::SBType result_type() const override { return result_type_; }
+  TypeSP result_type() const override { return result_type_; }
 
   AstNode* lhs() const { return lhs_.get(); }
   const std::vector<uint32_t>& member_index() const { return member_index_; }
   bool is_arrow() const { return is_arrow_; }
 
  private:
-  lldb::SBType result_type_;
+  TypeSP result_type_;
   ExprResult lhs_;
   bool is_bitfield_;
   uint32_t bitfield_size_;
@@ -303,22 +322,22 @@ class MemberOfNode : public AstNode {
 
 class ArraySubscriptNode : public AstNode {
  public:
-  ArraySubscriptNode(clang::SourceLocation location, lldb::SBType result_type,
+  ArraySubscriptNode(clang::SourceLocation location, TypeSP result_type,
                      ExprResult base, ExprResult index)
       : AstNode(location),
-        result_type_(result_type),
+        result_type_(std::move(result_type)),
         base_(std::move(base)),
         index_(std::move(index)) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return false; }
-  lldb::SBType result_type() const override { return result_type_; }
+  TypeSP result_type() const override { return result_type_; }
 
   AstNode* base() const { return base_.get(); }
   AstNode* index() const { return index_.get(); }
 
  private:
-  lldb::SBType result_type_;
+  TypeSP result_type_;
   ExprResult base_;
   ExprResult index_;
 };
@@ -362,11 +381,11 @@ bool binary_op_kind_is_comp_assign(BinaryOpKind kind);
 
 class BinaryOpNode : public AstNode {
  public:
-  BinaryOpNode(clang::SourceLocation location, lldb::SBType result_type,
+  BinaryOpNode(clang::SourceLocation location, TypeSP result_type,
                BinaryOpKind kind, ExprResult lhs, ExprResult rhs,
-               lldb::SBType comp_assign_type)
+               TypeSP comp_assign_type)
       : AstNode(location),
-        result_type_(result_type),
+        result_type_(std::move(result_type)),
         kind_(kind),
         lhs_(std::move(lhs)),
         rhs_(std::move(rhs)),
@@ -376,19 +395,19 @@ class BinaryOpNode : public AstNode {
   bool is_rvalue() const override {
     return !binary_op_kind_is_comp_assign(kind_);
   }
-  lldb::SBType result_type() const override { return result_type_; }
+  TypeSP result_type() const override { return result_type_; }
 
   BinaryOpKind kind() const { return kind_; }
   AstNode* lhs() const { return lhs_.get(); }
   AstNode* rhs() const { return rhs_.get(); }
-  lldb::SBType comp_assign_type() const { return comp_assign_type_; }
+  TypeSP comp_assign_type() const { return comp_assign_type_; }
 
  private:
-  lldb::SBType result_type_;
+  TypeSP result_type_;
   BinaryOpKind kind_;
   ExprResult lhs_;
   ExprResult rhs_;
-  lldb::SBType comp_assign_type_;
+  TypeSP comp_assign_type_;
 };
 
 enum class UnaryOpKind {
@@ -408,32 +427,32 @@ std::string to_string(UnaryOpKind kind);
 
 class UnaryOpNode : public AstNode {
  public:
-  UnaryOpNode(clang::SourceLocation location, lldb::SBType result_type,
+  UnaryOpNode(clang::SourceLocation location, TypeSP result_type,
               UnaryOpKind kind, ExprResult rhs)
       : AstNode(location),
-        result_type_(result_type),
+        result_type_(std::move(result_type)),
         kind_(kind),
         rhs_(std::move(rhs)) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return kind_ != UnaryOpKind::Deref; }
-  lldb::SBType result_type() const override { return result_type_; }
+  TypeSP result_type() const override { return result_type_; }
 
   UnaryOpKind kind() const { return kind_; }
   AstNode* rhs() const { return rhs_.get(); }
 
  private:
-  lldb::SBType result_type_;
+  TypeSP result_type_;
   UnaryOpKind kind_;
   ExprResult rhs_;
 };
 
 class TernaryOpNode : public AstNode {
  public:
-  TernaryOpNode(clang::SourceLocation location, lldb::SBType result_type,
+  TernaryOpNode(clang::SourceLocation location, TypeSP result_type,
                 ExprResult cond, ExprResult lhs, ExprResult rhs)
       : AstNode(location),
-        result_type_(result_type),
+        result_type_(std::move(result_type)),
         cond_(std::move(cond)),
         lhs_(std::move(lhs)),
         rhs_(std::move(rhs)) {}
@@ -445,14 +464,14 @@ class TernaryOpNode : public AstNode {
   bool is_bitfield() const override {
     return lhs_->is_bitfield() || rhs_->is_bitfield();
   }
-  lldb::SBType result_type() const override { return result_type_; }
+  TypeSP result_type() const override { return result_type_; }
 
   AstNode* cond() const { return cond_.get(); }
   AstNode* lhs() const { return lhs_.get(); }
   AstNode* rhs() const { return rhs_.get(); }
 
  private:
-  lldb::SBType result_type_;
+  TypeSP result_type_;
   ExprResult cond_;
   ExprResult lhs_;
   ExprResult rhs_;
@@ -460,18 +479,18 @@ class TernaryOpNode : public AstNode {
 
 class SmartPtrToPtrDecay : public AstNode {
  public:
-  SmartPtrToPtrDecay(clang::SourceLocation location, lldb::SBType result_type,
+  SmartPtrToPtrDecay(clang::SourceLocation location, TypeSP result_type,
                      ExprResult ptr)
       : AstNode(location), result_type_(result_type), ptr_(std::move(ptr)) {}
 
   void Accept(Visitor* v) const override;
   bool is_rvalue() const override { return false; }
-  lldb::SBType result_type() const override { return result_type_; }
+  TypeSP result_type() const override { return result_type_; }
 
   AstNode* ptr() const { return ptr_.get(); }
 
  private:
-  lldb::SBType result_type_;
+  TypeSP result_type_;
   ExprResult ptr_;
 };
 

@@ -37,15 +37,15 @@ bool IsScopedEnum_V(T type) {
 }
 
 template <typename T>
-lldb::SBType GetEnumerationIntegerType_V(T type, std::shared_ptr<Context> ctx) {
+TypeSP GetEnumerationIntegerType_V(T type, Context& ctx) {
   // SBType::GetEnumerationIntegerType was introduced in
   // https://reviews.llvm.org/D93696. If it's not available yet, fallback to the
   // "default" implementation.
   if constexpr (HAS_METHOD(T, GetEnumerationIntegerType())) {
-    return type.GetEnumerationIntegerType();
+    return LLDBType::CreateSP(type.GetEnumerationIntegerType());
   } else {
     // Assume "int" by default and hope for the best.
-    return ctx->GetBasicType(lldb::eBasicTypeInt);
+    return ctx.GetBasicType(lldb::eBasicTypeInt);
   }
 }
 
@@ -75,122 +75,19 @@ static uint64_t GetValueAsUnsigned(lldb::SBValue& value) {
   return ret;
 }
 
-Type::Type() {}
+bool LLDBType::IsScopedEnum() { return IsScopedEnum_V<lldb::SBType>(*this); }
 
-Type::Type(const lldb::SBType& type) : lldb::SBType(type) {}
-
-bool Type::IsScalar() { return GetTypeFlags() & lldb::eTypeIsScalar; }
-
-bool Type::IsBool() {
-  return GetCanonicalType().GetBasicType() == lldb::eBasicTypeBool;
+TypeSP LLDBType::GetEnumerationIntegerType(ParserContext& ctx) {
+  return GetEnumerationIntegerType_V(*this, static_cast<Context&>(ctx));
 }
 
-bool Type::IsInteger() { return GetTypeFlags() & lldb::eTypeIsInteger; }
-
-bool Type::IsFloat() { return GetTypeFlags() & lldb::eTypeIsFloat; }
-
-bool Type::IsPointerToVoid() {
-  lldb::SBType pointee_type;
-  if (IsPointerType()) {
-    pointee_type = GetPointeeType();
-  }
-  if (IsSmartPtrType()) {
-    pointee_type = GetSmartPtrPointeeType();
-  }
-  return pointee_type.GetBasicType() == lldb::eBasicTypeVoid;
+bool LLDBType::IsEnumerationIntegerTypeSigned() {
+  return IsEnumerationIntegerTypeSigned_V(*this);
 }
 
-bool Type::IsSmartPtrType() {
-  // Regular expressions are mirrored from LLDB:
-  // https://github.com/llvm/llvm-project/blob/release/13.x/lldb/source/Plugins/Language/CPlusPlus/CPlusPlusLanguage.cpp#L614-L634
-  static llvm::Regex k_libcxx_std_unique_ptr_regex(
-      "^std::__[[:alnum:]]+::unique_ptr<.+>(( )?&)?$");
-  static llvm::Regex k_libcxx_std_shared_ptr_regex(
-      "^std::__[[:alnum:]]+::shared_ptr<.+>(( )?&)?$");
-  static llvm::Regex k_libcxx_std_weak_ptr_regex(
-      "^std::__[[:alnum:]]+::weak_ptr<.+>(( )?&)?$");
-
-  llvm::StringRef name = GetName();
-  return k_libcxx_std_unique_ptr_regex.match(name) ||
-         k_libcxx_std_shared_ptr_regex.match(name) ||
-         k_libcxx_std_weak_ptr_regex.match(name);
-}
-
-bool Type::IsNullPtrType() {
-  return GetCanonicalType().GetBasicType() == lldb::eBasicTypeNullPtr;
-}
-
-bool Type::IsSigned() {
-  if (IsEnum()) {
-    return IsEnumerationIntegerTypeSigned_V<lldb::SBType>(*this);
-  }
-  return GetTypeFlags() & lldb::eTypeIsSigned;
-}
-
-bool Type::IsBasicType() {
-  return GetCanonicalType().GetBasicType() != lldb::eBasicTypeInvalid;
-}
-
-bool Type::IsEnum() { return GetTypeFlags() & lldb::eTypeIsEnumeration; }
-
-bool Type::IsScopedEnum() { return IsScopedEnum_V<lldb::SBType>(*this); }
-
-bool Type::IsUnscopedEnum() { return IsEnum() && !IsScopedEnum(); }
-
-bool Type::IsScalarOrUnscopedEnum() { return IsScalar() || IsUnscopedEnum(); }
-
-bool Type::IsIntegerOrUnscopedEnum() { return IsInteger() || IsUnscopedEnum(); }
-
-bool Type::IsRecordType() {
-  return GetCanonicalType().GetTypeClass() &
-         (lldb::eTypeClassClass | lldb::eTypeClassStruct |
-          lldb::eTypeClassUnion);
-}
-
-bool Type::IsPromotableIntegerType() {
-  // Unscoped enums are always considered as promotable, even if their
-  // underlying type does not need to be promoted (e.g. "int").
-  if (IsUnscopedEnum()) {
-    return true;
-  }
-
-  switch (GetCanonicalType().GetBasicType()) {
-    case lldb::eBasicTypeBool:
-    case lldb::eBasicTypeChar:
-    case lldb::eBasicTypeSignedChar:
-    case lldb::eBasicTypeUnsignedChar:
-    case lldb::eBasicTypeShort:
-    case lldb::eBasicTypeUnsignedShort:
-    case lldb::eBasicTypeWChar:
-    case lldb::eBasicTypeSignedWChar:
-    case lldb::eBasicTypeUnsignedWChar:
-    case lldb::eBasicTypeChar16:
-    case lldb::eBasicTypeChar32:
-      return true;
-
-    default:
-      return false;
-  }
-}
-
-bool Type::IsContextuallyConvertibleToBool() {
-  return IsScalar() || IsUnscopedEnum() || IsPointerType() || IsNullPtrType() ||
-         IsArrayType();
-}
-
-lldb::SBType Type::GetSmartPtrPointeeType() {
-  assert(IsSmartPtrType() &&
-         "the type should be a smart pointer (std::unique_ptr, std::shared_ptr "
-         "or std::weak_ptr");
-  return GetTemplateArgumentType(0);
-}
-
-lldb::SBType Type::GetEnumerationIntegerType(std::shared_ptr<Context> ctx) {
-  return GetEnumerationIntegerType_V<lldb::SBType>(*this, ctx);
-}
-
-bool CompareTypes(lldb::SBType lhs, lldb::SBType rhs) {
-  if (lhs == rhs) {
+bool LLDBType::CompareTo(TypeSP other) {
+  LLDBType& rhs = static_cast<LLDBType&>(*other);
+  if (*this == rhs) {
     return true;
   }
 
@@ -203,26 +100,31 @@ bool CompareTypes(lldb::SBType lhs, lldb::SBType rhs) {
   // Note that `GetCanonicalType()` and `GetUnqualifiedType()` fully
   // canonizes and removes qualifiers from the type, e.g. "int **" and
   // "int const * const * const" will be matched as the same type.
-  const char* lhs_name = lhs.GetCanonicalType().GetUnqualifiedType().GetName();
-  const char* rhs_name = rhs.GetCanonicalType().GetUnqualifiedType().GetName();
-  return lhs_name == rhs_name;
+  const char* name = SBType::GetCanonicalType().GetUnqualifiedType().GetName();
+  const char* rhs_name = static_cast<lldb::SBType&>(rhs)
+                             .GetCanonicalType()
+                             .GetUnqualifiedType()
+                             .GetName();
+  return name == rhs_name;
 }
 
-bool Value::IsScalar() { return type_.IsScalar(); }
+bool Value::IsScalar() { return type_->IsScalar(); }
 
-bool Value::IsInteger() { return type_.IsInteger(); }
+bool Value::IsInteger() { return type_->IsInteger(); }
 
-bool Value::IsFloat() { return type_.IsFloat(); }
+bool Value::IsFloat() { return type_->IsFloat(); }
 
-bool Value::IsPointer() { return type_.IsPointerType(); }
+bool Value::IsPointer() { return type_->IsPointerType(); }
 
-bool Value::IsNullPtrType() { return type_.IsNullPtrType(); }
+bool Value::IsNullPtrType() { return type_->IsNullPtrType(); }
 
-bool Value::IsSigned() { return type_.IsSigned(); }
+bool Value::IsSigned() { return type_->IsSigned(); }
 
-bool Value::IsEnum() { return type_.GetTypeFlags() & lldb::eTypeIsEnumeration; }
+bool Value::IsEnum() {
+  return type_->GetTypeFlags() & lldb::eTypeIsEnumeration;
+}
 
-bool Value::IsScopedEnum() { return IsScopedEnum_V<lldb::SBType>(type_); }
+bool Value::IsScopedEnum() { return type_->IsScopedEnum(); }
 
 bool Value::IsUnscopedEnum() { return IsEnum() && !IsScopedEnum(); }
 
@@ -233,7 +135,7 @@ bool Value::GetBool() {
   if (IsFloat()) {
     return GetFloat().isNonZero();
   }
-  if (type_.IsArrayType()) {
+  if (type_->IsArrayType()) {
     return AddressOf().GetUInt64() != 0;
   }
   // Either invalid value, or some complex SbValue (e.g. struct or class).
@@ -254,7 +156,7 @@ Value Value::AddressOf() { return Value(value_.AddressOf()); }
 Value Value::Dereference() { return Value(value_.Dereference()); }
 
 llvm::APSInt Value::GetInteger() {
-  unsigned bit_width = static_cast<unsigned>(type_.GetByteSize() * CHAR_BIT);
+  unsigned bit_width = static_cast<unsigned>(type_->GetByteSize() * CHAR_BIT);
   uint64_t value = GetValueAsUnsigned(value_);
   bool is_signed = IsSigned();
 
@@ -262,7 +164,7 @@ llvm::APSInt Value::GetInteger() {
 }
 
 llvm::APFloat Value::GetFloat() {
-  lldb::BasicType basic_type = type_.GetCanonicalType().GetBasicType();
+  lldb::BasicType basic_type = type_->GetCanonicalType()->GetBasicType();
   lldb::SBError ignore;
 
   switch (basic_type) {
@@ -288,17 +190,17 @@ Value Value::Clone() {
   lldb::SBError ignore;
   auto raw_data = std::make_unique<uint8_t[]>(data.GetByteSize());
   data.ReadRawData(ignore, 0, raw_data.get(), data.GetByteSize());
-  return CreateValueFromBytes(value_.GetTarget(), raw_data.get(), type_);
+  return CreateValueFromBytes(value_.GetTarget(), raw_data.get(), *type_);
 }
 
 void Value::Update(const llvm::APInt& v) {
-  assert(v.getBitWidth() == type_.GetByteSize() * CHAR_BIT &&
+  assert(v.getBitWidth() == type_->GetByteSize() * CHAR_BIT &&
          "illegal argument: new value should be of the same size");
 
   lldb::SBData data;
   lldb::SBError ignore;
   lldb::SBTarget target = value_.GetTarget();
-  data.SetData(ignore, v.getRawData(), type_.GetByteSize(),
+  data.SetData(ignore, v.getRawData(), type_->GetByteSize(),
                target.GetByteOrder(),
                static_cast<uint8_t>(target.GetAddressByteSize()));
   value_.SetData(data, ignore);
@@ -357,27 +259,27 @@ static llvm::APFloat CreateAPFloatFromAPFloat(llvm::APFloat value,
   }
 }
 
-Value CastScalarToBasicType(lldb::SBTarget target, Value val, Type type,
+Value CastScalarToBasicType(lldb::SBTarget target, Value val, TypeSP type,
                             Error& error) {
-  assert(type.IsScalar() && "target type must be an scalar");
-  assert(val.type().IsScalar() && "argument must be a scalar");
+  assert(type->IsScalar() && "target type must be an scalar");
+  assert(val.type()->IsScalar() && "argument must be a scalar");
 
-  if (type.IsBool()) {
-    if (val.type().IsInteger()) {
+  if (type->IsBool()) {
+    if (val.type()->IsInteger()) {
       return CreateValueFromBool(target, val.GetUInt64() != 0);
     }
-    if (val.type().IsFloat()) {
+    if (val.type()->IsFloat()) {
       return CreateValueFromBool(target, !val.GetFloat().isZero());
     }
   }
-  if (type.IsInteger()) {
-    if (val.type().IsInteger()) {
+  if (type->IsInteger()) {
+    if (val.type()->IsInteger()) {
       llvm::APSInt ext =
-          val.GetInteger().extOrTrunc(type.GetByteSize() * CHAR_BIT);
-      return CreateValueFromAPInt(target, ext, type);
+          val.GetInteger().extOrTrunc(type->GetByteSize() * CHAR_BIT);
+      return CreateValueFromAPInt(target, ext, ToSBType(type));
     }
-    if (val.type().IsFloat()) {
-      llvm::APSInt integer(type.GetByteSize() * CHAR_BIT, !type.IsSigned());
+    if (val.type()->IsFloat()) {
+      llvm::APSInt integer(type->GetByteSize() * CHAR_BIT, !type->IsSigned());
       bool is_exact;
       llvm::APFloatBase::opStatus status = val.GetFloat().convertToInteger(
           integer, llvm::APFloat::rmTowardZero, &is_exact);
@@ -388,78 +290,82 @@ Value CastScalarToBasicType(lldb::SBTarget target, Value val, Type type,
         error.SetUbStatus(UbStatus::kInvalidCast);
       }
 
-      return CreateValueFromAPInt(target, integer, type);
+      return CreateValueFromAPInt(target, integer, ToSBType(type));
     }
   }
-  if (type.IsFloat()) {
-    if (val.type().IsInteger()) {
+  if (type->IsFloat()) {
+    if (val.type()->IsInteger()) {
       llvm::APFloat f = CreateAPFloatFromAPSInt(
-          val.GetInteger(), type.GetCanonicalType().GetBasicType());
-      return CreateValueFromAPFloat(target, f, type);
+          val.GetInteger(), type->GetCanonicalType()->GetBasicType());
+      return CreateValueFromAPFloat(target, f, ToSBType(type));
     }
-    if (val.type().IsFloat()) {
+    if (val.type()->IsFloat()) {
       llvm::APFloat f = CreateAPFloatFromAPFloat(
-          val.GetFloat(), type.GetCanonicalType().GetBasicType());
-      return CreateValueFromAPFloat(target, f, type);
+          val.GetFloat(), type->GetCanonicalType()->GetBasicType());
+      return CreateValueFromAPFloat(target, f, ToSBType(type));
     }
   }
   assert(false && "invalid target type: must be a scalar");
   return Value();
 }
 
-Value CastEnumToBasicType(lldb::SBTarget target, Value val, Type type) {
-  assert(type.IsScalar() && "target type must be a scalar");
-  assert(val.type().IsEnum() && "argument must be an enum");
+Value CastEnumToBasicType(lldb::SBTarget target, Value val, TypeSP type) {
+  assert(type->IsScalar() && "target type must be a scalar");
+  assert(val.type()->IsEnum() && "argument must be an enum");
 
-  if (type.IsBool()) {
+  if (type->IsBool()) {
     return CreateValueFromBool(target, val.GetUInt64() != 0);
   }
 
   // Get the value as APSInt and extend or truncate it to the requested size.
-  llvm::APSInt ext = val.GetInteger().extOrTrunc(type.GetByteSize() * CHAR_BIT);
+  llvm::APSInt ext =
+      val.GetInteger().extOrTrunc(type->GetByteSize() * CHAR_BIT);
 
-  if (type.IsInteger()) {
-    return CreateValueFromAPInt(target, ext, type);
+  if (type->IsInteger()) {
+    return CreateValueFromAPInt(target, ext, ToSBType(type));
   }
-  if (type.IsFloat()) {
+  if (type->IsFloat()) {
     llvm::APFloat f =
-        CreateAPFloatFromAPSInt(ext, type.GetCanonicalType().GetBasicType());
-    return CreateValueFromAPFloat(target, f, type);
+        CreateAPFloatFromAPSInt(ext, type->GetCanonicalType()->GetBasicType());
+    return CreateValueFromAPFloat(target, f, ToSBType(type));
   }
   assert(false && "invalid target type: must be a scalar");
   return Value();
 }
 
-Value CastPointerToBasicType(lldb::SBTarget target, Value val, Type type) {
-  assert(type.IsInteger() && "target type must be an integer");
-  assert((type.IsBool() || type.GetByteSize() >= val.type().GetByteSize()) &&
+Value CastPointerToBasicType(lldb::SBTarget target, Value val, TypeSP type) {
+  assert(type->IsInteger() && "target type must be an integer");
+  assert((type->IsBool() || type->GetByteSize() >= val.type()->GetByteSize()) &&
          "target type cannot be smaller than the pointer type");
 
-  if (type.IsBool()) {
+  if (type->IsBool()) {
     return CreateValueFromBool(target, val.GetUInt64() != 0);
   }
 
   // Get the value as APSInt and extend or truncate it to the requested size.
-  llvm::APSInt ext = val.GetInteger().extOrTrunc(type.GetByteSize() * CHAR_BIT);
-  return CreateValueFromAPInt(target, ext, type);
+  llvm::APSInt ext =
+      val.GetInteger().extOrTrunc(type->GetByteSize() * CHAR_BIT);
+  return CreateValueFromAPInt(target, ext, ToSBType(type));
 }
 
-Value CastIntegerOrEnumToEnumType(lldb::SBTarget target, Value val, Type type) {
-  assert(type.IsEnum() && "target type must be an enum");
-  assert((val.type().IsInteger() || val.type().IsEnum()) &&
+Value CastIntegerOrEnumToEnumType(lldb::SBTarget target, Value val,
+                                  TypeSP type) {
+  assert(type->IsEnum() && "target type must be an enum");
+  assert((val.type()->IsInteger() || val.type()->IsEnum()) &&
          "argument must be an integer or an enum");
 
   // Get the value as APSInt and extend or truncate it to the requested size.
-  llvm::APSInt ext = val.GetInteger().extOrTrunc(type.GetByteSize() * CHAR_BIT);
-  return CreateValueFromAPInt(target, ext, type);
+  llvm::APSInt ext =
+      val.GetInteger().extOrTrunc(type->GetByteSize() * CHAR_BIT);
+  return CreateValueFromAPInt(target, ext, ToSBType(type));
 }
 
-Value CastFloatToEnumType(lldb::SBTarget target, Value val, Type type,
+Value CastFloatToEnumType(lldb::SBTarget target, Value val, TypeSP type,
                           Error& error) {
-  assert(type.IsEnum() && "target type must be an enum");
-  assert(val.type().IsFloat() && "argument must be a float");
+  assert(type->IsEnum() && "target type must be an enum");
+  assert(val.type()->IsFloat() && "argument must be a float");
 
-  llvm::APSInt integer(type.GetByteSize() * CHAR_BIT, !type.IsSigned());
+  llvm::APSInt integer(type->GetByteSize() * CHAR_BIT, !type->IsSigned());
   bool is_exact;
 
   llvm::APFloatBase::opStatus status = val.GetFloat().convertToInteger(
@@ -471,7 +377,7 @@ Value CastFloatToEnumType(lldb::SBTarget target, Value val, Type type,
     error.SetUbStatus(UbStatus::kInvalidCast);
   }
 
-  return CreateValueFromAPInt(target, integer, type);
+  return CreateValueFromAPInt(target, integer, ToSBType(type));
 }
 
 Value CreateValueFromBytes(lldb::SBTarget target, const void* bytes,
@@ -513,7 +419,7 @@ Value CreateValueFromBool(lldb::SBTarget target, bool value) {
 }
 
 Value CreateValueNullptr(lldb::SBTarget target, lldb::SBType type) {
-  assert(Type(type).IsNullPtrType() && "target type must be nullptr");
+  assert(LLDBType(type).IsNullPtrType() && "target type must be nullptr");
   uintptr_t zero = 0;
   return CreateValueFromBytes(target, &zero, type);
 }

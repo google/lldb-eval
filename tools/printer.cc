@@ -33,7 +33,7 @@ std::string print_common_props(const AstNode* node) {
   std::string ret;
 
   ret += "'";
-  ret += node->result_type().GetName();
+  ret += node->result_type()->GetName();
   ret += "'";
   ret += " ";
   ret += node->is_rvalue() ? "rvalue" : "lvalue";
@@ -54,9 +54,12 @@ class AstPrinter : Visitor {
   }
 
   void Visit(const LiteralNode* node) override {
-    std::cout << "LiteralNode " << print_common_props(node) << " "
-              << "value=" << node->value().inner_value().GetValue()
-              << std::endl;
+    std::visit(
+        [node](auto&& value) {
+          std::cout << "LiteralNode " << print_common_props(node)
+                    << " value=" << value << std::endl;
+        },
+        node->value());
   }
 
   void Visit(const IdentifierNode* node) override {
@@ -65,8 +68,8 @@ class AstPrinter : Visitor {
   }
 
   void Visit(const SizeOfNode* node) override {
-    std::cout << "SizeOfNode " << print_common_props(node) << " "
-              << "type=" << node->operand().GetName() << std::endl;
+    std::cout << "SizeOfNode " << print_common_props(node)
+              << " type=" << node->operand()->GetName().str() << std::endl;
   }
 
   void Visit(const BuiltinFunctionCallNode* node) override {
@@ -84,21 +87,21 @@ class AstPrinter : Visitor {
 
   void Visit(const CStyleCastNode* node) override {
     std::cout << "CStyleCastNode " << print_common_props(node) << " "
-              << "type=" << node->type().GetName() << std::endl;
+              << "type=" << node->type()->GetName().str() << std::endl;
 
     PrintLastChild(node->rhs());
   }
 
   void Visit(const CxxStaticCastNode* node) override {
     std::cout << "CxxStaticCastNode " << print_common_props(node) << " "
-              << "type=" << node->type().GetName() << std::endl;
+              << "type=" << node->type()->GetName().str() << std::endl;
 
     PrintLastChild(node->rhs());
   }
 
   void Visit(const CxxReinterpretCastNode* node) override {
     std::cout << "CxxReinterpretCastNode " << print_common_props(node) << " "
-              << "type=" << node->type().GetName() << std::endl;
+              << "type=" << node->type()->GetName().str() << std::endl;
 
     PrintLastChild(node->rhs());
   }

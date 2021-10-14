@@ -126,18 +126,18 @@ static Value EvaluateArithmeticOpFloat(lldb::SBTarget target, BinaryOpKind kind,
 }
 
 static Value EvaluateArithmeticOp(lldb::SBTarget target, BinaryOpKind kind,
-                                  Value lhs, Value rhs, Type rtype) {
-  assert((rtype.IsInteger() || rtype.IsFloat()) &&
+                                  Value lhs, Value rhs, TypeSP rtype) {
+  assert((rtype->IsInteger() || rtype->IsFloat()) &&
          "invalid ast: result type must either integer or floating point");
 
   // Evaluate arithmetic operation for two integral values.
-  if (rtype.IsInteger()) {
-    return EvaluateArithmeticOpInteger(target, kind, lhs, rhs, rtype);
+  if (rtype->IsInteger()) {
+    return EvaluateArithmeticOpInteger(target, kind, lhs, rhs, ToSBType(rtype));
   }
 
   // Evaluate arithmetic operation for two floating point values.
-  if (rtype.IsFloat()) {
-    return EvaluateArithmeticOpFloat(target, kind, lhs, rhs, rtype);
+  if (rtype->IsFloat()) {
+    return EvaluateArithmeticOpFloat(target, kind, lhs, rhs, ToSBType(rtype));
   }
 
   return Value();
@@ -147,7 +147,7 @@ static bool IsInvalidDivisionByMinusOne(Value lhs, Value rhs) {
   assert(lhs.IsInteger() && rhs.IsInteger() && "operands should be integers");
 
   // The result type should be signed integer.
-  auto basic_type = rhs.type().GetBasicType();
+  auto basic_type = rhs.type()->GetBasicType();
   if (basic_type != lldb::eBasicTypeInt && basic_type != lldb::eBasicTypeLong &&
       basic_type != lldb::eBasicTypeLongLong) {
     return false;
@@ -159,14 +159,14 @@ static bool IsInvalidDivisionByMinusOne(Value lhs, Value rhs) {
   }
 
   // The LHS should be equal to the minimum value the result type can hold.
-  auto bit_size = rhs.type().GetByteSize() * CHAR_BIT;
+  auto bit_size = rhs.type()->GetByteSize() * CHAR_BIT;
   return lhs.GetValueAsSigned() + (1LLU << (bit_size - 1)) == 0;
 }
 
 static Value CastDerivedToBaseType(lldb::SBTarget target, Value value,
-                                   Type type,
+                                   TypeSP type,
                                    const std::vector<uint32_t>& idx) {
-  assert((type.IsPointerType() || type.IsReferenceType()) &&
+  assert((type->IsPointerType() || type->IsReferenceType()) &&
          "invalid ast: target type should be a pointer or a reference");
   assert(!idx.empty() && "invalid ast: children sequence should be non-empty");
 
@@ -180,35 +180,37 @@ static Value CastDerivedToBaseType(lldb::SBTarget target, Value value,
   }
 
   // At this point type of `inner_value` should be the dereferenced target type.
-  if (type.IsPointerType()) {
-    assert(CompareTypes(inner_value.GetType(), type.GetPointeeType()) &&
+  auto inner_value_type = LLDBType::CreateSP(inner_value.GetType());
+  if (type->IsPointerType()) {
+    assert(CompareTypes(inner_value_type, type->GetPointeeType()) &&
            "casted value doesn't match the desired type");
 
     uintptr_t addr = inner_value.GetLoadAddress();
-    return CreateValueFromPointer(target, addr, type);
+    return CreateValueFromPointer(target, addr, ToSBType(type));
   }
 
   // At this point the target type should be a reference.
-  assert(CompareTypes(inner_value.GetType(), type.GetDereferencedType()) &&
+  assert(CompareTypes(inner_value_type, type->GetDereferencedType()) &&
          "casted value doesn't match the desired type");
 
-  return Value(inner_value.Cast(type.GetDereferencedType()));
+  return Value(inner_value.Cast(ToSBType(type->GetDereferencedType())));
 }
 
 static Value CastBaseToDerivedType(lldb::SBTarget target, Value value,
-                                   Type type, uint64_t offset) {
-  assert((type.IsPointerType() || type.IsReferenceType()) &&
+                                   TypeSP type, uint64_t offset) {
+  assert((type->IsPointerType() || type->IsReferenceType()) &&
          "invalid ast: target type should be a pointer or a reference");
 
-  Type pointer_type =
-      type.IsPointerType() ? type : type.GetDereferencedType().GetPointerType();
+  auto pointer_type = type->IsPointerType()
+                          ? type
+                          : type->GetDereferencedType()->GetPointerType();
 
-  uintptr_t addr = type.IsPointerType() ? value.GetUInt64()
-                                        : value.inner_value().GetLoadAddress();
+  uintptr_t addr = type->IsPointerType() ? value.GetUInt64()
+                                         : value.inner_value().GetLoadAddress();
 
-  value = CreateValueFromPointer(target, addr - offset, pointer_type);
+  value = CreateValueFromPointer(target, addr - offset, ToSBType(pointer_type));
 
-  if (type.IsPointerType()) {
+  if (type->IsPointerType()) {
     return value;
   }
 
@@ -250,23 +252,51 @@ void Interpreter::Visit(const ErrorNode*) {
   result_ = Value();
 }
 
-void Interpreter::Visit(const LiteralNode* node) { result_ = node->value(); }
+void Interpreter::Visit(const LiteralNode* node) {
+  struct {
+    Value operator()(int64_t val) {
+      return CreateValueFromAPInt(
+          target, llvm::APInt(sizeof(uintmax_t) * CHAR_BIT, val, true), type);
+    }
+    Value operator()(uint64_t val) {
+      if (type.IsPointerType()) {
+        return CreateValueFromPointer(target, val, type);
+      }
+      return CreateValueFromAPInt(
+          target, llvm::APInt(sizeof(uintmax_t) * CHAR_BIT, val, false), type);
+    }
+    Value operator()(float val) {
+      return CreateValueFromAPFloat(target, llvm::APFloat(val), type);
+    }
+    Value operator()(double val) {
+      return CreateValueFromAPFloat(target, llvm::APFloat(val), type);
+    }
+    Value operator()(bool val) { return CreateValueFromBool(target, val); }
+
+    lldb::SBTarget target;
+    lldb::SBType type;
+  } visitor{target_, ToSBType(node->result_type())};
+  result_ = std::visit(visitor, node->value());
+}
 
 void Interpreter::Visit(const IdentifierNode* node) {
-  Value val = node->value();
+  Value val =
+      static_cast<const Context::IdentifierInfo&>(node->info()).GetValue();
 
   // If value is a reference, dereference it to get to the underlying type. All
   // operations on a reference should be actually operations on the referent.
-  if (val.type().IsReferenceType()) {
+  if (val.type()->IsReferenceType()) {
     // TODO(werat): LLDB canonizes the type upon a dereference. This looks like
     // a bug, but for now we need to mitigate it. Check if the resulting type is
     // incorrect and fix it up.
     // Not necessary if https://reviews.llvm.org/D103532 is available.
-    lldb::SBType deref_type = val.type().GetDereferencedType();
+    auto deref_type =
+        std::static_pointer_cast<LLDBType>(val.type()->GetDereferencedType());
     val = val.Dereference();
 
-    if (val.type() != deref_type) {
-      val = Value(val.inner_value().Cast(deref_type));
+    LLDBType val_type = *val.type();
+    if (val_type != *deref_type) {
+      val = Value(val.inner_value().Cast(*deref_type));
     }
   }
 
@@ -274,12 +304,12 @@ void Interpreter::Visit(const IdentifierNode* node) {
 }
 
 void Interpreter::Visit(const SizeOfNode* node) {
-  lldb::SBType operand = node->operand();
+  auto operand = node->operand();
 
   // For reference type (int&) we need to look at the referenced type.
-  size_t size = operand.IsReferenceType()
-                    ? operand.GetDereferencedType().GetByteSize()
-                    : operand.GetByteSize();
+  size_t size = operand->IsReferenceType()
+                    ? operand->GetDereferencedType()->GetByteSize()
+                    : operand->GetByteSize();
   result_ = CreateValueFromBytes(target_, &size, ctx_->GetSizeType());
 }
 
@@ -317,13 +347,13 @@ void Interpreter::Visit(const BuiltinFunctionCallNode* node) {
 
     if (val1.IsPointer()) {
       addr = val1.inner_value().GetValueAsUnsigned();
-    } else if (val1.type().IsArrayType()) {
+    } else if (val1.type()->IsArrayType()) {
       addr = val1.inner_value().GetLoadAddress();
     } else {
       SetError(ErrorCode::kInvalidOperandType,
                llvm::formatv("no known conversion from '{0}' to 'T*' for 1st "
                              "argument of __findnonnull()",
-                             val1.type().GetName()),
+                             val1.type()->GetName()),
                arg1->location());
       return;
     }
@@ -381,7 +411,7 @@ void Interpreter::Visit(const BuiltinFunctionCallNode* node) {
 
 void Interpreter::Visit(const CStyleCastNode* node) {
   // Get the type and the value we need to cast.
-  Type type = node->type();
+  auto type = node->type();
   auto rhs = EvalNode(node->rhs());
   if (!rhs) {
     return;
@@ -389,7 +419,7 @@ void Interpreter::Visit(const CStyleCastNode* node) {
 
   switch (node->kind()) {
     case CStyleCastKind::kArithmetic: {
-      assert(type.IsBasicType() &&
+      assert(type->IsBasicType() &&
              "invalid ast: target type should be a basic type.");
       // Pick an appropriate cast.
       if (rhs.IsPointer() || rhs.IsNullPtrType()) {
@@ -405,7 +435,7 @@ void Interpreter::Visit(const CStyleCastNode* node) {
       return;
     }
     case CStyleCastKind::kEnumeration: {
-      assert(type.IsEnum() &&
+      assert(type->IsEnum() &&
              "invalid ast: target type should be an enumeration.");
 
       if (rhs.IsFloat()) {
@@ -419,23 +449,23 @@ void Interpreter::Visit(const CStyleCastNode* node) {
       return;
     }
     case CStyleCastKind::kPointer: {
-      assert(type.IsPointerType() &&
+      assert(type->IsPointerType() &&
              "invalid ast: target type should be a pointer.");
-
-      uint64_t addr = rhs.type().IsArrayType()
+      uint64_t addr = rhs.type()->IsArrayType()
                           ? rhs.inner_value().GetLoadAddress()
                           : rhs.GetUInt64();
-      result_ = CreateValueFromPointer(target_, addr, type);
+      result_ = CreateValueFromPointer(target_, addr, ToSBType(type));
       return;
     }
     case CStyleCastKind::kNullptr: {
-      assert(type.IsNullPtrType() &&
+      assert(type->IsNullPtrType() &&
              "invalid ast: target type should be a nullptr_t.");
-      result_ = CreateValueNullptr(target_, type);
+      result_ = CreateValueNullptr(target_, ToSBType(type));
       return;
     }
     case CStyleCastKind::kReference: {
-      result_ = Value(rhs.inner_value().Cast(type.GetDereferencedType()));
+      result_ =
+          Value(rhs.inner_value().Cast(ToSBType(type->GetDereferencedType())));
       return;
     }
   }
@@ -446,7 +476,7 @@ void Interpreter::Visit(const CStyleCastNode* node) {
 
 void Interpreter::Visit(const CxxStaticCastNode* node) {
   // Get the type and the value we need to cast.
-  Type type = node->type();
+  auto type = node->type();
   auto rhs = EvalNode(node->rhs());
   if (!rhs) {
     return;
@@ -456,14 +486,14 @@ void Interpreter::Visit(const CxxStaticCastNode* node) {
     case CxxStaticCastKind::kNoOp: {
       assert(CompareTypes(type, rhs.type()) &&
              "invalid ast: types should be the same");
-      result_ = Value(rhs.inner_value().Cast(type));
+      result_ = Value(rhs.inner_value().Cast(ToSBType(type)));
       return;
     }
 
     case CxxStaticCastKind::kArithmetic: {
-      assert(type.IsScalar());
-      if (rhs.IsPointer() || rhs.type().IsNullPtrType()) {
-        assert(type.IsBool() && "invalid ast: target type should be bool");
+      assert(type->IsScalar());
+      if (rhs.IsPointer() || rhs.type()->IsNullPtrType()) {
+        assert(type->IsBool() && "invalid ast: target type should be bool");
         result_ = CastPointerToBasicType(target_, rhs, type);
       } else if (rhs.IsScalar()) {
         result_ = CastScalarToBasicType(target_, rhs, type, error_);
@@ -489,18 +519,18 @@ void Interpreter::Visit(const CxxStaticCastNode* node) {
     }
 
     case CxxStaticCastKind::kPointer: {
-      assert(type.IsPointerType() &&
+      assert(type->IsPointerType() &&
              "invalid ast: target type should be a pointer.");
 
-      uint64_t addr = rhs.type().IsArrayType()
+      uint64_t addr = rhs.type()->IsArrayType()
                           ? rhs.inner_value().GetLoadAddress()
                           : rhs.GetUInt64();
-      result_ = CreateValueFromPointer(target_, addr, type);
+      result_ = CreateValueFromPointer(target_, addr, ToSBType(type));
       return;
     }
 
     case CxxStaticCastKind::kNullptr: {
-      result_ = CreateValueNullptr(target_, type);
+      result_ = CreateValueNullptr(target_, ToSBType(type));
       return;
     }
 
@@ -518,36 +548,37 @@ void Interpreter::Visit(const CxxStaticCastNode* node) {
 
 void Interpreter::Visit(const CxxReinterpretCastNode* node) {
   // Get the type and the value we need to cast.
-  Type type = node->type();
+  auto type = node->type();
   auto rhs = EvalNode(node->rhs());
   if (!rhs) {
     return;
   }
 
-  if (type.IsInteger()) {
+  if (type->IsInteger()) {
     if (rhs.IsPointer() || rhs.IsNullPtrType()) {
       result_ = CastPointerToBasicType(target_, rhs, type);
     } else {
       assert(CompareTypes(type, rhs.type()) &&
              "invalid ast: operands should have the same type");
       // Cast value to handle type aliases.
-      result_ = Value(rhs.inner_value().Cast(type));
+      result_ = Value(rhs.inner_value().Cast(ToSBType(type)));
     }
-  } else if (type.IsEnum()) {
+  } else if (type->IsEnum()) {
     assert(CompareTypes(type, rhs.type()) &&
            "invalid ast: operands should have the same type");
     // Cast value to handle type aliases.
-    result_ = Value(rhs.inner_value().Cast(type));
-  } else if (type.IsPointerType()) {
+    result_ = Value(rhs.inner_value().Cast(ToSBType(type)));
+  } else if (type->IsPointerType()) {
     assert((rhs.IsInteger() || rhs.IsEnum() || rhs.IsPointer() ||
-            rhs.type().IsArrayType()) &&
+            rhs.type()->IsArrayType()) &&
            "invalid ast: unexpected operand to reinterpret_cast");
-    uint64_t addr = rhs.type().IsArrayType()
+    uint64_t addr = rhs.type()->IsArrayType()
                         ? rhs.inner_value().GetLoadAddress()
                         : rhs.GetUInt64();
-    result_ = CreateValueFromPointer(target_, addr, type);
-  } else if (type.IsReferenceType()) {
-    result_ = Value(rhs.inner_value().Cast(type.GetDereferencedType()));
+    result_ = CreateValueFromPointer(target_, addr, ToSBType(type));
+  } else if (type->IsReferenceType()) {
+    result_ =
+        Value(rhs.inner_value().Cast(ToSBType(type->GetDereferencedType())));
   } else {
     assert(false && "invalid ast: unexpected reinterpret_cast kind");
     result_ = Value();
@@ -606,18 +637,19 @@ void Interpreter::Visit(const ArraySubscriptNode* node) {
     return;
   }
 
-  assert(base.type().IsPointerType() &&
+  assert(base.type()->IsPointerType() &&
          "array subscript: base must be a pointer");
-  assert(index.type().IsIntegerOrUnscopedEnum() &&
+  assert(index.type()->IsIntegerOrUnscopedEnum() &&
          "array subscript: index must be integer or unscoped enum");
 
-  lldb::SBType item_type = base.type().GetPointeeType();
+  TypeSP item_type = base.type()->GetPointeeType();
   lldb::addr_t base_addr = base.GetUInt64();
 
   // Create a pointer and add the index, i.e. "base + index".
-  Value value = PointerAdd(
-      CreateValueFromPointer(target_, base_addr, item_type.GetPointerType()),
-      index.GetUInt64());
+  Value value =
+      PointerAdd(CreateValueFromPointer(target_, base_addr,
+                                        ToSBType(item_type->GetPointerType())),
+                 index.GetUInt64());
 
   // If we're in the address-of context, skip the dereference and cancel the
   // pending address-of operation as well.
@@ -636,7 +668,7 @@ void Interpreter::Visit(const BinaryOpNode* node) {
     if (!lhs) {
       return;
     }
-    assert(lhs.type().IsContextuallyConvertibleToBool() &&
+    assert(lhs.type()->IsContextuallyConvertibleToBool() &&
            "invalid ast: must be convertible to bool");
 
     // For "&&" break if LHS is "false", for "||" if LHS is "true".
@@ -654,7 +686,7 @@ void Interpreter::Visit(const BinaryOpNode* node) {
     if (!rhs) {
       return;
     }
-    assert(rhs.type().IsContextuallyConvertibleToBool() &&
+    assert(rhs.type()->IsContextuallyConvertibleToBool() &&
            "invalid ast: must be convertible to bool");
 
     result_ = CreateValueFromBool(target_, rhs.GetBool());
@@ -813,7 +845,7 @@ void Interpreter::Visit(const TernaryOpNode* node) {
   if (!cond) {
     return;
   }
-  assert(cond.type().IsContextuallyConvertibleToBool() &&
+  assert(cond.type()->IsContextuallyConvertibleToBool() &&
          "invalid ast: must be convertible to bool");
 
   // Pass down the flow analysis because the conditional operator is a "flow
@@ -832,7 +864,8 @@ void Interpreter::Visit(const SmartPtrToPtrDecay* node) {
     return;
   }
 
-  assert(ptr.type().IsSmartPtrType() && "invalid ast: must be a smart pointer");
+  assert(ptr.type()->IsSmartPtrType() &&
+         "invalid ast: must be a smart pointer");
 
   // Prefer synthetic value because we need LLDB machinery to "dereference" the
   // pointer for us. This is usually the default, but if the value was obtained
@@ -872,9 +905,9 @@ Value Interpreter::EvaluateComparison(BinaryOpKind kind, Value lhs, Value rhs) {
 }
 
 Value Interpreter::EvaluateDereference(Value rhs) {
-  assert(rhs.type().IsPointerType() && "invalid ast: must be a pointer type");
+  assert(rhs.type()->IsPointerType() && "invalid ast: must be a pointer type");
 
-  lldb::SBType pointer_type = rhs.type();
+  lldb::SBType pointer_type = *rhs.type();
   lldb::addr_t base_addr = rhs.GetUInt64();
 
   Value value = CreateValueFromPointer(target_, base_addr, pointer_type);
@@ -896,19 +929,19 @@ Value Interpreter::EvaluateUnaryMinus(Value rhs) {
   if (rhs.IsInteger()) {
     llvm::APSInt v = rhs.GetInteger();
     v.negate();
-    return CreateValueFromAPInt(target_, v, rhs.type());
+    return CreateValueFromAPInt(target_, v, *rhs.type());
   }
   if (rhs.IsFloat()) {
     llvm::APFloat v = rhs.GetFloat();
     v.changeSign();
-    return CreateValueFromAPFloat(target_, v, rhs.type());
+    return CreateValueFromAPFloat(target_, v, *rhs.type());
   }
 
   return Value();
 }
 
 Value Interpreter::EvaluateUnaryNegation(Value rhs) {
-  assert(rhs.type().IsContextuallyConvertibleToBool() &&
+  assert(rhs.type()->IsContextuallyConvertibleToBool() &&
          "invalid ast: must be convertible to bool");
   return CreateValueFromBool(target_, !rhs.GetBool());
 }
@@ -917,7 +950,7 @@ Value Interpreter::EvaluateUnaryBitwiseNot(Value rhs) {
   assert(rhs.IsInteger() && "invalid ast: must be an integer");
   llvm::APSInt v = rhs.GetInteger();
   v.flipAllBits();
-  return CreateValueFromAPInt(target_, v, rhs.type());
+  return CreateValueFromAPInt(target_, v, *rhs.type());
 }
 
 Value Interpreter::EvaluateUnaryPrefixIncrement(Value rhs) {
@@ -941,7 +974,7 @@ Value Interpreter::EvaluateUnaryPrefixIncrement(Value rhs) {
   }
   if (rhs.IsPointer()) {
     uint64_t v = rhs.GetUInt64();
-    v += rhs.type().GetPointeeType().GetByteSize();  // Do the increment.
+    v += rhs.type()->GetPointeeType()->GetByteSize();  // Do the increment.
 
     rhs.Update(llvm::APInt(64, v));
     return rhs;
@@ -971,7 +1004,7 @@ Value Interpreter::EvaluateUnaryPrefixDecrement(Value rhs) {
   }
   if (rhs.IsPointer()) {
     uint64_t v = rhs.GetUInt64();
-    v -= rhs.type().GetPointeeType().GetByteSize();  // Do the decrement.
+    v -= rhs.type()->GetPointeeType()->GetByteSize();  // Do the decrement.
 
     rhs.Update(llvm::APInt(64, v));
     return rhs;
@@ -986,7 +1019,7 @@ Value Interpreter::EvaluateBinaryAddition(Value lhs, Value rhs) {
     assert(CompareTypes(lhs.type(), rhs.type()) &&
            "invalid ast: operand must have the same type");
     return EvaluateArithmeticOp(target_, BinaryOpKind::Add, lhs, rhs,
-                                lhs.type().GetCanonicalType());
+                                lhs.type()->GetCanonicalType());
   }
 
   // Here one of the operands must be a pointer and the other one an integer.
@@ -1015,7 +1048,7 @@ Value Interpreter::EvaluateBinarySubtraction(Value lhs, Value rhs) {
     assert(CompareTypes(lhs.type(), rhs.type()) &&
            "invalid ast: operand must have the same type");
     return EvaluateArithmeticOp(target_, BinaryOpKind::Sub, lhs, rhs,
-                                lhs.type().GetCanonicalType());
+                                lhs.type()->GetCanonicalType());
   }
   assert(lhs.IsPointer() && "invalid ast: lhs must be a pointer");
 
@@ -1026,12 +1059,12 @@ Value Interpreter::EvaluateBinarySubtraction(Value lhs, Value rhs) {
 
   // "pointer - pointer" operation.
   assert(rhs.IsPointer() && "invalid ast: rhs must an integer or a pointer");
-  assert((lhs.type().GetPointeeType().GetByteSize() ==
-          rhs.type().GetPointeeType().GetByteSize()) &&
+  assert((lhs.type()->GetPointeeType()->GetByteSize() ==
+          rhs.type()->GetPointeeType()->GetByteSize()) &&
          "invalid ast: pointees should be the same size");
 
   // Since pointers have compatible types, both have the same pointee size.
-  uint64_t item_size = lhs.type().GetPointeeType().GetByteSize();
+  uint64_t item_size = lhs.type()->GetPointeeType()->GetByteSize();
   // Pointer difference is a signed value.
   int64_t diff = static_cast<int64_t>(lhs.GetUInt64() - rhs.GetUInt64());
 
@@ -1053,7 +1086,7 @@ Value Interpreter::EvaluateBinaryMultiplication(Value lhs, Value rhs) {
          "invalid ast: operands must be arithmetic and have the same type");
 
   return EvaluateArithmeticOp(target_, BinaryOpKind::Mul, lhs, rhs,
-                              lhs.type().GetCanonicalType());
+                              lhs.type()->GetCanonicalType());
 }
 
 Value Interpreter::EvaluateBinaryDivision(Value lhs, Value rhs) {
@@ -1076,7 +1109,7 @@ Value Interpreter::EvaluateBinaryDivision(Value lhs, Value rhs) {
   }
 
   return EvaluateArithmeticOp(target_, BinaryOpKind::Div, lhs, rhs,
-                              lhs.type().GetCanonicalType());
+                              lhs.type()->GetCanonicalType());
 }
 
 Value Interpreter::EvaluateBinaryRemainder(Value lhs, Value rhs) {
@@ -1098,7 +1131,7 @@ Value Interpreter::EvaluateBinaryRemainder(Value lhs, Value rhs) {
   }
 
   return EvaluateArithmeticOpInteger(target_, BinaryOpKind::Rem, lhs, rhs,
-                                     lhs.type());
+                                     *lhs.type());
 }
 
 Value Interpreter::EvaluateBinaryBitwise(BinaryOpKind kind, Value lhs,
@@ -1110,7 +1143,7 @@ Value Interpreter::EvaluateBinaryBitwise(BinaryOpKind kind, Value lhs,
          "invalid ast: operation must be '&', '|' or '^'");
 
   return EvaluateArithmeticOpInteger(target_, kind, lhs, rhs,
-                                     lhs.type().GetCanonicalType());
+                                     ToSBType(lhs.type()->GetCanonicalType()));
 }
 
 Value Interpreter::EvaluateBinaryShift(BinaryOpKind kind, Value lhs,
@@ -1123,11 +1156,11 @@ Value Interpreter::EvaluateBinaryShift(BinaryOpKind kind, Value lhs,
   // Performing shift operation is undefined behaviour if the right operand
   // isn't in interval [0, bit-size of the left operand).
   if (rhs.GetInteger().isNegative() ||
-      rhs.GetUInt64() >= lhs.type().GetByteSize() * CHAR_BIT) {
+      rhs.GetUInt64() >= lhs.type()->GetByteSize() * CHAR_BIT) {
     error_.SetUbStatus(UbStatus::kInvalidShift);
   }
 
-  return EvaluateArithmeticOpInteger(target_, kind, lhs, rhs, lhs.type());
+  return EvaluateArithmeticOpInteger(target_, kind, lhs, rhs, *lhs.type());
 }
 
 Value Interpreter::EvaluateAssignment(Value lhs, Value rhs) {
@@ -1146,7 +1179,8 @@ Value Interpreter::EvaluateBinaryAddAssign(Value lhs, Value rhs) {
     ret = EvaluateBinaryAddition(lhs, rhs);
   } else {
     assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");
-    assert(rhs.type().IsBasicType() && "invalid ast: rhs must be a basic type");
+    assert(rhs.type()->IsBasicType() &&
+           "invalid ast: rhs must be a basic type");
     ret = CastScalarToBasicType(target_, lhs, rhs.type(), error_);
     ret = EvaluateBinaryAddition(ret, rhs);
     ret = CastScalarToBasicType(target_, ret, lhs.type(), error_);
@@ -1164,7 +1198,8 @@ Value Interpreter::EvaluateBinarySubAssign(Value lhs, Value rhs) {
     ret = EvaluateBinarySubtraction(lhs, rhs);
   } else {
     assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");
-    assert(rhs.type().IsBasicType() && "invalid ast: rhs must be a basic type");
+    assert(rhs.type()->IsBasicType() &&
+           "invalid ast: rhs must be a basic type");
     ret = CastScalarToBasicType(target_, lhs, rhs.type(), error_);
     ret = EvaluateBinarySubtraction(ret, rhs);
     ret = CastScalarToBasicType(target_, ret, lhs.type(), error_);
@@ -1176,7 +1211,7 @@ Value Interpreter::EvaluateBinarySubAssign(Value lhs, Value rhs) {
 
 Value Interpreter::EvaluateBinaryMulAssign(Value lhs, Value rhs) {
   assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");
-  assert(rhs.type().IsBasicType() && "invalid ast: rhs must be a basic type");
+  assert(rhs.type()->IsBasicType() && "invalid ast: rhs must be a basic type");
 
   Value ret = CastScalarToBasicType(target_, lhs, rhs.type(), error_);
   ret = EvaluateBinaryMultiplication(ret, rhs);
@@ -1188,7 +1223,7 @@ Value Interpreter::EvaluateBinaryMulAssign(Value lhs, Value rhs) {
 
 Value Interpreter::EvaluateBinaryDivAssign(Value lhs, Value rhs) {
   assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");
-  assert(rhs.type().IsBasicType() && "invalid ast: rhs must be a basic type");
+  assert(rhs.type()->IsBasicType() && "invalid ast: rhs must be a basic type");
 
   Value ret = CastScalarToBasicType(target_, lhs, rhs.type(), error_);
   ret = EvaluateBinaryDivision(ret, rhs);
@@ -1200,7 +1235,7 @@ Value Interpreter::EvaluateBinaryDivAssign(Value lhs, Value rhs) {
 
 Value Interpreter::EvaluateBinaryRemAssign(Value lhs, Value rhs) {
   assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");
-  assert(rhs.type().IsBasicType() && "invalid ast: rhs must be a basic type");
+  assert(rhs.type()->IsBasicType() && "invalid ast: rhs must be a basic type");
 
   Value ret = CastScalarToBasicType(target_, lhs, rhs.type(), error_);
   ret = EvaluateBinaryRemainder(ret, rhs);
@@ -1227,7 +1262,7 @@ Value Interpreter::EvaluateBinaryBitwiseAssign(BinaryOpKind kind, Value lhs,
       break;
   }
   assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");
-  assert(rhs.type().IsBasicType() && "invalid ast: rhs must be a basic type");
+  assert(rhs.type()->IsBasicType() && "invalid ast: rhs must be a basic type");
 
   Value ret = CastScalarToBasicType(target_, lhs, rhs.type(), error_);
   ret = EvaluateBinaryBitwise(kind, ret, rhs);
@@ -1238,7 +1273,8 @@ Value Interpreter::EvaluateBinaryBitwiseAssign(BinaryOpKind kind, Value lhs,
 }
 
 Value Interpreter::EvaluateBinaryShiftAssign(BinaryOpKind kind, Value lhs,
-                                             Value rhs, Type comp_assign_type) {
+                                             Value rhs,
+                                             TypeSP comp_assign_type) {
   switch (kind) {
     case BinaryOpKind::ShlAssign:
       kind = BinaryOpKind::Shl;
@@ -1251,8 +1287,8 @@ Value Interpreter::EvaluateBinaryShiftAssign(BinaryOpKind kind, Value lhs,
       break;
   }
   assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");
-  assert(rhs.type().IsBasicType() && "invalid ast: rhs must be a basic type");
-  assert(comp_assign_type.IsInteger() &&
+  assert(rhs.type()->IsBasicType() && "invalid ast: rhs must be a basic type");
+  assert(comp_assign_type->IsInteger() &&
          "invalid ast: comp_assign_type must be an integer");
 
   Value ret = CastScalarToBasicType(target_, lhs, comp_assign_type, error_);
@@ -1265,9 +1301,9 @@ Value Interpreter::EvaluateBinaryShiftAssign(BinaryOpKind kind, Value lhs,
 
 Value Interpreter::PointerAdd(Value lhs, int64_t offset) {
   uintptr_t addr =
-      lhs.GetUInt64() + offset * lhs.type().GetPointeeType().GetByteSize();
+      lhs.GetUInt64() + offset * lhs.type()->GetPointeeType()->GetByteSize();
 
-  return CreateValueFromPointer(target_, addr, lhs.type());
+  return CreateValueFromPointer(target_, addr, *lhs.type());
 }
 
 }  // namespace lldb_eval

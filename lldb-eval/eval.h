@@ -101,7 +101,7 @@ class Interpreter : Visitor {
   Value EvaluateBinaryRemAssign(Value lhs, Value rhs);
   Value EvaluateBinaryBitwiseAssign(BinaryOpKind kind, Value lhs, Value rhs);
   Value EvaluateBinaryShiftAssign(BinaryOpKind kind, Value lhs, Value rhs,
-                                  Type comp_assign_type);
+                                  TypeSP comp_assign_type);
 
   Value PointerAdd(Value lhs, int64_t offset);
 
