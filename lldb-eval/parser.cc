@@ -606,29 +606,24 @@ static TypeDeclaration::TypeSpecifier ToTypeSpecifier(
   }
 }
 
-lldb::SBType TypeDeclaration::GetBaseType() const {
+lldb::SBType TypeDeclaration::ResolveBaseType(
+    std::shared_ptr<Context> ctx) const {
   if (!IsValid()) {
     return lldb::SBType();
   }
 
   if (IsBasicType()) {
-    return ctx_->GetBasicType(GetBasicType());
+    return ctx->GetBasicType(GetBasicType());
   }
 
   // If it's not a basic type, it has to be user-defined type.
-  return ctx_->ResolveTypeByName(user_typename_);
-}
-
-std::string TypeDeclaration::GetBaseName() const {
-  if (IsBasicType()) {
-    return GetBaseType().GetName();
-  }
-
-  return user_typename_;
+  return ctx->ResolveTypeByName(user_typename_);
 }
 
 lldb::BasicType TypeDeclaration::GetBasicType() const {
-  if (!IsBasicType()) return lldb::eBasicTypeInvalid;
+  if (!IsBasicType()) {
+    return lldb::eBasicTypeInvalid;
+  }
 
   if (sign_specifier_ == SignSpecifier::kSigned &&
       type_specifier_ == TypeSpecifier::kChar) {
@@ -1183,9 +1178,7 @@ ExprResult Parser::ParseCastExpression() {
     TypeDeclaration type_decl = ParseTypeId();
 
     // Try resolving base type of the type declaration.
-    // TODO(werat): Resolve the type and the declarators during parsing to save
-    // time and produce more accurate diagnostics.
-    lldb::SBType type = type_decl.GetBaseType();
+    lldb::SBType type = type_decl.ResolveBaseType(ctx_);
 
     if (type) {
       // Successfully parsed the type declaration. Commit the backtracked
@@ -1193,7 +1186,7 @@ ExprResult Parser::ParseCastExpression() {
       tentative_parsing.Commit();
 
       // Apply type declarators (i.e. pointer/reference qualifiers).
-      type = ResolveTypeDeclarators(type, type_decl);
+      type = ResolveTypeDeclarators(type, type_decl.ptr_operators_);
       if (!type) {
         return std::make_unique<ErrorNode>();
       }
@@ -1287,7 +1280,7 @@ ExprResult Parser::ParseUnaryExpression() {
 
       // Parse the type definition and resolve the type.
       TypeDeclaration type_decl = ParseTypeId();
-      lldb::SBType type = type_decl.GetBaseType();
+      lldb::SBType type = type_decl.ResolveBaseType(ctx_);
       if (type) {
         tentative_parsing.Commit();
 
@@ -1296,7 +1289,7 @@ ExprResult Parser::ParseUnaryExpression() {
         ConsumeToken();
         // Resolve type declarators. This can fail, in this case the operand
         // will be empty and the corresponding diagnostics will be reported.
-        operand = ResolveTypeDeclarators(type, type_decl);
+        operand = ResolveTypeDeclarators(type, type_decl.ptr_operators_);
 
       } else {
         tentative_parsing.Rollback();
@@ -1352,14 +1345,17 @@ ExprResult Parser::ParsePostfixExpression() {
     clang::SourceLocation type_loc = token_.getLocation();
     TypeDeclaration type_decl = ParseTypeId();
 
-    lldb::SBType type = type_decl.GetBaseType();
+    lldb::SBType type = type_decl.ResolveBaseType(ctx_);
     if (!type) {
-      BailOut(ErrorCode::kUndeclaredIdentifier,
-              llvm::formatv("unknown type name '{0}'", type_decl.GetBaseName()),
-              type_loc);
+      assert(!type_decl.user_typename_.empty() &&
+             "expected user-defined typename!");
+      BailOut(
+          ErrorCode::kUndeclaredIdentifier,
+          llvm::formatv("unknown type name '{0}'", type_decl.user_typename_),
+          type_loc);
       return std::make_unique<ErrorNode>();
     }
-    type = ResolveTypeDeclarators(type, type_decl);
+    type = ResolveTypeDeclarators(type, type_decl.ptr_operators_);
     if (!type) {
       return std::make_unique<ErrorNode>();
     }
@@ -1514,7 +1510,7 @@ ExprResult Parser::ParsePrimaryExpression() {
 //    type_specifier_seq [abstract_declarator]
 //
 TypeDeclaration Parser::ParseTypeId() {
-  TypeDeclaration type_decl(ctx_);
+  TypeDeclaration type_decl;
 
   // type_specifier_seq is required here, start with trying to parse it.
   ParseTypeSpecifierSeq(&type_decl);
@@ -1809,14 +1805,14 @@ std::string Parser::ParseTemplateArgument() {
 
     TypeDeclaration type_decl = ParseTypeId();
 
-    Type type = type_decl.GetBaseType();
+    Type type = type_decl.ResolveBaseType(ctx_);
     if (type) {
       // Successfully parsed a type_id, check if the next token can finish the
       // template_argument. If so, commit the parsed tokens and return parsed
       // template_argument.
       if (TokenEndsTemplateArgumentList(token_)) {
         tentative_parsing.Commit();
-        type = ResolveTypeDeclarators(type, type_decl);
+        type = ResolveTypeDeclarators(type, type_decl.ptr_operators_);
         if (!type) {
           return "";
         }
@@ -1909,10 +1905,11 @@ void Parser::ParsePtrOperator(TypeDeclaration* type_decl) {
   }
 }
 
-lldb::SBType Parser::ResolveTypeDeclarators(lldb::SBType type,
-                                            const TypeDeclaration& type_decl) {
+lldb::SBType Parser::ResolveTypeDeclarators(
+    lldb::SBType type,
+    const std::vector<TypeDeclaration::PtrOperator>& ptr_operators) {
   // Resolve pointers/references.
-  for (auto& [tk, loc] : type_decl.ptr_operators_) {
+  for (auto& [tk, loc] : ptr_operators) {
     if (tk == clang::tok::star) {
       // Pointers to reference types are forbidden.
       if (type.IsReferenceType()) {
