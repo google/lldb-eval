@@ -1350,9 +1350,7 @@ ExprResult Parser::ParsePostfixExpression() {
     ConsumeToken();
 
     // Parse the type definition and resolve the type.
-    clang::SourceLocation type_loc = token_.getLocation();
     auto [type, ptr_operators] = ParseTypeId();
-
     if (!type) {
       return std::make_unique<ErrorNode>();
     }
