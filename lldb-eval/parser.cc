@@ -606,20 +606,6 @@ static TypeDeclaration::TypeSpecifier ToTypeSpecifier(
   }
 }
 
-lldb::SBType TypeDeclaration::ResolveBaseType(
-    std::shared_ptr<Context> ctx) const {
-  if (!IsValid()) {
-    return lldb::SBType();
-  }
-
-  if (IsBasicType()) {
-    return ctx->GetBasicType(GetBasicType());
-  }
-
-  // If it's not a basic type, it has to be user-defined type.
-  return ctx->ResolveTypeByName(user_typename_);
-}
-
 lldb::BasicType TypeDeclaration::GetBasicType() const {
   if (!IsBasicType()) {
     return lldb::eBasicTypeInvalid;
@@ -627,6 +613,7 @@ lldb::BasicType TypeDeclaration::GetBasicType() const {
 
   if (sign_specifier_ == SignSpecifier::kSigned &&
       type_specifier_ == TypeSpecifier::kChar) {
+    // "signed char" isn't the same as "char".
     return lldb::eBasicTypeSignedChar;
   }
 
@@ -1173,20 +1160,21 @@ ExprResult Parser::ParseCastExpression() {
     // Consume the token only after enabling the backtracking.
     ConsumeToken();
 
+    // Check whether type declaration starts with a type specifier keyword
+    // ("int", "unsigned", etc). This is used to commit to tentative parsing
+    // action even if the parsed type couldn't be resolved.
+    bool starts_with_type_specifier = IsSimpleTypeSpecifierKeyword(token_);
+
     // Try parsing the type declaration. If the returned value is not valid,
     // then we should rollback and try parsing the expression.
-    TypeDeclaration type_decl = ParseTypeId();
-
-    // Try resolving base type of the type declaration.
-    lldb::SBType type = type_decl.ResolveBaseType(ctx_);
-
+    auto [type, ptr_operators] = ParseTypeId();
     if (type) {
       // Successfully parsed the type declaration. Commit the backtracked
       // tokens and parse the cast_expression.
       tentative_parsing.Commit();
 
       // Apply type declarators (i.e. pointer/reference qualifiers).
-      type = ResolveTypeDeclarators(type, type_decl.ptr_operators_);
+      type = ResolveTypeDeclarators(type, ptr_operators);
       if (!type) {
         return std::make_unique<ErrorNode>();
       }
@@ -1196,6 +1184,14 @@ ExprResult Parser::ParseCastExpression() {
       auto rhs = ParseCastExpression();
 
       return BuildCStyleCast(type, std::move(rhs), token.getLocation());
+
+    } else if (starts_with_type_specifier) {
+      // Expression inside parens started with a type specifier keyword, but
+      // failed to be parsed as a type. The error should already be set at this
+      // point and there's no need to fallback to unary_expression.
+      tentative_parsing.Commit();
+      assert(error_ && "error expected to be set");
+      return std::make_unique<ErrorNode>();
 
     } else {
       // Failed to parse the contents of the parentheses as a type declaration.
@@ -1278,9 +1274,13 @@ ExprResult Parser::ParseUnaryExpression() {
       Expect(clang::tok::l_paren);
       ConsumeToken();
 
+      // Check whether type declaration starts with a type specifier keyword
+      // ("int", "unsigned", etc). This is used to commit to tentative parsing
+      // action even if the parsed type couldn't be resolved.
+      bool starts_with_type_specifier = IsSimpleTypeSpecifierKeyword(token_);
+
       // Parse the type definition and resolve the type.
-      TypeDeclaration type_decl = ParseTypeId();
-      lldb::SBType type = type_decl.ResolveBaseType(ctx_);
+      auto [type, ptr_operators] = ParseTypeId();
       if (type) {
         tentative_parsing.Commit();
 
@@ -1289,7 +1289,15 @@ ExprResult Parser::ParseUnaryExpression() {
         ConsumeToken();
         // Resolve type declarators. This can fail, in this case the operand
         // will be empty and the corresponding diagnostics will be reported.
-        operand = ResolveTypeDeclarators(type, type_decl.ptr_operators_);
+        operand = ResolveTypeDeclarators(type, ptr_operators);
+
+      } else if (starts_with_type_specifier) {
+        // Expression inside parens started with a type specifier keyword, but
+        // failed to be parsed as a type. The error should already be set at
+        // this point and there's no need to fallback to unary_expression.
+        tentative_parsing.Commit();
+        assert(error_ && "error expected to be set");
+        return std::make_unique<ErrorNode>();
 
       } else {
         tentative_parsing.Rollback();
@@ -1343,19 +1351,12 @@ ExprResult Parser::ParsePostfixExpression() {
 
     // Parse the type definition and resolve the type.
     clang::SourceLocation type_loc = token_.getLocation();
-    TypeDeclaration type_decl = ParseTypeId();
+    auto [type, ptr_operators] = ParseTypeId();
 
-    lldb::SBType type = type_decl.ResolveBaseType(ctx_);
     if (!type) {
-      assert(!type_decl.user_typename_.empty() &&
-             "expected user-defined typename!");
-      BailOut(
-          ErrorCode::kUndeclaredIdentifier,
-          llvm::formatv("unknown type name '{0}'", type_decl.user_typename_),
-          type_loc);
       return std::make_unique<ErrorNode>();
     }
-    type = ResolveTypeDeclarators(type, type_decl.ptr_operators_);
+    type = ResolveTypeDeclarators(type, ptr_operators);
     if (!type) {
       return std::make_unique<ErrorNode>();
     }
@@ -1509,21 +1510,44 @@ ExprResult Parser::ParsePrimaryExpression() {
 //  type_id:
 //    type_specifier_seq [abstract_declarator]
 //
-TypeDeclaration Parser::ParseTypeId() {
+std::tuple<lldb::SBType, std::vector<Parser::PtrOperator>>
+Parser::ParseTypeId() {
+  clang::SourceLocation type_loc = token_.getLocation();
   TypeDeclaration type_decl;
 
   // type_specifier_seq is required here, start with trying to parse it.
   ParseTypeSpecifierSeq(&type_decl);
 
+  if (!type_decl.IsValid()) {
+    return {lldb::SBType(), {}};
+  }
+
+  // Try to resolve base type.
+  lldb::SBType type;
+  if (type_decl.IsBasicType()) {
+    type = ctx_->GetBasicType(type_decl.GetBasicType());
+    assert(type.IsValid() && "cannot resolve basic type");
+  } else {
+    type = ctx_->ResolveTypeByName(type_decl.user_typename_);
+    if (!type) {
+      BailOut(
+          ErrorCode::kUndeclaredIdentifier,
+          llvm::formatv("unknown type name '{0}'", type_decl.user_typename_),
+          type_loc);
+      return {lldb::SBType(), {}};
+    }
+  }
+
   //
   //  abstract_declarator:
   //    ptr_operator [abstract_declarator]
   //
+  std::vector<Parser::PtrOperator> ptr_operators;
   while (IsPtrOperator(token_)) {
-    ParsePtrOperator(&type_decl);
+    ptr_operators.push_back(ParsePtrOperator());
   }
 
-  return type_decl;
+  return {type, ptr_operators};
 }
 
 // Parse a type_specifier_seq.
@@ -1533,8 +1557,6 @@ TypeDeclaration Parser::ParseTypeId() {
 //
 void Parser::ParseTypeSpecifierSeq(TypeDeclaration* type_decl) {
   while (true) {
-    // TODO(b/161677840): Check if produced type specifiers can be combined
-    // together. For example, "long long" is legal, but "char char" is not.
     bool type_specifier = ParseTypeSpecifier(type_decl);
     if (!type_specifier) {
       break;
@@ -1575,6 +1597,7 @@ bool Parser::ParseTypeSpecifier(TypeDeclaration* type_decl) {
 
   if (IsSimpleTypeSpecifierKeyword(token_)) {
     if (!HandleSimpleTypeSpecifier(type_decl)) {
+      type_decl->failed_during_parsing_ = true;
       return false;
     }
     ConsumeToken();
@@ -1803,22 +1826,35 @@ std::string Parser::ParseTemplateArgument() {
     // Therefore, first try parsing type_id.
     TentativeParsingAction tentative_parsing(this);
 
-    TypeDeclaration type_decl = ParseTypeId();
+    // Check whether type declaration starts with a type specifier keyword
+    // ("int", "unsigned", etc). This is used to commit to tentative parsing
+    // action even if the parsed type couldn't be resolved.
+    bool starts_with_type_specifier = IsSimpleTypeSpecifierKeyword(token_);
 
-    Type type = type_decl.ResolveBaseType(ctx_);
+    auto [type, ptr_operators] = ParseTypeId();
     if (type) {
       // Successfully parsed a type_id, check if the next token can finish the
       // template_argument. If so, commit the parsed tokens and return parsed
       // template_argument.
       if (TokenEndsTemplateArgumentList(token_)) {
         tentative_parsing.Commit();
-        type = ResolveTypeDeclarators(type, type_decl.ptr_operators_);
+        type = ResolveTypeDeclarators(type, ptr_operators);
         if (!type) {
           return "";
         }
         return type.GetName();
       }
     }
+
+    if (starts_with_type_specifier) {
+      // Expression inside parens started with a type specifier keyword, but
+      // failed to be parsed as a type. The error should already be set at this
+      // point and there's no need to fallback to unary_expression.
+      tentative_parsing.Commit();
+      assert(error_ && "error expected to be set");
+      return "";
+    }
+
     // Failed to parse a type_id. Rollback the parser and try something else.
     tentative_parsing.Rollback();
   }
@@ -1877,12 +1913,12 @@ std::string Parser::ParseTemplateArgument() {
 //    "*" [cv_qualifier_seq]
 //    "&"
 //
-void Parser::ParsePtrOperator(TypeDeclaration* type_decl) {
+Parser::PtrOperator Parser::ParsePtrOperator() {
   ExpectOneOf(clang::tok::star, clang::tok::amp);
 
+  PtrOperator ptr_operator;
   if (token_.is(clang::tok::star)) {
-    type_decl->ptr_operators_.emplace_back(clang::tok::star,
-                                           token_.getLocation());
+    ptr_operator = std::make_tuple(clang::tok::star, token_.getLocation());
     ConsumeToken();
 
     //
@@ -1899,15 +1935,15 @@ void Parser::ParsePtrOperator(TypeDeclaration* type_decl) {
     }
 
   } else if (token_.is(clang::tok::amp)) {
-    type_decl->ptr_operators_.emplace_back(clang::tok::amp,
-                                           token_.getLocation());
+    ptr_operator = std::make_tuple(clang::tok::amp, token_.getLocation());
     ConsumeToken();
   }
+
+  return ptr_operator;
 }
 
 lldb::SBType Parser::ResolveTypeDeclarators(
-    lldb::SBType type,
-    const std::vector<TypeDeclaration::PtrOperator>& ptr_operators) {
+    lldb::SBType type, const std::vector<Parser::PtrOperator>& ptr_operators) {
   // Resolve pointers/references.
   for (auto& [tk, loc] : ptr_operators) {
     if (tk == clang::tok::star) {

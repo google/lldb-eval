@@ -1839,6 +1839,14 @@ TEST_F(EvalTest, TestBasicTypeDeclaration) {
               IsError("'bool' cannot be signed or unsigned"));
   EXPECT_THAT(Eval("(bool signed)0"),
               IsError("'bool' cannot be signed or unsigned"));
+
+  // Error reporting works with other kinds of expression.
+  EXPECT_THAT(
+      Eval("static_cast<int int>(0)"),
+      IsError("cannot combine with previous 'int' declaration specifier"));
+  EXPECT_THAT(
+      Eval("sizeof(int int)"),
+      IsError("cannot combine with previous 'int' declaration specifier"));
 }
 
 TEST_F(EvalTest, TestTemplateTypes) {
