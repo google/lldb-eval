@@ -54,12 +54,18 @@ class AstPrinter : Visitor {
   }
 
   void Visit(const LiteralNode* node) override {
-    std::visit(
-        [node](auto&& value) {
-          std::cout << "LiteralNode " << print_common_props(node)
-                    << " value=" << value << std::endl;
-        },
-        node->value());
+    std::cout << "LiteralNode " << print_common_props(node) << " value=";
+    struct {
+      void operator()(llvm::APSInt val) { std::cout << val.toString(10u); }
+      void operator()(llvm::APFloat val) {
+        llvm::SmallVector<char, 32> buffer;
+        val.toString(buffer);
+        std::cout << std::string(buffer.data(), buffer.size());
+      }
+      void operator()(bool val) { std::cout << val; }
+    } visitor;
+    std::visit(visitor, node->value());
+    std::cout << std::endl;
   }
 
   void Visit(const IdentifierNode* node) override {

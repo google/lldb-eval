@@ -40,8 +40,6 @@
 #include "lldb-eval/ast.h"
 #include "lldb-eval/defines.h"
 #include "lldb/lldb-enumerations.h"
-#include "llvm/ADT/APFloat.h"
-#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatAdapters.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -2241,8 +2239,7 @@ ExprResult Parser::ParsePointerLiteral() {
   clang::SourceLocation loc = token_.getLocation();
   ConsumeToken();
   return std::make_unique<LiteralNode>(
-      loc, ctx_->GetBasicType(lldb::eBasicTypeNullPtr),
-      static_cast<uintptr_t>(0),
+      loc, ctx_->GetBasicType(lldb::eBasicTypeNullPtr), llvm::APSInt::get(0u),
       /*is_literal_zero*/ false);
 }
 
@@ -2299,14 +2296,17 @@ ExprResult Parser::ParseFloatingLiteral(clang::NumericLiteralParser& literal,
   }
 
   if (literal.isFloat) {
+    bool losesInfo;
+    raw_value.convert(llvm::APFloat::IEEEsingle(),
+                      llvm::APFloat::rmNearestTiesToEven, &losesInfo);
     return std::make_unique<LiteralNode>(
         token.getLocation(), ctx_->GetBasicType(lldb::eBasicTypeFloat),
-        raw_value.convertToFloat(),
+        raw_value,
         /*is_literal_zero*/ false);
   }
   return std::make_unique<LiteralNode>(
       token.getLocation(), ctx_->GetBasicType(lldb::eBasicTypeDouble),
-      raw_value.convertToDouble(),
+      raw_value,
       /*is_literal_zero*/ false);
 }
 
@@ -2326,13 +2326,9 @@ ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
 
   auto [type, is_unsigned] = PickIntegerType(*ctx_, literal, raw_value);
 
-  if (is_unsigned) {
-    return std::make_unique<LiteralNode>(
-        token.getLocation(), ctx_->GetBasicType(type), raw_value.getZExtValue(),
-        /*is_literal_zero*/ raw_value.isNullValue());
-  }
   return std::make_unique<LiteralNode>(
-      token.getLocation(), ctx_->GetBasicType(type), raw_value.getSExtValue(),
+      token.getLocation(), ctx_->GetBasicType(type),
+      llvm::APSInt(raw_value, is_unsigned),
       /*is_literal_zero*/ raw_value.isNullValue());
 }
 

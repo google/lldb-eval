@@ -26,6 +26,8 @@
 #include "clang/Basic/TokenKinds.h"
 #include "lldb-eval/parser_context.h"
 #include "lldb-eval/type.h"
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APSInt.h"
 
 namespace lldb_eval {
 
@@ -98,11 +100,7 @@ class LiteralNode : public AstNode {
 
  private:
   TypeSP type_;
-  std::conditional_t<
-      std::is_same_v<uintptr_t, uint64_t>,
-      std::variant<int64_t, uint64_t, float, double, bool>,
-      std::variant<int64_t, uint64_t, uintptr_t, float, double, bool>>
-      value_;
+  std::variant<llvm::APSInt, llvm::APFloat, bool> value_;
   bool is_literal_zero_;
 };
 

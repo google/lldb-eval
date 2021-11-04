@@ -254,22 +254,15 @@ void Interpreter::Visit(const ErrorNode*) {
 
 void Interpreter::Visit(const LiteralNode* node) {
   struct {
-    Value operator()(int64_t val) {
-      return CreateValueFromAPInt(
-          target, llvm::APInt(sizeof(uintmax_t) * CHAR_BIT, val, true), type);
-    }
-    Value operator()(uint64_t val) {
+    Value operator()(llvm::APInt val) {
       if (type.IsPointerType()) {
-        return CreateValueFromPointer(target, val, type);
+        return CreateValueFromPointer(target, val.getLoBits(64u).getZExtValue(),
+                                      type);
       }
-      return CreateValueFromAPInt(
-          target, llvm::APInt(sizeof(uintmax_t) * CHAR_BIT, val, false), type);
+      return CreateValueFromAPInt(target, val, type);
     }
-    Value operator()(float val) {
-      return CreateValueFromAPFloat(target, llvm::APFloat(val), type);
-    }
-    Value operator()(double val) {
-      return CreateValueFromAPFloat(target, llvm::APFloat(val), type);
+    Value operator()(llvm::APFloat val) {
+      return CreateValueFromAPFloat(target, val, type);
     }
     Value operator()(bool val) { return CreateValueFromBool(target, val); }
 
