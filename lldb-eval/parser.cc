@@ -863,7 +863,7 @@ void Parser::BailOut(ErrorCode code, const std::string& error,
     return;
   }
 
-  error_.Set(code, ctx_->FormatDiagnostics(error, loc));
+  error_.Set(code, FormatDiagnostics(ctx_->GetSourceManager(), error, loc));
   token_.setKind(clang::tok::eof);
 }
 

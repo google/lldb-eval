@@ -69,8 +69,6 @@ class ParserContext {
   virtual lldb::BasicType GetSizeType() = 0;
   virtual ~ParserContext() = default;
 
-  std::string FormatDiagnostics(const std::string& message,
-                                clang::SourceLocation loc);
   void SetAllowSideEffects(bool allow_side_effects);
   bool AllowSideEffects() const;
 
@@ -78,6 +76,10 @@ class ParserContext {
   // Whether side effects should be allowed.
   bool allow_side_effects_ = false;
 };
+
+std::string FormatDiagnostics(clang::SourceManager& sm,
+                              const std::string& message,
+                              clang::SourceLocation loc);
 
 }  // namespace lldb_eval
 #endif  // LLDB_EVAL_PARSER_CONTEXT_H_

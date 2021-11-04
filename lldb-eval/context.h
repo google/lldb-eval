@@ -27,8 +27,8 @@
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
-#include "parser-context.h"
 #include "parser.h"
+#include "parser_context.h"
 #include "value.h"
 
 namespace lldb_eval {
@@ -103,10 +103,6 @@ class Context : public ParserContext {
   // Cache of the `ptrdiff_t` type.
   lldb::SBType ptrdiff_type_;
 };
-
-std::string FormatDiagnostics(const clang::SourceManager& sm,
-                              const std::string& message,
-                              clang::SourceLocation loc);
 
 }  // namespace lldb_eval
 

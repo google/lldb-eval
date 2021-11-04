@@ -24,7 +24,7 @@
 
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/TokenKinds.h"
-#include "lldb-eval/parser-context.h"
+#include "lldb-eval/parser_context.h"
 #include "lldb-eval/type.h"
 
 namespace lldb_eval {

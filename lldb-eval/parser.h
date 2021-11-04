@@ -32,7 +32,7 @@
 #include "clang/Lex/ModuleLoader.h"
 #include "clang/Lex/Preprocessor.h"
 #include "lldb-eval/ast.h"
-#include "lldb-eval/parser-context.h"
+#include "lldb-eval/parser_context.h"
 
 namespace lldb_eval {
 
