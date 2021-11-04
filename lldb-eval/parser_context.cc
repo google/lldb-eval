@@ -7,8 +7,8 @@
 namespace lldb_eval {
 
 std::string FormatDiagnostics(clang::SourceManager& sm,
-                                             const std::string& message,
-                                             clang::SourceLocation loc) {
+                              const std::string& message,
+                              clang::SourceLocation loc) {
   // Get the source buffer and the location of the current token.
   llvm::StringRef text = sm.getBufferData(sm.getFileID(loc));
   size_t loc_offset = sm.getCharacterData(loc) - text.data();
