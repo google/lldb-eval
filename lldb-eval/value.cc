@@ -75,7 +75,7 @@ static uint64_t GetValueAsUnsigned(lldb::SBValue& value) {
   return ret;
 }
 
-bool LLDBType::IsScopedEnum() { return IsScopedEnum_V<lldb::SBType>(*this); }
+bool LLDBType::IsScopedEnum() { return IsScopedEnum_V(GetSBType()); }
 
 TypeSP LLDBType::GetEnumerationIntegerType(ParserContext& ctx) {
   return GetEnumerationIntegerType_V(*this, static_cast<Context&>(ctx));
@@ -86,8 +86,8 @@ bool LLDBType::IsEnumerationIntegerTypeSigned() {
 }
 
 bool LLDBType::CompareTo(TypeSP other) {
-  LLDBType& rhs = static_cast<LLDBType&>(*other);
-  if (*this == rhs) {
+  auto rhs = ToSBType(other);
+  if (GetSBType() == rhs) {
     return true;
   }
 
@@ -100,11 +100,9 @@ bool LLDBType::CompareTo(TypeSP other) {
   // Note that `GetCanonicalType()` and `GetUnqualifiedType()` fully
   // canonizes and removes qualifiers from the type, e.g. "int **" and
   // "int const * const * const" will be matched as the same type.
-  const char* name = SBType::GetCanonicalType().GetUnqualifiedType().GetName();
-  const char* rhs_name = static_cast<lldb::SBType&>(rhs)
-                             .GetCanonicalType()
-                             .GetUnqualifiedType()
-                             .GetName();
+  const char* name =
+      GetSBType().GetCanonicalType().GetUnqualifiedType().GetName();
+  const char* rhs_name = rhs.GetCanonicalType().GetUnqualifiedType().GetName();
   return name == rhs_name;
 }
 
@@ -190,7 +188,8 @@ Value Value::Clone() {
   lldb::SBError ignore;
   auto raw_data = std::make_unique<uint8_t[]>(data.GetByteSize());
   data.ReadRawData(ignore, 0, raw_data.get(), data.GetByteSize());
-  return CreateValueFromBytes(value_.GetTarget(), raw_data.get(), *type_);
+  return CreateValueFromBytes(value_.GetTarget(), raw_data.get(),
+                              ToSBType(type_));
 }
 
 void Value::Update(const llvm::APInt& v) {

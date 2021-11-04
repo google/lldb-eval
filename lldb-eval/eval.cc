@@ -283,13 +283,12 @@ void Interpreter::Visit(const IdentifierNode* node) {
     // a bug, but for now we need to mitigate it. Check if the resulting type is
     // incorrect and fix it up.
     // Not necessary if https://reviews.llvm.org/D103532 is available.
-    auto deref_type =
-        std::static_pointer_cast<LLDBType>(val.type()->GetDereferencedType());
+    auto deref_type = ToSBType(val.type()->GetDereferencedType());
     val = val.Dereference();
 
-    LLDBType val_type = *val.type();
-    if (val_type != *deref_type) {
-      val = Value(val.inner_value().Cast(*deref_type));
+    lldb::SBType val_type = ToSBType(val.type());
+    if (val_type != deref_type) {
+      val = Value(val.inner_value().Cast(deref_type));
     }
   }
 
@@ -900,7 +899,7 @@ Value Interpreter::EvaluateComparison(BinaryOpKind kind, Value lhs, Value rhs) {
 Value Interpreter::EvaluateDereference(Value rhs) {
   assert(rhs.type()->IsPointerType() && "invalid ast: must be a pointer type");
 
-  lldb::SBType pointer_type = *rhs.type();
+  lldb::SBType pointer_type = ToSBType(rhs.type());
   lldb::addr_t base_addr = rhs.GetUInt64();
 
   Value value = CreateValueFromPointer(target_, base_addr, pointer_type);
@@ -922,12 +921,12 @@ Value Interpreter::EvaluateUnaryMinus(Value rhs) {
   if (rhs.IsInteger()) {
     llvm::APSInt v = rhs.GetInteger();
     v.negate();
-    return CreateValueFromAPInt(target_, v, *rhs.type());
+    return CreateValueFromAPInt(target_, v, ToSBType(rhs.type()));
   }
   if (rhs.IsFloat()) {
     llvm::APFloat v = rhs.GetFloat();
     v.changeSign();
-    return CreateValueFromAPFloat(target_, v, *rhs.type());
+    return CreateValueFromAPFloat(target_, v, ToSBType(rhs.type()));
   }
 
   return Value();
@@ -943,7 +942,7 @@ Value Interpreter::EvaluateUnaryBitwiseNot(Value rhs) {
   assert(rhs.IsInteger() && "invalid ast: must be an integer");
   llvm::APSInt v = rhs.GetInteger();
   v.flipAllBits();
-  return CreateValueFromAPInt(target_, v, *rhs.type());
+  return CreateValueFromAPInt(target_, v, ToSBType(rhs.type()));
 }
 
 Value Interpreter::EvaluateUnaryPrefixIncrement(Value rhs) {
@@ -1124,7 +1123,7 @@ Value Interpreter::EvaluateBinaryRemainder(Value lhs, Value rhs) {
   }
 
   return EvaluateArithmeticOpInteger(target_, BinaryOpKind::Rem, lhs, rhs,
-                                     *lhs.type());
+                                     ToSBType(lhs.type()));
 }
 
 Value Interpreter::EvaluateBinaryBitwise(BinaryOpKind kind, Value lhs,
@@ -1153,7 +1152,8 @@ Value Interpreter::EvaluateBinaryShift(BinaryOpKind kind, Value lhs,
     error_.SetUbStatus(UbStatus::kInvalidShift);
   }
 
-  return EvaluateArithmeticOpInteger(target_, kind, lhs, rhs, *lhs.type());
+  return EvaluateArithmeticOpInteger(target_, kind, lhs, rhs,
+                                     ToSBType(lhs.type()));
 }
 
 Value Interpreter::EvaluateAssignment(Value lhs, Value rhs) {
@@ -1296,7 +1296,7 @@ Value Interpreter::PointerAdd(Value lhs, int64_t offset) {
   uintptr_t addr =
       lhs.GetUInt64() + offset * lhs.type()->GetPointeeType()->GetByteSize();
 
-  return CreateValueFromPointer(target_, addr, *lhs.type());
+  return CreateValueFromPointer(target_, addr, ToSBType(lhs.type()));
 }
 
 }  // namespace lldb_eval

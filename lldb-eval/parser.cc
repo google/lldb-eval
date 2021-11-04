@@ -3386,7 +3386,7 @@ TypeSP Parser::PrepareBinaryRemainder(ExprResult& lhs, ExprResult& rhs,
 
 TypeSP Parser::PrepareBinaryBitwise(ExprResult& lhs, ExprResult& rhs,
                                     bool is_comp_assign) {
-  // Operations {'&', '|', '^', '>>', '<<'} work for:
+  // Operations {'&', '|', '^'} work for:
   //
   //  {integer,unscoped_enum} <-> {integer,unscoped_enum}
   //

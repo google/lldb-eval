@@ -31,72 +31,63 @@ namespace lldb_eval {
 class Error;
 
 /// Wrapper for lldb::SBType adding some convenience methods.
-class LLDBType : public lldb::SBType, public Type {
+class LLDBType : public Type {
  public:
   LLDBType() = default;
-  LLDBType(const lldb::SBType& t) : lldb::SBType(t) {}
+  LLDBType(const lldb::SBType& t) : type_(t) {}
 
-  uint64_t GetByteSize() override { return lldb::SBType::GetByteSize(); }
-  uint32_t GetTypeFlags() override { return lldb::SBType::GetTypeFlags(); }
-  bool IsArrayType() override { return lldb::SBType::IsArrayType(); }
-  bool IsPointerType() override { return lldb::SBType::IsPointerType(); }
-  bool IsReferenceType() override { return lldb::SBType::IsReferenceType(); }
-  bool IsPolymorphicClass() override {
-    return lldb::SBType::IsPolymorphicClass();
-  }
+  uint64_t GetByteSize() override { return type_.GetByteSize(); }
+  uint32_t GetTypeFlags() override { return type_.GetTypeFlags(); }
+  bool IsArrayType() override { return type_.IsArrayType(); }
+  bool IsPointerType() override { return type_.IsPointerType(); }
+  bool IsReferenceType() override { return type_.IsReferenceType(); }
+  bool IsPolymorphicClass() override { return type_.IsPolymorphicClass(); }
   bool IsScopedEnum() override;
-  bool IsAnonymousType() override { return lldb::SBType::IsAnonymousType(); }
-  bool IsValid() const override { return lldb::SBType::IsValid(); }
+  bool IsAnonymousType() override { return type_.IsAnonymousType(); }
+  bool IsValid() const override { return type_.IsValid(); }
   bool CompareTo(TypeSP other) override;
-  llvm::StringRef GetName() override { return lldb::SBType::GetName(); }
+  llvm::StringRef GetName() override { return type_.GetName(); }
   TypeSP GetArrayElementType() override {
-    return CreateSP(lldb::SBType::GetArrayElementType());
+    return CreateSP(type_.GetArrayElementType());
   }
   TypeSP GetPointerType() override {
-    return LLDBType::CreateSP(lldb::SBType::GetPointerType());
+    return LLDBType::CreateSP(type_.GetPointerType());
   }
   TypeSP GetPointeeType() override {
-    return LLDBType::CreateSP(lldb::SBType::GetPointeeType());
+    return LLDBType::CreateSP(type_.GetPointeeType());
   }
   TypeSP GetReferenceType() override {
-    return LLDBType::CreateSP(lldb::SBType::GetReferenceType());
+    return LLDBType::CreateSP(type_.GetReferenceType());
   }
   TypeSP GetDereferencedType() override {
-    return LLDBType::CreateSP(lldb::SBType::GetDereferencedType());
+    return LLDBType::CreateSP(type_.GetDereferencedType());
   }
   TypeSP GetCanonicalType() override {
-    return LLDBType::CreateSP(lldb::SBType::GetCanonicalType());
+    return LLDBType::CreateSP(type_.GetCanonicalType());
   }
   TypeSP GetUnqualifiedType() override {
-    return LLDBType::CreateSP(lldb::SBType::GetUnqualifiedType());
+    return LLDBType::CreateSP(type_.GetUnqualifiedType());
   }
-  lldb::BasicType GetBasicType() override {
-    return lldb::SBType::GetBasicType();
-  }
-  lldb::TypeClass GetTypeClass() override {
-    return lldb::SBType::GetTypeClass();
-  }
+  lldb::BasicType GetBasicType() override { return type_.GetBasicType(); }
+  lldb::TypeClass GetTypeClass() override { return type_.GetTypeClass(); }
   uint32_t GetNumberOfDirectBaseClasses() override {
-    return lldb::SBType::GetNumberOfDirectBaseClasses();
+    return type_.GetNumberOfDirectBaseClasses();
   }
   uint32_t GetNumberOfVirtualBaseClasses() override {
-    return lldb::SBType::GetNumberOfVirtualBaseClasses();
+    return type_.GetNumberOfVirtualBaseClasses();
   }
-  uint32_t GetNumberOfFields() override {
-    return lldb::SBType::GetNumberOfFields();
-  }
+  uint32_t GetNumberOfFields() override { return type_.GetNumberOfFields(); }
   BaseInfo GetDirectBaseClassAtIndex(uint32_t idx) override {
-    auto member = lldb::SBType::GetDirectBaseClassAtIndex(idx);
+    auto member = type_.GetDirectBaseClassAtIndex(idx);
     return {LLDBType::CreateSP(member.GetType()), member.GetOffsetInBytes()};
   }
   TypeSP GetVirtualBaseClassAtIndex(uint32_t idx) override {
-    return LLDBType::CreateSP(
-        lldb::SBType::GetVirtualBaseClassAtIndex(idx).GetType());
+    return LLDBType::CreateSP(type_.GetVirtualBaseClassAtIndex(idx).GetType());
   }
   TypeSP GetEnumerationIntegerType(ParserContext&) override;
   bool IsEnumerationIntegerTypeSigned() override;
   MemberInfo GetFieldAtIndex(uint32_t idx) override {
-    auto member = lldb::SBType::GetFieldAtIndex(idx);
+    auto member = type_.GetFieldAtIndex(idx);
     auto name = member.GetName() ? std::string(member.GetName())
                                  : llvm::Optional<std::string>();
     return {name, LLDBType::CreateSP(member.GetType()), member.IsBitfield(),
@@ -107,12 +98,19 @@ class LLDBType : public lldb::SBType, public Type {
         IsSmartPtrType() &&
         "the type should be a smart pointer (std::unique_ptr, std::shared_ptr "
         "or std::weak_ptr");
-    return LLDBType::CreateSP(lldb::SBType::GetTemplateArgumentType(0));
+    return LLDBType::CreateSP(type_.GetTemplateArgumentType(0));
   }
 
   static std::shared_ptr<LLDBType> CreateSP(lldb::SBType type) {
     return std::make_shared<LLDBType>(type);
   }
+
+ private:
+  lldb::SBType GetSBType() { return type_; }
+
+  lldb::SBType type_;
+
+  friend lldb::SBType ToSBType(TypeSP type);
 };
 
 class Value {
@@ -193,7 +191,7 @@ Value CreateValueFromBool(lldb::SBTarget target, bool value);
 Value CreateValueNullptr(lldb::SBTarget target, lldb::SBType type);
 
 inline lldb::SBType ToSBType(TypeSP type) {
-  return static_cast<LLDBType&>(*type);
+  return static_cast<LLDBType&>(*type).GetSBType();
 }
 
 }  // namespace lldb_eval
