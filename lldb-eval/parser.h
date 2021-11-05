@@ -18,6 +18,7 @@
 #define LLDB_EVAL_PARSER_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -66,21 +67,9 @@ class TypeDeclaration {
     kUnsigned,
   };
 
-  // Type declaration is considered valid if it was successfully parsed and
-  // contains either a basic type declaration, or user-defined typename, but
-  // not both.
-  bool IsValid() const {
-    return !failed_during_parsing_ &&
-           (user_typename_.empty() ? IsBasicType() : !IsBasicType());
-  }
+  bool IsEmpty() const { return !is_builtin && !is_user_type; }
 
   lldb::BasicType GetBasicType() const;
-
-  bool IsBasicType() const {
-    return !failed_during_parsing_ &&
-           (type_specifier_ != TypeSpecifier::kUnknown ||
-            sign_specifier_ != SignSpecifier::kUnknown);
-  }
 
  public:
   // Indicates user-defined typename (e.g. "MyClass", "MyTmpl<int>").
@@ -99,7 +88,13 @@ class TypeDeclaration {
   bool has_int_specifier_ = false;
 
   // Indicates whether there was an error during parsing.
-  bool failed_during_parsing_ = false;
+  bool has_error = false;
+
+  // Indicates whether this declaration describes a builtin type.
+  bool is_builtin = false;
+
+  // Indicates whether this declaration describes a user type.
+  bool is_user_type = false;
 };
 
 class BuiltinFunctionDef {
@@ -144,7 +139,7 @@ class Parser {
   ExprResult ParsePostfixExpression();
   ExprResult ParsePrimaryExpression();
 
-  std::tuple<lldb::SBType, std::vector<PtrOperator>> ParseTypeId();
+  std::optional<lldb::SBType> ParseTypeId(bool must_be_type_id = false);
   void ParseTypeSpecifierSeq(TypeDeclaration* type_decl);
   bool ParseTypeSpecifier(TypeDeclaration* type_decl);
   std::string ParseNestedNameSpecifier();

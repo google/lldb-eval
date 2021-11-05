@@ -1459,6 +1459,12 @@ TEST_F(EvalTest, TestCxxStaticCast) {
   EXPECT_THAT(Eval("static_cast<int&>(5)"),
               IsError("static_cast from rvalue of type 'int' to reference type "
                       "'int &' is not implemented yet"));
+
+  // Invalid expressions.
+  EXPECT_THAT(Eval("static_cast<1>(1)"),
+              IsError("type name requires a specifier or qualifier"));
+  EXPECT_THAT(Eval("static_cast<parent>(1)"),
+              IsError("unknown type name 'parent'"));
 }
 
 TEST_F(EvalTest, TestCastDerivedToBase) {
@@ -1847,6 +1853,15 @@ TEST_F(EvalTest, TestBasicTypeDeclaration) {
   EXPECT_THAT(
       Eval("sizeof(int int)"),
       IsError("cannot combine with previous 'int' declaration specifier"));
+}
+
+TEST_F(EvalTest, TestUserTypeDeclaration) {
+  EXPECT_THAT(Eval("(mylong mylong)0"),
+              IsError("two or more data types in declaration of 'type name'"));
+  EXPECT_THAT(Eval("(unsigned mylong)0"),
+              IsError("cannot combine with previous declaration specifier"));
+  EXPECT_THAT(Eval("(mylong unsigned)0"),
+              IsError("cannot combine with previous declaration specifier"));
 }
 
 TEST_F(EvalTest, TestTemplateTypes) {

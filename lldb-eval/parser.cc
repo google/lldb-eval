@@ -607,9 +607,7 @@ static TypeDeclaration::TypeSpecifier ToTypeSpecifier(
 }
 
 lldb::BasicType TypeDeclaration::GetBasicType() const {
-  if (!IsBasicType()) {
-    return lldb::eBasicTypeInvalid;
-  }
+  assert(is_builtin && "type declaration doesn't describe a builtin type");
 
   if (sign_specifier_ == SignSpecifier::kSigned &&
       type_specifier_ == TypeSpecifier::kChar) {
@@ -657,7 +655,6 @@ lldb::BasicType TypeDeclaration::GetBasicType() const {
       // clang-format on
   }
 
-  assert(false && "unknown basic type");
   return lldb::eBasicTypeInvalid;
 }
 
@@ -1160,22 +1157,15 @@ ExprResult Parser::ParseCastExpression() {
     // Consume the token only after enabling the backtracking.
     ConsumeToken();
 
-    // Check whether type declaration starts with a type specifier keyword
-    // ("int", "unsigned", etc). This is used to commit to tentative parsing
-    // action even if the parsed type couldn't be resolved.
-    bool starts_with_type_specifier = IsSimpleTypeSpecifierKeyword(token_);
-
     // Try parsing the type declaration. If the returned value is not valid,
     // then we should rollback and try parsing the expression.
-    auto [type, ptr_operators] = ParseTypeId();
-    if (type) {
+    auto type_id = ParseTypeId();
+    if (type_id) {
       // Successfully parsed the type declaration. Commit the backtracked
       // tokens and parse the cast_expression.
       tentative_parsing.Commit();
 
-      // Apply type declarators (i.e. pointer/reference qualifiers).
-      type = ResolveTypeDeclarators(type, ptr_operators);
-      if (!type) {
+      if (!type_id.value()) {
         return std::make_unique<ErrorNode>();
       }
 
@@ -1183,21 +1173,13 @@ ExprResult Parser::ParseCastExpression() {
       ConsumeToken();
       auto rhs = ParseCastExpression();
 
-      return BuildCStyleCast(type, std::move(rhs), token.getLocation());
-
-    } else if (starts_with_type_specifier) {
-      // Expression inside parens started with a type specifier keyword, but
-      // failed to be parsed as a type. The error should already be set at this
-      // point and there's no need to fallback to unary_expression.
-      tentative_parsing.Commit();
-      assert(error_ && "error expected to be set");
-      return std::make_unique<ErrorNode>();
-
-    } else {
-      // Failed to parse the contents of the parentheses as a type declaration.
-      // Rollback the lexer and try parsing it as unary_expression.
-      tentative_parsing.Rollback();
+      return BuildCStyleCast(type_id.value(), std::move(rhs),
+                             token.getLocation());
     }
+
+    // Failed to parse the contents of the parentheses as a type declaration.
+    // Rollback the lexer and try parsing it as unary_expression.
+    tentative_parsing.Rollback();
   }
 
   return ParseUnaryExpression();
@@ -1274,30 +1256,16 @@ ExprResult Parser::ParseUnaryExpression() {
       Expect(clang::tok::l_paren);
       ConsumeToken();
 
-      // Check whether type declaration starts with a type specifier keyword
-      // ("int", "unsigned", etc). This is used to commit to tentative parsing
-      // action even if the parsed type couldn't be resolved.
-      bool starts_with_type_specifier = IsSimpleTypeSpecifierKeyword(token_);
-
       // Parse the type definition and resolve the type.
-      auto [type, ptr_operators] = ParseTypeId();
-      if (type) {
+      auto type_id = ParseTypeId();
+      if (type_id) {
         tentative_parsing.Commit();
 
         // type_id requires parentheses, so there must be a closing one.
         Expect(clang::tok::r_paren);
         ConsumeToken();
-        // Resolve type declarators. This can fail, in this case the operand
-        // will be empty and the corresponding diagnostics will be reported.
-        operand = ResolveTypeDeclarators(type, ptr_operators);
 
-      } else if (starts_with_type_specifier) {
-        // Expression inside parens started with a type specifier keyword, but
-        // failed to be parsed as a type. The error should already be set at
-        // this point and there's no need to fallback to unary_expression.
-        tentative_parsing.Commit();
-        assert(error_ && "error expected to be set");
-        return std::make_unique<ErrorNode>();
+        operand = type_id.value();
 
       } else {
         tentative_parsing.Rollback();
@@ -1349,13 +1317,16 @@ ExprResult Parser::ParsePostfixExpression() {
     Expect(clang::tok::less);
     ConsumeToken();
 
+    clang::SourceLocation loc = token_.getLocation();
+
     // Parse the type definition and resolve the type.
-    auto [type, ptr_operators] = ParseTypeId();
-    if (!type) {
+    auto type_id = ParseTypeId(/*must_be_type_id*/ true);
+    if (!type_id) {
+      BailOut(ErrorCode::kInvalidOperandType,
+              "type name requires a specifier or qualifier", loc);
       return std::make_unique<ErrorNode>();
     }
-    type = ResolveTypeDeclarators(type, ptr_operators);
-    if (!type) {
+    if (!type_id.value()) {
       return std::make_unique<ErrorNode>();
     }
 
@@ -1368,7 +1339,7 @@ ExprResult Parser::ParsePostfixExpression() {
     Expect(clang::tok::r_paren);
     ConsumeToken();
 
-    lhs = BuildCxxCast(cast_kind, type, std::move(rhs), cast_loc);
+    lhs = BuildCxxCast(cast_kind, type_id.value(), std::move(rhs), cast_loc);
 
   } else {
     // Otherwise it's a primary_expression.
@@ -1508,31 +1479,38 @@ ExprResult Parser::ParsePrimaryExpression() {
 //  type_id:
 //    type_specifier_seq [abstract_declarator]
 //
-std::tuple<lldb::SBType, std::vector<Parser::PtrOperator>>
-Parser::ParseTypeId() {
+std::optional<lldb::SBType> Parser::ParseTypeId(bool must_be_type_id) {
   clang::SourceLocation type_loc = token_.getLocation();
   TypeDeclaration type_decl;
 
   // type_specifier_seq is required here, start with trying to parse it.
   ParseTypeSpecifierSeq(&type_decl);
 
-  if (!type_decl.IsValid()) {
-    return {lldb::SBType(), {}};
+  if (type_decl.IsEmpty()) {
+    return {};
+  }
+  if (type_decl.has_error) {
+    return lldb::SBType();
   }
 
-  // Try to resolve base type.
+  // Try to resolve the base type.
   lldb::SBType type;
-  if (type_decl.IsBasicType()) {
+  if (type_decl.is_builtin) {
     type = ctx_->GetBasicType(type_decl.GetBasicType());
     assert(type.IsValid() && "cannot resolve basic type");
+
   } else {
+    assert(type_decl.is_user_type && "type_decl must be a user type");
     type = ctx_->ResolveTypeByName(type_decl.user_typename_);
     if (!type) {
-      BailOut(
-          ErrorCode::kUndeclaredIdentifier,
-          llvm::formatv("unknown type name '{0}'", type_decl.user_typename_),
-          type_loc);
-      return {lldb::SBType(), {}};
+      if (must_be_type_id) {
+        BailOut(
+            ErrorCode::kUndeclaredIdentifier,
+            llvm::formatv("unknown type name '{0}'", type_decl.user_typename_),
+            type_loc);
+        return lldb::SBType();
+      }
+      return {};
     }
   }
 
@@ -1544,8 +1522,9 @@ Parser::ParseTypeId() {
   while (IsPtrOperator(token_)) {
     ptr_operators.push_back(ParsePtrOperator());
   }
+  type = ResolveTypeDeclarators(type, ptr_operators);
 
-  return {type, ptr_operators};
+  return type;
 }
 
 // Parse a type_specifier_seq.
@@ -1594,8 +1573,21 @@ bool Parser::ParseTypeSpecifier(TypeDeclaration* type_decl) {
   }
 
   if (IsSimpleTypeSpecifierKeyword(token_)) {
+    // User-defined typenames can't be combined with builtin keywords.
+    if (type_decl->is_user_type) {
+      BailOut(ErrorCode::kInvalidOperandType,
+              "cannot combine with previous declaration specifier",
+              token_.getLocation());
+      type_decl->has_error = true;
+      return false;
+    }
+
+    // From now on this type declaration must describe a builtin type.
+    // TODO: Should this be allowed -- `unsigned myint`?
+    type_decl->is_builtin = true;
+
     if (!HandleSimpleTypeSpecifier(type_decl)) {
-      type_decl->failed_during_parsing_ = true;
+      type_decl->has_error = true;
       return false;
     }
     ConsumeToken();
@@ -1605,17 +1597,14 @@ bool Parser::ParseTypeSpecifier(TypeDeclaration* type_decl) {
   // The type_specifier must be a user-defined type. Try parsing a
   // simple_type_specifier.
   {
-    // There should be only one user-defined typename.
-    if (!type_decl->user_typename_.empty()) {
-      return false;
-    }
-
     // Try parsing optional global scope operator.
     bool global_scope = false;
     if (token_.is(clang::tok::coloncolon)) {
       global_scope = true;
       ConsumeToken();
     }
+
+    clang::SourceLocation loc = token_.getLocation();
 
     // Try parsing optional nested_name_specifier.
     auto nested_name_specifier = ParseNestedNameSpecifier();
@@ -1627,7 +1616,23 @@ bool Parser::ParseTypeSpecifier(TypeDeclaration* type_decl) {
     // Global and qualified (namespace/class) scopes can be empty, since they're
     // optional. In this case type_name is type we're looking for.
     if (!type_name.empty()) {
+      // User-defined typenames can't be combined with builtin keywords.
+      if (type_decl->is_builtin) {
+        BailOut(ErrorCode::kInvalidOperandType,
+                "cannot combine with previous declaration specifier", loc);
+        type_decl->has_error = true;
+        return false;
+      }
+      // There should be only one user-defined typename.
+      if (type_decl->is_user_type) {
+        BailOut(ErrorCode::kInvalidOperandType,
+                "two or more data types in declaration of 'type name'", loc);
+        type_decl->has_error = true;
+        return false;
+      }
+
       // Construct the fully qualified typename.
+      type_decl->is_user_type = true;
       type_decl->user_typename_ =
           llvm::formatv("{0}{1}{2}", global_scope ? "::" : "",
                         nested_name_specifier, type_name);
@@ -1824,37 +1829,17 @@ std::string Parser::ParseTemplateArgument() {
     // Therefore, first try parsing type_id.
     TentativeParsingAction tentative_parsing(this);
 
-    // Check whether type declaration starts with a type specifier keyword
-    // ("int", "unsigned", etc). This is used to commit to tentative parsing
-    // action even if the parsed type couldn't be resolved.
-    bool starts_with_type_specifier = IsSimpleTypeSpecifierKeyword(token_);
-
-    auto [type, ptr_operators] = ParseTypeId();
-    if (type) {
-      // Successfully parsed a type_id, check if the next token can finish the
-      // template_argument. If so, commit the parsed tokens and return parsed
-      // template_argument.
-      if (TokenEndsTemplateArgumentList(token_)) {
-        tentative_parsing.Commit();
-        type = ResolveTypeDeclarators(type, ptr_operators);
-        if (!type) {
-          return "";
-        }
-        return type.GetName();
-      }
-    }
-
-    if (starts_with_type_specifier) {
-      // Expression inside parens started with a type specifier keyword, but
-      // failed to be parsed as a type. The error should already be set at this
-      // point and there's no need to fallback to unary_expression.
+    auto type_id = ParseTypeId();
+    if (type_id) {
       tentative_parsing.Commit();
-      assert(error_ && "error expected to be set");
-      return "";
-    }
 
-    // Failed to parse a type_id. Rollback the parser and try something else.
-    tentative_parsing.Rollback();
+      lldb::SBType& type = type_id.value();
+      return type ? type.GetName() : "";
+
+    } else {
+      // Failed to parse a type_id. Rollback the parser and try something else.
+      tentative_parsing.Rollback();
+    }
   }
 
   {
