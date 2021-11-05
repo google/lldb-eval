@@ -255,10 +255,6 @@ void Interpreter::Visit(const ErrorNode*) {
 void Interpreter::Visit(const LiteralNode* node) {
   struct {
     Value operator()(llvm::APInt val) {
-      if (type.IsPointerType()) {
-        return CreateValueFromPointer(target, val.getLoBits(64u).getZExtValue(),
-                                      type);
-      }
       return CreateValueFromAPInt(target, val, type);
     }
     Value operator()(llvm::APFloat val) {

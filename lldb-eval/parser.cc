@@ -2238,8 +2238,9 @@ ExprResult Parser::ParsePointerLiteral() {
   Expect(clang::tok::kw_nullptr);
   clang::SourceLocation loc = token_.getLocation();
   ConsumeToken();
+  llvm::APInt raw_value(type_width<uintmax_t>(), 0);
   return std::make_unique<LiteralNode>(
-      loc, ctx_->GetBasicType(lldb::eBasicTypeNullPtr), llvm::APSInt::get(0u),
+      loc, ctx_->GetBasicType(lldb::eBasicTypeNullPtr), raw_value,
       /*is_literal_zero*/ false);
 }
 
@@ -2295,18 +2296,10 @@ ExprResult Parser::ParseFloatingLiteral(clang::NumericLiteralParser& literal,
     return std::make_unique<ErrorNode>(ctx_->GetEmptyType());
   }
 
-  if (literal.isFloat) {
-    bool losesInfo;
-    raw_value.convert(llvm::APFloat::IEEEsingle(),
-                      llvm::APFloat::rmNearestTiesToEven, &losesInfo);
-    return std::make_unique<LiteralNode>(
-        token.getLocation(), ctx_->GetBasicType(lldb::eBasicTypeFloat),
-        raw_value,
-        /*is_literal_zero*/ false);
-  }
+  auto basic_type =
+      literal.isFloat ? lldb::eBasicTypeFloat : lldb::eBasicTypeDouble;
   return std::make_unique<LiteralNode>(
-      token.getLocation(), ctx_->GetBasicType(lldb::eBasicTypeDouble),
-      raw_value,
+      token.getLocation(), ctx_->GetBasicType(basic_type), raw_value,
       /*is_literal_zero*/ false);
 }
 
@@ -2327,8 +2320,7 @@ ExprResult Parser::ParseIntegerLiteral(clang::NumericLiteralParser& literal,
   auto [type, is_unsigned] = PickIntegerType(*ctx_, literal, raw_value);
 
   return std::make_unique<LiteralNode>(
-      token.getLocation(), ctx_->GetBasicType(type),
-      llvm::APSInt(raw_value, is_unsigned),
+      token.getLocation(), ctx_->GetBasicType(type), raw_value,
       /*is_literal_zero*/ raw_value.isNullValue());
 }
 

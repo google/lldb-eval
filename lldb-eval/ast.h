@@ -27,7 +27,7 @@
 #include "lldb-eval/parser_context.h"
 #include "lldb-eval/type.h"
 #include "llvm/ADT/APFloat.h"
-#include "llvm/ADT/APSInt.h"
+#include "llvm/ADT/APInt.h"
 
 namespace lldb_eval {
 
