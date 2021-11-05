@@ -100,7 +100,7 @@ class LiteralNode : public AstNode {
 
  private:
   TypeSP type_;
-  std::variant<llvm::APSInt, llvm::APFloat, bool> value_;
+  std::variant<llvm::APInt, llvm::APFloat, bool> value_;
   bool is_literal_zero_;
 };
 

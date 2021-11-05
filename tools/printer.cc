@@ -56,14 +56,19 @@ class AstPrinter : Visitor {
   void Visit(const LiteralNode* node) override {
     std::cout << "LiteralNode " << print_common_props(node) << " value=";
     struct {
-      void operator()(llvm::APSInt val) { std::cout << val.toString(10u); }
+      void operator()(llvm::APInt val) {
+        std::cout << val.toString(10u, is_signed_);
+      }
       void operator()(llvm::APFloat val) {
         llvm::SmallVector<char, 32> buffer;
         val.toString(buffer);
         std::cout << std::string(buffer.data(), buffer.size());
       }
       void operator()(bool val) { std::cout << val; }
-    } visitor;
+
+      bool is_signed_;
+    } visitor{node->result_type()->IsInteger() &&
+              node->result_type()->IsSigned()};
     std::visit(visitor, node->value());
     std::cout << std::endl;
   }
