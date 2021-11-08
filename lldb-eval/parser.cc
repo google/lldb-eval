@@ -1154,7 +1154,7 @@ ExprResult Parser::ParseCastExpression() {
       // tokens and parse the cast_expression.
       tentative_parsing.Commit();
 
-      if (!type_id.value()) {
+      if (!type_id.value()->IsValid()) {
         return std::make_unique<ErrorNode>(ctx_->GetEmptyType());
       }
 
