@@ -1315,7 +1315,7 @@ ExprResult Parser::ParsePostfixExpression() {
               "type name requires a specifier or qualifier", loc);
       return std::make_unique<ErrorNode>(ctx_->GetEmptyType());
     }
-    if (!type_id.value()) {
+    if (!type_id.value()->IsValid()) {
       return std::make_unique<ErrorNode>(ctx_->GetEmptyType());
     }
 
