@@ -67,7 +67,7 @@ class TypeDeclaration {
     kUnsigned,
   };
 
-  bool IsEmpty() const { return !is_builtin && !is_user_type; }
+  bool IsEmpty() const { return !is_builtin_ && !is_user_type_; }
 
   lldb::BasicType GetBasicType() const;
 
@@ -88,13 +88,13 @@ class TypeDeclaration {
   bool has_int_specifier_ = false;
 
   // Indicates whether there was an error during parsing.
-  bool has_error = false;
+  bool has_error_ = false;
 
   // Indicates whether this declaration describes a builtin type.
-  bool is_builtin = false;
+  bool is_builtin_ = false;
 
   // Indicates whether this declaration describes a user type.
-  bool is_user_type = false;
+  bool is_user_type_ = false;
 };
 
 class BuiltinFunctionDef {

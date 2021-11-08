@@ -607,7 +607,7 @@ static TypeDeclaration::TypeSpecifier ToTypeSpecifier(
 }
 
 lldb::BasicType TypeDeclaration::GetBasicType() const {
-  assert(is_builtin && "type declaration doesn't describe a builtin type");
+  assert(is_builtin_ && "type declaration doesn't describe a builtin type");
 
   if (sign_specifier_ == SignSpecifier::kSigned &&
       type_specifier_ == TypeSpecifier::kChar) {
@@ -1489,18 +1489,18 @@ std::optional<lldb::SBType> Parser::ParseTypeId(bool must_be_type_id) {
   if (type_decl.IsEmpty()) {
     return {};
   }
-  if (type_decl.has_error) {
+  if (type_decl.has_error_) {
     return lldb::SBType();
   }
 
   // Try to resolve the base type.
   lldb::SBType type;
-  if (type_decl.is_builtin) {
+  if (type_decl.is_builtin_) {
     type = ctx_->GetBasicType(type_decl.GetBasicType());
     assert(type.IsValid() && "cannot resolve basic type");
 
   } else {
-    assert(type_decl.is_user_type && "type_decl must be a user type");
+    assert(type_decl.is_user_type_ && "type_decl must be a user type");
     type = ctx_->ResolveTypeByName(type_decl.user_typename_);
     if (!type) {
       if (must_be_type_id) {
@@ -1574,20 +1574,20 @@ bool Parser::ParseTypeSpecifier(TypeDeclaration* type_decl) {
 
   if (IsSimpleTypeSpecifierKeyword(token_)) {
     // User-defined typenames can't be combined with builtin keywords.
-    if (type_decl->is_user_type) {
+    if (type_decl->is_user_type_) {
       BailOut(ErrorCode::kInvalidOperandType,
               "cannot combine with previous declaration specifier",
               token_.getLocation());
-      type_decl->has_error = true;
+      type_decl->has_error_ = true;
       return false;
     }
 
     // From now on this type declaration must describe a builtin type.
     // TODO: Should this be allowed -- `unsigned myint`?
-    type_decl->is_builtin = true;
+    type_decl->is_builtin_ = true;
 
     if (!HandleSimpleTypeSpecifier(type_decl)) {
-      type_decl->has_error = true;
+      type_decl->has_error_ = true;
       return false;
     }
     ConsumeToken();
@@ -1617,22 +1617,22 @@ bool Parser::ParseTypeSpecifier(TypeDeclaration* type_decl) {
     // optional. In this case type_name is type we're looking for.
     if (!type_name.empty()) {
       // User-defined typenames can't be combined with builtin keywords.
-      if (type_decl->is_builtin) {
+      if (type_decl->is_builtin_) {
         BailOut(ErrorCode::kInvalidOperandType,
                 "cannot combine with previous declaration specifier", loc);
-        type_decl->has_error = true;
+        type_decl->has_error_ = true;
         return false;
       }
       // There should be only one user-defined typename.
-      if (type_decl->is_user_type) {
+      if (type_decl->is_user_type_) {
         BailOut(ErrorCode::kInvalidOperandType,
                 "two or more data types in declaration of 'type name'", loc);
-        type_decl->has_error = true;
+        type_decl->has_error_ = true;
         return false;
       }
 
       // Construct the fully qualified typename.
-      type_decl->is_user_type = true;
+      type_decl->is_user_type_ = true;
       type_decl->user_typename_ =
           llvm::formatv("{0}{1}{2}", global_scope ? "::" : "",
                         nested_name_specifier, type_name);
