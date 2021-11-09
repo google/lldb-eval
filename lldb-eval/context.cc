@@ -255,8 +255,9 @@ std::unique_ptr<ParserContext::IdentifierInfo> Context::LookupIdentifier(
       // Try looking for static member of the current scope value, e.g.
       // `ScopeType::NAME`. NAME can include nested struct (`Nested::SUBNAME`),
       // but it cannot be part of the global scope (start with "::").
+      const char* type_name = scope_.GetType().GetCanonicalType().GetName();
       std::string name_with_type_prefix =
-          llvm::formatv("{0}::{1}", scope_.GetTypeName(), name_ref).str();
+          llvm::formatv("{0}::{1}", type_name, name_ref).str();
       value = LookupStaticIdentifier(ctx_.GetTarget(), name_with_type_prefix);
     }
 

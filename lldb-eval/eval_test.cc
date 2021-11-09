@@ -1732,6 +1732,22 @@ TEST_F(EvalTest, TestStaticConstDeclaredOutsideTheClass) {
               IsError("use of undeclared identifier '::static_const'"));
   EXPECT_THAT(Scope("vars").Eval("::Nested::static_const"),
               IsError("use of undeclared identifier '::Nested::static_const'"));
+
+  // Evaluate in value context where value is of alised type.
+  EXPECT_THAT(Scope("my_outer_inner_vars").Eval("static_const"), IsEqual("3"));
+  EXPECT_THAT(Scope("my_outer_vars").Eval("static_const"), IsEqual("6"));
+  EXPECT_THAT(Scope("my_vars").Eval("static_const"), IsEqual("9"));
+
+  EXPECT_THAT(Scope("my_outer_inner_vars").Eval("Nested::static_const"),
+              IsEqual("10"));
+  EXPECT_THAT(Scope("my_outer_vars").Eval("Nested::static_const"),
+              IsEqual("20"));
+  EXPECT_THAT(Scope("my_vars").Eval("Nested::static_const"), IsEqual("30"));
+
+  EXPECT_THAT(Scope("my_outer_inner_vars").Eval("::static_const"),
+              IsError("use of undeclared identifier '::static_const'"));
+  EXPECT_THAT(Scope("vars").Eval("::Nested::static_const"),
+              IsError("use of undeclared identifier '::Nested::static_const'"));
 }
 
 TEST_F(EvalTest, TestBasicTypeDeclaration) {

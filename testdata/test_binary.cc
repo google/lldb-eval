@@ -620,6 +620,8 @@ class Vars {
 const unsigned int Vars::static_const = 3;
 const int Vars::Nested::static_const = 10;
 
+using MyVars = Vars;
+
 }  // namespace inner
 
 class Vars {
@@ -656,6 +658,13 @@ static void TestStaticConst() {
   Vars vars;
   outer::Vars outer_vars;
   outer::inner::Vars outer_inner_vars;
+
+  using MyVars = Vars;
+  using MyOuterVars = outer::Vars;
+
+  MyVars my_vars;
+  MyOuterVars my_outer_vars;
+  outer::inner::MyVars my_outer_inner_vars;
 
   // BREAK(TestStaticConstDeclaredInline)
   // BREAK(TestStaticConstDeclaredOutsideTheClass)
