@@ -546,8 +546,9 @@ static const char* GetTypeTag(TypeSP type) {
     case lldb::eTypeClassStruct:      return "struct";
     case lldb::eTypeClassUnion:       return "union";
       // clang-format on
+    default:
+      return "unknown";
   }
-  return "unknown";
 }
 
 static const char* ToString(TypeDeclaration::TypeSpecifier type_spec) {
