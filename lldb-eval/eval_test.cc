@@ -502,6 +502,9 @@ TEST_F(EvalTest, TestArithmetic) {
   // Some promotions and conversions.
   EXPECT_THAT(Eval("(uint8_t)250 + (uint8_t)250"), IsEqual("500"));
 
+  // Makes sure that the expression isn't parsed as two types `r<r>` and `r`.
+  EXPECT_THAT(Eval("(r < r > r)"), IsEqual("false"));
+
 #ifdef _WIN32
   // On Windows sizeof(int) == sizeof(long) == 4.
   EXPECT_THAT(Eval("(unsigned int)4294967295 + (long)2"), IsEqual("1"));
@@ -1465,6 +1468,10 @@ TEST_F(EvalTest, TestCxxStaticCast) {
               IsError("type name requires a specifier or qualifier"));
   EXPECT_THAT(Eval("static_cast<parent>(1)"),
               IsError("unknown type name 'parent'"));
+  EXPECT_THAT(Eval("static_cast<T_1<int> CxxParent>(1)"),
+              IsError("two or more data types in declaration of 'type name'"));
+  EXPECT_THAT(Eval("static_cast<ptr < ptr > ptr>"),
+              IsError("two or more data types in declaration of 'type name'"));
 }
 
 TEST_F(EvalTest, TestCastDerivedToBase) {
@@ -2447,6 +2454,9 @@ TEST_F(EvalTest, TestSizeOf) {
   EXPECT_THAT(Eval("sizeof foo "), IsEqual("8"));
   EXPECT_THAT(Eval("sizeof(SizeOfFoo)"), IsEqual("8"));
 
+  // Makes sure that the expression isn't parsed as two types `i<i>` and `i`.
+  EXPECT_THAT(Eval("sizeof(i < i > i)"), IsEqual("1"));
+
   EXPECT_THAT(
       Eval("sizeof(int & *)"),
       IsError(
@@ -3158,4 +3168,43 @@ TEST_F(EvalTest, TestTypeComparison) {
   EXPECT_THAT(Eval("&(true ? c : c)"), IsOk());
   EXPECT_THAT(Eval("&(true ? c : sc)"),
               IsError("cannot take the address of an rvalue of type 'int'"));
+}
+
+TEST_F(EvalTest, TestTypeVsIdentifier) {
+  EXPECT_THAT(Eval("(StructOrVar)+1"), IsEqual("3"));
+  EXPECT_THAT(Eval("(StructOrVar)1"),
+              IsError("expected 'eof', got: <'1' (numeric_constant)>"));
+  EXPECT_THAT(Eval("(ClassOrVar.x - 1)"), IsEqual("2"));
+  EXPECT_THAT(Eval("(ClassOrVar).x - 1"), IsEqual("2"));
+  EXPECT_THAT(
+      Eval("(ClassOrVar)+1"),
+      IsError(
+          "invalid operands to binary expression ('ClassOrVar' and 'int')"));
+  EXPECT_THAT(Eval("(UnionOrVar)[1]"), IsEqual("2"));
+  EXPECT_THAT(Eval("*(UnionOrVar)"), IsEqual("1"));
+  EXPECT_THAT(Eval("(*UnionOrVar)"), IsEqual("1"));
+
+  EXPECT_THAT(Eval("sizeof(StructOrVar)"), IsEqual("2"));
+
+  EXPECT_THAT(Eval("static_cast<OnlyVar>(0)"),
+              IsError("unknown type name 'OnlyVar'"));
+  EXPECT_THAT(Eval("static_cast<StructOrVar>(0)"),
+              IsError("must use 'struct' tag to refer to type 'StructOrVar' in "
+                      "this scope"));
+  EXPECT_THAT(
+      Eval("static_cast<ClassOrVar>(0)"),
+      IsError(
+          "must use 'class' tag to refer to type 'ClassOrVar' in this scope"));
+  EXPECT_THAT(
+      Eval("static_cast<UnionOrVar>(0)"),
+      IsError(
+          "must use 'union' tag to refer to type 'UnionOrVar' in this scope"));
+  EXPECT_THAT(
+      Eval("static_cast<EnumOrVar>(0)"),
+      IsError(
+          "must use 'enum' tag to refer to type 'EnumOrVar' in this scope"));
+  EXPECT_THAT(
+      Eval("static_cast<CxxEnumOrVar>(0)"),
+      IsError(
+          "must use 'enum' tag to refer to type 'CxxEnumOrVar' in this scope"));
 }

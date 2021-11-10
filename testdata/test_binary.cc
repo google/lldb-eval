@@ -1094,9 +1094,38 @@ static void TestTypeDeclaration() {
   char32_t char32 = 0;
 
   using mylong = long;
+  mylong my_long = 1;
 
   // BREAK(TestBasicTypeDeclaration)
   // BREAK(TestUserTypeDeclaration)
+}
+
+static void TestTypeVsIdentifier() {
+  struct StructOrVar {
+    int x = 1;
+  } s;
+  short StructOrVar = 2;
+
+  class ClassOrVar {
+   public:
+    int x = 3;
+  };
+  ClassOrVar ClassOrVar;
+
+  union UnionOrVar {
+    int x;
+  } u;
+  int UnionOrVar[2] = {1, 2};
+
+  enum EnumOrVar { kFoo, kBar };
+  EnumOrVar EnumOrVar = kFoo;
+
+  enum class CxxEnumOrVar { kCxxFoo, kCxxBar };
+  CxxEnumOrVar CxxEnumOrVar = CxxEnumOrVar::kCxxFoo;
+
+  int OnlyVar = 4;
+
+  // BREAK(TestTypeVsIdentifier)
 }
 
 namespace test_binary {
@@ -1145,6 +1174,7 @@ void main() {
   TestUniquePtr();
   TestSharedPtr();
   TestTypeComparison();
+  TestTypeVsIdentifier();
 
   // BREAK HERE
 }

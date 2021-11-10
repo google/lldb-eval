@@ -538,6 +538,18 @@ static std::tuple<Type::MemberInfo, std::vector<uint32_t>> GetFieldWithName(
   return {member, std::move(idx)};
 }
 
+static const char* GetTypeTag(TypeSP type) {
+  switch (type->GetTypeClass()) {
+      // clang-format off
+    case lldb::eTypeClassClass:       return "class";
+    case lldb::eTypeClassEnumeration: return "enum";
+    case lldb::eTypeClassStruct:      return "struct";
+    case lldb::eTypeClassUnion:       return "union";
+      // clang-format on
+  }
+  return "unknown";
+}
+
 static const char* ToString(TypeDeclaration::TypeSpecifier type_spec) {
   using TypeSpecifier = TypeDeclaration::TypeSpecifier;
   switch (type_spec) {
@@ -1478,13 +1490,14 @@ std::optional<TypeSP> Parser::ParseTypeId(bool must_be_type_id) {
   if (type_decl.IsEmpty()) {
     return {};
   }
-  if (type_decl.has_error_) {
-    return ctx_->GetEmptyType();
-  }
 
   // Try to resolve the base type.
   TypeSP type;
   if (type_decl.is_builtin_) {
+    if (type_decl.has_error_) {
+      return ctx_->GetEmptyType();
+    }
+
     type = ctx_->GetBasicType(type_decl.GetBasicType());
     assert(type->IsValid() && "cannot resolve basic type");
 
@@ -1497,6 +1510,20 @@ std::optional<TypeSP> Parser::ParseTypeId(bool must_be_type_id) {
             ErrorCode::kUndeclaredIdentifier,
             llvm::formatv("unknown type name '{0}'", type_decl.user_typename_),
             type_loc);
+        return ctx_->GetEmptyType();
+      }
+      return {};
+    }
+
+    if (ctx_->LookupIdentifier(type_decl.user_typename_)->IsValid()) {
+      // Same-name identifiers should be preferred over typenames.
+      // TODO: Make type accessible with 'class', 'struct' and 'union' keywords.
+      if (must_be_type_id) {
+        BailOut(ErrorCode::kUndeclaredIdentifier,
+                llvm::formatv(
+                    "must use '{0}' tag to refer to type '{1}' in this scope",
+                    GetTypeTag(type), type_decl.user_typename_),
+                type_loc);
         return ctx_->GetEmptyType();
       }
       return {};
