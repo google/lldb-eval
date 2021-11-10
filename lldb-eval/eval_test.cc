@@ -1746,7 +1746,7 @@ TEST_F(EvalTest, TestStaticConstDeclaredOutsideTheClass) {
 
   EXPECT_THAT(Scope("my_outer_inner_vars").Eval("::static_const"),
               IsError("use of undeclared identifier '::static_const'"));
-  EXPECT_THAT(Scope("vars").Eval("::Nested::static_const"),
+  EXPECT_THAT(Scope("my_vars").Eval("::Nested::static_const"),
               IsError("use of undeclared identifier '::Nested::static_const'"));
 }
 
