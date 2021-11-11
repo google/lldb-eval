@@ -57,7 +57,9 @@ class AstPrinter : Visitor {
     std::cout << "LiteralNode " << print_common_props(node) << " value=";
     struct {
       void operator()(llvm::APInt val) {
-        std::cout << val.toString(10u, is_signed_);
+        llvm::SmallVector<char, 32> buffer;
+        val.toString(buffer, 10u, is_signed_);
+        std::cout << std::string(buffer.data(), buffer.size());
       }
       void operator()(llvm::APFloat val) {
         llvm::SmallVector<char, 32> buffer;
