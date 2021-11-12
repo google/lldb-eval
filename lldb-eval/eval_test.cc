@@ -1466,11 +1466,11 @@ TEST_F(EvalTest, TestCxxStaticCast) {
   // Invalid expressions.
   EXPECT_THAT(Eval("static_cast<1>(1)"),
               IsError("type name requires a specifier or qualifier"));
+  EXPECT_THAT(Eval("static_cast<>(1)"),
+              IsError("type name requires a specifier or qualifier"));
   EXPECT_THAT(Eval("static_cast<parent>(1)"),
               IsError("unknown type name 'parent'"));
   EXPECT_THAT(Eval("static_cast<T_1<int> CxxParent>(1)"),
-              IsError("two or more data types in declaration of 'type name'"));
-  EXPECT_THAT(Eval("static_cast<ptr < ptr > ptr>"),
               IsError("two or more data types in declaration of 'type name'"));
 }
 
@@ -1863,12 +1863,15 @@ TEST_F(EvalTest, TestBasicTypeDeclaration) {
 }
 
 TEST_F(EvalTest, TestUserTypeDeclaration) {
-  EXPECT_THAT(Eval("(mylong mylong)0"),
-              IsError("two or more data types in declaration of 'type name'"));
   EXPECT_THAT(Eval("(unsigned mylong)0"),
               IsError("cannot combine with previous declaration specifier"));
-  EXPECT_THAT(Eval("(mylong unsigned)0"),
+  EXPECT_THAT(Eval("static_cast<mylong mylong>(0)"),
+              IsError("two or more data types in declaration of 'type name'"));
+  EXPECT_THAT(Eval("static_cast<mylong unsigned>(0)"),
               IsError("cannot combine with previous declaration specifier"));
+  // TODO: Should this be a type name error instead?
+  EXPECT_THAT(Eval("(mylong unsigned)0"),
+              IsError("undeclared identifier 'mylong'"));
 }
 
 TEST_F(EvalTest, TestTemplateTypes) {

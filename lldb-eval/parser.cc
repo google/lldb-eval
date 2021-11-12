@@ -1489,16 +1489,27 @@ std::optional<TypeSP> Parser::ParseTypeId(bool must_be_type_id) {
   ParseTypeSpecifierSeq(&type_decl);
 
   if (type_decl.IsEmpty()) {
+    // TODO: Should we bail out if `must_be_type_id` is set?
+    return {};
+  }
+
+  if (type_decl.has_error_) {
+    if (type_decl.is_builtin_) {
+      return ctx_->GetEmptyType();
+    }
+
+    assert(type_decl.is_user_type_ && "type_decl must be a user type");
+    // Found something looking like a user type, but failed to parse it.
+    // Return invalid type if we expect to have a type here, otherwise nullopt.
+    if (must_be_type_id) {
+      return ctx_->GetEmptyType();
+    }
     return {};
   }
 
   // Try to resolve the base type.
   TypeSP type;
   if (type_decl.is_builtin_) {
-    if (type_decl.has_error_) {
-      return ctx_->GetEmptyType();
-    }
-
     type = ctx_->GetBasicType(type_decl.GetBasicType());
     assert(type->IsValid() && "cannot resolve basic type");
 
