@@ -106,8 +106,6 @@ class LLDBType : public Type {
   }
 
  private:
-  lldb::SBType GetSBType() { return type_; }
-
   lldb::SBType type_;
 
   friend lldb::SBType ToSBType(TypeSP type);
@@ -191,7 +189,7 @@ Value CreateValueFromBool(lldb::SBTarget target, bool value);
 Value CreateValueNullptr(lldb::SBTarget target, lldb::SBType type);
 
 inline lldb::SBType ToSBType(TypeSP type) {
-  return static_cast<LLDBType&>(*type).GetSBType();
+  return static_cast<LLDBType&>(*type).type_;
 }
 
 }  // namespace lldb_eval
