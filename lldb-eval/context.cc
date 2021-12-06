@@ -67,6 +67,13 @@ Context::Context(std::string expr, lldb::SBExecutionContext ctx,
   // TODO(werat): Add custom consumer to keep track of errors.
   clang::DiagnosticsEngine& de = smff_->get().getDiagnostics();
   de.setClient(new clang::IgnoringDiagConsumer);
+
+  // If `scope_` is a reference, dereference it. This makes identifier lookup
+  // in the reference value context more convenient (e.g. avoids constructing
+  // qualified name "ScopeType &::IDENTIFIER" for static members).
+  if (scope_ && scope_.GetType().IsReferenceType()) {
+    scope_ = scope_.Dereference();
+  }
 }
 
 TypeSP Context::GetBasicType(lldb::BasicType basic_type) {
@@ -238,10 +245,6 @@ std::unique_ptr<ParserContext::IdentifierInfo> Context::LookupIdentifier(
     } else {
       // In a "value" scope `this` refers to the scope object itself.
       if (name_ref == "this") {
-        // If `scope_` is a reference, dereference it first.
-        if (scope_.GetType().IsReferenceType()) {
-          scope_ = scope_.Dereference();
-        }
         return std::make_unique<IdentifierInfo>(scope_.AddressOf());
       }
       // Lookup the variable as a member of the current scope value.
@@ -259,12 +262,7 @@ std::unique_ptr<ParserContext::IdentifierInfo> Context::LookupIdentifier(
       // Try looking for static member of the current scope value, e.g.
       // `ScopeType::NAME`. NAME can include nested struct (`Nested::SUBNAME`),
       // but it cannot be part of the global scope (start with "::").
-      lldb::SBType scope_type = scope_.GetType().GetCanonicalType();
-      // If `scope_` is a reference, dereference it to avoid constructing
-      // qualified name such as "ScopeType &::NAME".
-      const char* type_name = scope_type.IsReferenceType()
-                                  ? scope_type.GetDereferencedType().GetName()
-                                  : scope_type.GetName();
+      const char* type_name = scope_.GetType().GetCanonicalType().GetName();
       std::string name_with_type_prefix =
           llvm::formatv("{0}::{1}", type_name, name_ref).str();
       value = LookupStaticIdentifier(ctx_.GetTarget(), name_with_type_prefix);
