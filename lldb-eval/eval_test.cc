@@ -2017,6 +2017,23 @@ TEST_F(EvalTest, TestValueScope) {
               IsEqual("0"));
 }
 
+TEST_F(EvalTest, TestReferenceScope) {
+  // Member access in "reference" context doesn't work in LLDB.
+  this->compare_with_lldb_ = false;
+
+  EXPECT_THAT(Scope("var_ref").Eval("x_"), IsEqual("1"));
+  EXPECT_THAT(Scope("var_ref").Eval("y_"), IsEqual("2.5"));
+  EXPECT_THAT(Scope("var_ref").Eval("z_"),
+              IsError("use of undeclared identifier 'z_'"));
+  EXPECT_THAT(Scope("var_ref").Eval("this"), IsOk());
+  EXPECT_THAT(Scope("var_ref").Eval("this->y_"), IsEqual("2.5"));
+  EXPECT_THAT(Scope("var_ref").Eval("(*this).y_"), IsEqual("2.5"));
+  EXPECT_THAT(Scope("var_ref").Eval("ValueEnum::B"), IsEqual("B"));
+  EXPECT_THAT(Scope("var_ref").Eval("static_var"), IsEqual("3.5"));
+  EXPECT_THAT(Scope("var_ref").Eval("this->static_var"),
+              IsError("no member named 'static_var' in 'test_scope::Value'"));
+}
+
 TEST_F(EvalTest, TestBitField) {
   EXPECT_THAT(Eval("bf.a"), IsEqual("1023"));
   EXPECT_THAT(Eval("bf.b"), IsEqual("9"));
