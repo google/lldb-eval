@@ -7,6 +7,7 @@
 
 #include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBFrame.h"
+#include "lldb/API/SBTarget.h"
 #include "tools/fuzzer/symbol_table.h"
 
 namespace fuzzer {
@@ -25,9 +26,12 @@ class LibfuzzerState {
 
   lldb::SBFrame& frame() { return frame_; }
 
+  lldb::SBTarget& target() { return target_; }
+
  private:
   lldb::SBDebugger debugger_;
   lldb::SBFrame frame_;
+  lldb::SBTarget target_;
   SymbolTable symtab_;
 };
 

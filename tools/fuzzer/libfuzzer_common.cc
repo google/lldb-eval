@@ -94,6 +94,7 @@ int LibfuzzerState::init(int* /*argc*/, char*** argv) {
   lldb::SBProcess process = lldb_eval::LaunchTestProgram(
       debugger_, source_path, binary_path, "// BREAK HERE");
 
+  target_ = process.GetTarget();
   frame_ = process.GetSelectedThread().GetSelectedFrame();
 
   symtab_ = fuzzer::SymbolTable::create_from_frame(

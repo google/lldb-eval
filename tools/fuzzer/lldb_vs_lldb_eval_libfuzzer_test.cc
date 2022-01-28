@@ -143,7 +143,8 @@ extern "C" size_t LLVMFuzzerCustomMutator(uint8_t* data, size_t size,
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   std::string expr = g_state.input_to_expr(data, size);
 
-  auto ctx = lldb_eval::Context::Create(expr, g_state.frame());
+  auto sm = lldb_eval::SourceManager::Create(expr);
+  auto ctx = lldb_eval::Context::Create(sm, g_state.frame());
 
   // lldb-eval evaluation.
   lldb_eval::Error err;
@@ -154,7 +155,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     abort();
   }
 
-  lldb_eval::Interpreter eval(ctx);
+  lldb_eval::Interpreter eval(g_state.target(), sm);
   lldb::SBValue lldb_eval_value = eval.Eval(tree.get(), err).inner_value();
   if (err) {
     log_lldb_eval_error(expr, err);
