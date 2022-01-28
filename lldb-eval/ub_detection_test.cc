@@ -96,7 +96,8 @@ class UbDetectionTest : public ::testing::Test {
   }
 
   UbStatus GetUbStatus(const std::string& expr) {
-    auto ctx = lldb_eval::Context::Create(expr, frame_);
+    auto sm = lldb_eval::SourceManager::Create(expr);
+    auto ctx = lldb_eval::Context::Create(sm, frame_);
 
     lldb_eval::Error err;
     lldb_eval::Parser p(ctx);
@@ -104,7 +105,7 @@ class UbDetectionTest : public ::testing::Test {
 
     assert(!err && "Error while parsing expression!");
 
-    lldb_eval::Interpreter eval(ctx);
+    lldb_eval::Interpreter eval(process_.GetTarget(), sm);
     lldb_eval::Value ret = eval.Eval(tree.get(), err);
 
     assert(!err && "Error while evaluating expression!");

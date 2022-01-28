@@ -47,12 +47,14 @@ class FlowAnalysis {
 
 class Interpreter : Visitor {
  public:
-  explicit Interpreter(std::shared_ptr<Context> ctx) : ctx_(std::move(ctx)) {
-    target_ = ctx_->GetExecutionContext().GetTarget();
-  }
+  Interpreter(lldb::SBTarget target, std::shared_ptr<SourceManager> sm);
+  Interpreter(lldb::SBTarget target, std::shared_ptr<SourceManager> sm,
+              Value scope);
 
  public:
   Value Eval(const AstNode* tree, Error& error);
+
+  void SetContextVars(std::unordered_map<std::string, Value> context_vars);
 
  private:
   void SetError(ErrorCode error_code, std::string error,
@@ -86,7 +88,7 @@ class Interpreter : Visitor {
   Value EvaluateUnaryPrefixDecrement(Value rhs);
 
   Value EvaluateBinaryAddition(Value lhs, Value rhs);
-  Value EvaluateBinarySubtraction(Value lhs, Value rhs);
+  Value EvaluateBinarySubtraction(Value lhs, Value rhs, TypeSP result_type);
   Value EvaluateBinaryMultiplication(Value lhs, Value rhs);
   Value EvaluateBinaryDivision(Value lhs, Value rhs);
   Value EvaluateBinaryRemainder(Value lhs, Value rhs);
@@ -104,17 +106,15 @@ class Interpreter : Visitor {
                                   TypeSP comp_assign_type);
 
   Value PointerAdd(Value lhs, int64_t offset);
+  Value ResolveContextVar(const std::string& name) const;
 
   FlowAnalysis* flow_analysis() { return flow_analysis_chain_.back(); }
 
  private:
-  // Interpreter doesn't own the evaluation context. The expression is evaluated
-  // in the given context and the produced result may depend on it.
-  std::shared_ptr<Context> ctx_;
-
-  // Convenience references, used by the interpreter to lookup variables and
-  // types, create objects, perform casts, etc.
+  // Used by the interpreter to create objects, perform casts, etc.
   lldb::SBTarget target_;
+
+  std::shared_ptr<SourceManager> sm_;
 
   // Flow analysis chain represents the expression evaluation flow for the
   // current code branch. Each node in the chain corresponds to an AST node,
@@ -126,7 +126,11 @@ class Interpreter : Visitor {
   // available, the caller/user is supposed to check.
   std::vector<FlowAnalysis*> flow_analysis_chain_;
 
+  std::unordered_map<std::string, Value> context_vars_;
+
   Value result_;
+
+  Value scope_;
 
   Error error_;
 };

@@ -21,47 +21,105 @@
 #include <string>
 #include <unordered_map>
 
-#include "ast.h"
 #include "clang/Basic/SourceManager.h"
 #include "lldb/API/SBExecutionContext.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
-#include "parser.h"
 #include "parser_context.h"
 #include "value.h"
 
 namespace lldb_eval {
 
-class Context : public ParserContext {
+// clang::SourceManager wrapper which takes ownership of the expression string.
+class SourceManager {
  public:
-  class IdentifierInfo : public ParserContext::IdentifierInfo {
-   public:
-    IdentifierInfo(lldb::SBValue value) : value_(std::move(value)) {}
-
-    TypeSP GetType() override { return value_.type(); }
-    Value GetValue() const { return value_; }
-    bool IsValid() const override { return !!value_.inner_value(); }
-
-   private:
-    Value value_;
-  };
-  static std::shared_ptr<Context> Create(std::string expr, lldb::SBFrame frame);
-  static std::shared_ptr<Context> Create(std::string expr, lldb::SBValue scope);
+  static std::shared_ptr<SourceManager> Create(std::string expr);
 
   // This class cannot be safely moved because of the dependency between `expr_`
   // and `smff_`. Users are supposed to pass around the shared pointer.
-  Context(Context&&) = delete;
-  Context(const Context&) = delete;
-  Context& operator=(Context const&) = delete;
+  SourceManager(SourceManager&&) = delete;
+  SourceManager(const SourceManager&) = delete;
+  SourceManager& operator=(SourceManager const&) = delete;
+
+  clang::SourceManager& GetSourceManager() const { return smff_->get(); }
+
+ private:
+  explicit SourceManager(std::string expr);
+
+ private:
+  // Store the expression, since SourceManagerForFile doesn't take the
+  // ownership.
+  std::string expr_;
+  std::unique_ptr<clang::SourceManagerForFile> smff_;
+};
+
+class Context : public ParserContext {
+ public:
+  class IdentifierInfo : public ParserContext::IdentifierInfo {
+   private:
+    using MemberPath = std::vector<uint32_t>;
+    using IdentifierInfoPtr = std::unique_ptr<ParserContext::IdentifierInfo>;
+
+   public:
+    enum class Kind {
+      kValue,
+      kContextVar,
+      kMemberPath,
+      kThisKeyword,
+    };
+
+    static IdentifierInfoPtr FromValue(lldb::SBValue value) {
+      TypeSP type = LLDBType::CreateSP(value.GetType());
+      return IdentifierInfoPtr(new IdentifierInfo(Kind::kValue, std::move(type),
+                                                  Value(std::move(value)), {}));
+    }
+    static IdentifierInfoPtr FromContextVar(TypeSP type) {
+      return IdentifierInfoPtr(
+          new IdentifierInfo(Kind::kContextVar, std::move(type), Value(), {}));
+    }
+    static IdentifierInfoPtr FromMemberPath(TypeSP type, MemberPath path) {
+      return IdentifierInfoPtr(new IdentifierInfo(
+          Kind::kMemberPath, std::move(type), Value(), std::move(path)));
+    }
+    static IdentifierInfoPtr FromThisKeyword(TypeSP type) {
+      return IdentifierInfoPtr(
+          new IdentifierInfo(Kind::kThisKeyword, std::move(type), Value(), {}));
+    }
+
+    Kind kind() const { return kind_; }
+    Value value() const { return value_; }
+    const MemberPath& path() const { return path_; }
+
+    // from ParserContext::IdentifierInfo:
+    TypeSP GetType() override { return type_; }
+    bool IsValid() const override { return type_->IsValid(); }
+
+   private:
+    IdentifierInfo(Kind kind, TypeSP type, Value value, MemberPath path)
+        : kind_(kind),
+          type_(std::move(type)),
+          value_(std::move(value)),
+          path_(std::move(path)) {}
+
+   private:
+    Kind kind_;
+    TypeSP type_;
+    Value value_;
+    MemberPath path_;
+  };
+
+  static std::shared_ptr<Context> Create(std::shared_ptr<SourceManager> sm,
+                                         lldb::SBFrame frame);
+  static std::shared_ptr<Context> Create(std::shared_ptr<SourceManager> sm,
+                                         lldb::SBTarget target, TypeSP scope);
 
   clang::SourceManager& GetSourceManager() const override {
-    return smff_->get();
+    return sm_->GetSourceManager();
   }
   lldb::SBExecutionContext GetExecutionContext() const { return ctx_; }
 
-  void SetContextVars(
-      std::unordered_map<std::string, lldb::SBValue> context_vars);
+  void SetContextVars(std::unordered_map<std::string, TypeSP> context_vars);
 
  public:
   TypeSP GetBasicType(lldb::BasicType basic_type) override;
@@ -70,16 +128,15 @@ class Context : public ParserContext {
   lldb::BasicType GetPtrDiffType() override;
   TypeSP ResolveTypeByName(const std::string& name) const override;
   std::unique_ptr<ParserContext::IdentifierInfo> LookupIdentifier(
-      const std::string& name) const override;
+      const std::string& name) override;
   bool IsContextVar(const std::string& name) const override;
 
  private:
-  Context(std::string expr, lldb::SBExecutionContext ctx, lldb::SBValue scope);
+  Context(std::shared_ptr<SourceManager> sm, lldb::SBExecutionContext ctx,
+          TypeSP scope);
 
- public:
-  // Store the expression, since SourceManager doesn't take the ownership.
-  std::string expr_;
-  std::unique_ptr<clang::SourceManagerForFile> smff_;
+ private:
+  std::shared_ptr<SourceManager> sm_;
 
   // The expression exists in the context of an LLDB target. Execution context
   // provides information for semantic analysis (e.g. resolving types, looking
@@ -89,19 +146,13 @@ class Context : public ParserContext {
   // If set, the expression is evaluated in the scope of this value: `scope_` is
   // used as `this` pointer and local variables from the current frame are not
   // available.
-  mutable lldb::SBValue scope_;
+  TypeSP scope_;
 
   // Context variables used for identifier lookup.
-  std::unordered_map<std::string, lldb::SBValue> context_vars_;
+  std::unordered_map<std::string, TypeSP> context_vars_;
 
   // Cache of the basic types for the current target.
   std::unordered_map<lldb::BasicType, TypeSP> basic_types_;
-
-  // Cache of the `size_t` type.
-  lldb::SBType size_type_;
-
-  // Cache of the `ptrdiff_t` type.
-  lldb::SBType ptrdiff_type_;
 };
 
 }  // namespace lldb_eval

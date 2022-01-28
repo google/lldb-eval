@@ -163,6 +163,29 @@ static bool IsInvalidDivisionByMinusOne(Value lhs, Value rhs) {
   return lhs.GetValueAsSigned() + (1LLU << (bit_size - 1)) == 0;
 }
 
+static Value EvaluateMemberOf(Value value, const std::vector<uint32_t>& path) {
+  lldb::SBValue member_val = value.inner_value();
+  // Objects from the standard library (e.g. containers, smart pointers) have
+  // synthetic children (e.g. stored values for containers, wrapped object for
+  // smart pointers), but the indexes in `member_index()` array refer to the
+  // actual type members.
+  member_val.SetPreferSyntheticValue(false);
+  for (uint32_t idx : path) {
+    // Force static value, otherwise we can end up with the "real" type.
+    member_val = member_val.GetChildAtIndex(idx, lldb::eNoDynamicValues,
+                                            /*can_create_synthetic*/ false);
+  }
+  assert(member_val && "invalid ast: invalid member access");
+
+  // If value is a reference, derefernce it to get to the underlying type. All
+  // operations on a reference should be actually operations on the referent.
+  if (member_val.GetType().IsReferenceType()) {
+    member_val = member_val.Dereference();
+  }
+
+  return Value(member_val);
+}
+
 static Value CastDerivedToBaseType(lldb::SBTarget target, Value value,
                                    TypeSP type,
                                    const std::vector<uint32_t>& idx) {
@@ -219,6 +242,25 @@ static Value CastBaseToDerivedType(lldb::SBTarget target, Value value,
   return value.Dereference();
 }
 
+Interpreter::Interpreter(lldb::SBTarget target,
+                         std::shared_ptr<SourceManager> sm)
+    : target_(std::move(target)), sm_(std::move(sm)) {}
+
+Interpreter::Interpreter(lldb::SBTarget target,
+                         std::shared_ptr<SourceManager> sm, Value scope)
+    : target_(std::move(target)), sm_(std::move(sm)), scope_(std::move(scope)) {
+  // If `scope_` is a reference, dereference it. All operations on a reference
+  // should be operations on the referent.
+  if (scope_.IsValid() && scope_.type()->IsReferenceType()) {
+    scope_ = scope_.Dereference();
+  }
+}
+
+void Interpreter::SetContextVars(
+    std::unordered_map<std::string, Value> context_vars) {
+  context_vars_ = std::move(context_vars);
+}
+
 Value Interpreter::Eval(const AstNode* tree, Error& error) {
   error_.Clear();
   // Evaluate an AST.
@@ -244,7 +286,7 @@ Value Interpreter::EvalNode(const AstNode* node, FlowAnalysis* flow) {
 void Interpreter::SetError(ErrorCode code, std::string error,
                            clang::SourceLocation loc) {
   assert(!error_ && "interpreter can error only once");
-  error_.Set(code, FormatDiagnostics(ctx_->GetSourceManager(), error, loc));
+  error_.Set(code, FormatDiagnostics(sm_->GetSourceManager(), error, loc));
 }
 
 void Interpreter::Visit(const ErrorNode*) {
@@ -269,8 +311,42 @@ void Interpreter::Visit(const LiteralNode* node) {
 }
 
 void Interpreter::Visit(const IdentifierNode* node) {
-  Value val =
-      static_cast<const Context::IdentifierInfo&>(node->info()).GetValue();
+  auto identifier = static_cast<const Context::IdentifierInfo&>(node->info());
+
+  Value val;
+  switch (identifier.kind()) {
+    using Kind = Context::IdentifierInfo::Kind;
+    case Kind::kValue:
+      val = identifier.value();
+      assert(val.IsValid() && "invalid ast: invalid identifier value");
+      break;
+    case Kind::kContextVar:
+      assert(node->is_context_var() && "invalid ast: context var expected");
+      val = ResolveContextVar(node->name());
+      if (!val.IsValid()) {
+        SetError(
+            ErrorCode::kUndeclaredIdentifier,
+            llvm::formatv("use of undeclared identifier '{0}'", node->name()),
+            node->location());
+        return;
+      }
+      break;
+    case Kind::kMemberPath:
+      // TODO: Replace assertion with a user error.
+      assert(scope_.IsValid() && "value context is not valid");
+      val = EvaluateMemberOf(scope_, identifier.path());
+      break;
+    case Kind::kThisKeyword:
+      // TODO: Replace assertion with a user error.
+      assert(scope_.IsValid() && "value context is not valid");
+      val = scope_.AddressOf();
+      break;
+
+    default:
+      assert(false && "invalid ast: invalid identifier kind");
+  }
+
+  assert(val.IsValid() && "identifier doesn't resolve to a valid value");
 
   // If value is a reference, dereference it to get to the underlying type. All
   // operations on a reference should be actually operations on the referent.
@@ -298,7 +374,8 @@ void Interpreter::Visit(const SizeOfNode* node) {
   size_t size = operand->IsReferenceType()
                     ? operand->GetDereferencedType()->GetByteSize()
                     : operand->GetByteSize();
-  result_ = CreateValueFromBytes(target_, &size, ctx_->GetSizeType());
+  lldb::SBType type = ToSBType(node->result_type_deref());
+  result_ = CreateValueFromBytes(target_, &size, type);
 }
 
 void Interpreter::Visit(const BuiltinFunctionCallNode* node) {
@@ -592,27 +669,7 @@ void Interpreter::Visit(const MemberOfNode* node) {
   // LHS can be a pointer to value, but GetChildAtIndex works for pointers too,
   // so we don't need to dereference it explicitely. This also avoid having an
   // "ephemeral" parent Value, representing the dereferenced LHS.
-  lldb::SBValue member_val = lhs.inner_value();
-  // Objects from the standard library (e.g. containers, smart pointers) have
-  // synthetic children (e.g. stored values for containers, wrapped object for
-  // smart pointers), but the indexes in `member_index()` array refer to the
-  // actual type members.
-  member_val.SetPreferSyntheticValue(false);
-
-  for (uint32_t idx : node->member_index()) {
-    // Force static value, otherwise we can end up with the "real" type.
-    member_val = member_val.GetChildAtIndex(idx, lldb::eNoDynamicValues,
-                                            /* can_create_synthetic */ false);
-  }
-  assert(member_val && "invalid ast: invalid member access");
-
-  // If value is a reference, dereference it to get to the underlying type. All
-  // operations on a reference should be actually operations on the referent.
-  if (member_val.GetType().IsReferenceType()) {
-    member_val = member_val.Dereference();
-  }
-
-  result_ = Value(member_val);
+  result_ = EvaluateMemberOf(lhs, node->member_index());
 }
 
 void Interpreter::Visit(const ArraySubscriptNode* node) {
@@ -696,7 +753,9 @@ void Interpreter::Visit(const BinaryOpNode* node) {
       result_ = EvaluateBinaryAddition(lhs, rhs);
       return;
     case BinaryOpKind::Sub:
-      result_ = EvaluateBinarySubtraction(lhs, rhs);
+      // The result type of subtraction is required because it holds the
+      // correct "ptrdiff_t" type in the case of subtracting two pointers.
+      result_ = EvaluateBinarySubtraction(lhs, rhs, node->result_type_deref());
       return;
     case BinaryOpKind::Mul:
       result_ = EvaluateBinaryMultiplication(lhs, rhs);
@@ -1031,7 +1090,8 @@ Value Interpreter::EvaluateBinaryAddition(Value lhs, Value rhs) {
   return PointerAdd(ptr, offset.GetUInt64());
 }
 
-Value Interpreter::EvaluateBinarySubtraction(Value lhs, Value rhs) {
+Value Interpreter::EvaluateBinarySubtraction(Value lhs, Value rhs,
+                                             TypeSP result_type) {
   if (lhs.IsScalar() && rhs.IsScalar()) {
     assert(CompareTypes(lhs.type(), rhs.type()) &&
            "invalid ast: operand must have the same type");
@@ -1066,7 +1126,7 @@ Value Interpreter::EvaluateBinarySubtraction(Value lhs, Value rhs) {
   diff /= static_cast<int64_t>(item_size);
 
   // Pointer difference is ptrdiff_t.
-  return CreateValueFromBytes(target_, &diff, ctx_->GetPtrDiffType());
+  return CreateValueFromBytes(target_, &diff, ToSBType(result_type));
 }
 
 Value Interpreter::EvaluateBinaryMultiplication(Value lhs, Value rhs) {
@@ -1184,13 +1244,13 @@ Value Interpreter::EvaluateBinarySubAssign(Value lhs, Value rhs) {
 
   if (lhs.IsPointer()) {
     assert(rhs.IsInteger() && "invalid ast: rhs must be an integer");
-    ret = EvaluateBinarySubtraction(lhs, rhs);
+    ret = EvaluateBinarySubtraction(lhs, rhs, rhs.type());
   } else {
     assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");
     assert(rhs.type()->IsBasicType() &&
            "invalid ast: rhs must be a basic type");
     ret = CastScalarToBasicType(target_, lhs, rhs.type(), error_);
-    ret = EvaluateBinarySubtraction(ret, rhs);
+    ret = EvaluateBinarySubtraction(ret, rhs, rhs.type());
     ret = CastScalarToBasicType(target_, ret, lhs.type(), error_);
   }
 
@@ -1293,6 +1353,11 @@ Value Interpreter::PointerAdd(Value lhs, int64_t offset) {
       lhs.GetUInt64() + offset * lhs.type()->GetPointeeType()->GetByteSize();
 
   return CreateValueFromPointer(target_, addr, ToSBType(lhs.type()));
+}
+
+Value Interpreter::ResolveContextVar(const std::string& name) const {
+  auto it = context_vars_.find(name);
+  return it != context_vars_.end() ? it->second : Value();
 }
 
 }  // namespace lldb_eval

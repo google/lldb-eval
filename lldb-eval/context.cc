@@ -15,6 +15,10 @@
 #include "lldb-eval/context.h"
 
 #include <memory>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <vector>
 
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/FileManager.h"
@@ -52,14 +56,7 @@ lldb::SBValue CreateSBValue(lldb::SBTarget target, const void* bytes,
 
 namespace lldb_eval {
 
-void Context::SetContextVars(
-    std::unordered_map<std::string, lldb::SBValue> context_vars) {
-  context_vars_ = std::move(context_vars);
-}
-
-Context::Context(std::string expr, lldb::SBExecutionContext ctx,
-                 lldb::SBValue scope)
-    : expr_(std::move(expr)), ctx_(std::move(ctx)), scope_(std::move(scope)) {
+SourceManager::SourceManager(std::string expr) : expr_(std::move(expr)) {
   // This holds a SourceManager and all of its dependencies.
   smff_ = std::make_unique<clang::SourceManagerForFile>("<expr>", expr_);
 
@@ -67,12 +64,25 @@ Context::Context(std::string expr, lldb::SBExecutionContext ctx,
   // TODO(werat): Add custom consumer to keep track of errors.
   clang::DiagnosticsEngine& de = smff_->get().getDiagnostics();
   de.setClient(new clang::IgnoringDiagConsumer);
+}
 
+std::shared_ptr<SourceManager> SourceManager::Create(std::string expr) {
+  return std::shared_ptr<SourceManager>(new SourceManager(std::move(expr)));
+};
+
+void Context::SetContextVars(
+    std::unordered_map<std::string, TypeSP> context_vars) {
+  context_vars_ = std::move(context_vars);
+}
+
+Context::Context(std::shared_ptr<SourceManager> sm,
+                 lldb::SBExecutionContext ctx, TypeSP scope)
+    : sm_(std::move(sm)), ctx_(std::move(ctx)), scope_(std::move(scope)) {
   // If `scope_` is a reference, dereference it. This makes identifier lookup
   // in the reference value context more convenient (e.g. avoids constructing
   // qualified name "ScopeType &::IDENTIFIER" for static members).
-  if (scope_ && scope_.GetType().IsReferenceType()) {
-    scope_ = scope_.Dereference();
+  if (scope_->IsValid() && scope_->IsReferenceType()) {
+    scope_ = scope_->GetDereferencedType();
   }
 }
 
@@ -208,11 +218,11 @@ static lldb::SBValue LookupStaticIdentifier(lldb::SBTarget target,
 }
 
 std::unique_ptr<ParserContext::IdentifierInfo> Context::LookupIdentifier(
-    const std::string& name) const {
+    const std::string& name) {
   // Lookup context variables first.
   auto context_var = context_vars_.find(name);
   if (context_var != context_vars_.end()) {
-    return std::make_unique<IdentifierInfo>(context_var->second);
+    return IdentifierInfo::FromContextVar(context_var->second);
   }
 
   // Internally values don't have global scope qualifier in their names and
@@ -225,52 +235,57 @@ std::unique_ptr<ParserContext::IdentifierInfo> Context::LookupIdentifier(
     global_scope = true;
   }
 
-  lldb::SBValue value;
-
   // If the identifier doesn't refer to the global scope and doesn't have any
   // other scope qualifiers, try looking among the local and instance variables.
   if (!global_scope && !name_ref.contains("::")) {
-    if (!scope_) {
+    if (!scope_->IsValid()) {
       // Lookup in the current frame.
       lldb::SBFrame frame = ctx_.GetFrame();
       // Try looking for a local variable in current scope.
-      if (!value) {
-        value = frame.FindVariable(name_ref.data());
+      lldb::SBValue value = frame.FindVariable(name_ref.data());
+      if (value) {
+        // Force static value, otherwise we can end up with the "real" type.
+        return IdentifierInfo::FromValue(value.GetStaticValue());
       }
       // Try looking for an instance variable (class member).
-      if (!value) {
-        value =
-            frame.FindVariable("this").GetChildMemberWithName(name_ref.data());
+      value =
+          frame.FindVariable("this").GetChildMemberWithName(name_ref.data());
+      if (value) {
+        // Force static value, otherwise we can end up with the "real" type.
+        return IdentifierInfo::FromValue(value.GetStaticValue());
       }
     } else {
       // In a "value" scope `this` refers to the scope object itself.
       if (name_ref == "this") {
-        return std::make_unique<IdentifierInfo>(scope_.AddressOf());
+        return IdentifierInfo::FromThisKeyword(scope_->GetPointerType());
       }
       // Lookup the variable as a member of the current scope value.
-      value = scope_.GetChildMemberWithName(name_ref.data());
+      auto [member, path] = GetMemberInfo(scope_, name_ref.data());
+      if (member) {
+        return IdentifierInfo::FromMemberPath(member.type, std::move(path));
+      }
     }
   }
 
   // Try looking for a global or static variable.
+
+  // TODO(werat): Implement scope-aware lookup. Relative scopes should be
+  // resolved relative to the current scope. I.e. if the current frame is in
+  // "ns1::ns2::Foo()", then "ns2::x" should resolve to "ns1::ns2::x".
+
+  lldb::SBValue value;
+  if (scope_ && !global_scope) {
+    // Try looking for static member of the current scope value, e.g.
+    // `ScopeType::NAME`. NAME can include nested struct (`Nested::SUBNAME`),
+    // but it cannot be part of the global scope (start with "::").
+    const char* type_name = scope_->GetCanonicalType()->GetName().data();
+    std::string name_with_type_prefix =
+        llvm::formatv("{0}::{1}", type_name, name_ref).str();
+    value = LookupStaticIdentifier(ctx_.GetTarget(), name_with_type_prefix);
+  }
+
   if (!value) {
-    // TODO(werat): Implement scope-aware lookup. Relative scopes should be
-    // resolved relative to the current scope. I.e. if the current frame is in
-    // "ns1::ns2::Foo()", then "ns2::x" should resolve to "ns1::ns2::x".
-
-    if (scope_ && !global_scope) {
-      // Try looking for static member of the current scope value, e.g.
-      // `ScopeType::NAME`. NAME can include nested struct (`Nested::SUBNAME`),
-      // but it cannot be part of the global scope (start with "::").
-      const char* type_name = scope_.GetType().GetCanonicalType().GetName();
-      std::string name_with_type_prefix =
-          llvm::formatv("{0}::{1}", type_name, name_ref).str();
-      value = LookupStaticIdentifier(ctx_.GetTarget(), name_with_type_prefix);
-    }
-
-    if (!value) {
-      value = LookupStaticIdentifier(ctx_.GetTarget(), name_ref);
-    }
+    value = LookupStaticIdentifier(ctx_.GetTarget(), name_ref);
   }
 
   // Try looking up enum value.
@@ -291,29 +306,27 @@ std::unique_ptr<ParserContext::IdentifierInfo> Context::LookupIdentifier(
   }
 
   // Force static value, otherwise we can end up with the "real" type.
-  return std::make_unique<IdentifierInfo>(value.GetStaticValue());
+  return IdentifierInfo::FromValue(value.GetStaticValue());
 }
 
 bool Context::IsContextVar(const std::string& name) const {
   return context_vars_.find(name) != context_vars_.end();
 }
 
-std::shared_ptr<Context> Context::Create(std::string expr,
+std::shared_ptr<Context> Context::Create(std::shared_ptr<SourceManager> sm,
                                          lldb::SBFrame frame) {
-  return std::shared_ptr<Context>(new Context(
-      std::move(expr), lldb::SBExecutionContext(frame), lldb::SBValue()));
+  return std::shared_ptr<Context>(
+      new Context(std::move(sm), lldb::SBExecutionContext(frame),
+                  LLDBType::CreateSP(lldb::SBType())));
 }
 
-std::shared_ptr<Context> Context::Create(std::string expr,
-                                         lldb::SBValue scope) {
+std::shared_ptr<Context> Context::Create(std::shared_ptr<SourceManager> sm,
+                                         lldb::SBTarget target, TypeSP scope) {
   // SBValues created via SBTarget::CreateValueFromData don't have SBFrame
   // associated with them. But they still have a process/target, so use that
   // instead.
-  return std::shared_ptr<Context>(new Context(
-      std::move(expr),
-      lldb::SBExecutionContext(
-          scope.GetProcess().GetSelectedThread().GetSelectedFrame()),
-      scope));
+  return std::shared_ptr<Context>(
+      new Context(std::move(sm), lldb::SBExecutionContext(target), scope));
 }
 
 }  // namespace lldb_eval

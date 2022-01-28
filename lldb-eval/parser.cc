@@ -447,97 +447,6 @@ static TypeSP UsualArithmeticConversions(ParserContext& ctx, ExprResult& lhs,
   return lhs->result_type_deref()->GetCanonicalType();
 }
 
-static uint32_t GetNumberOfNonEmptyBaseClasses(TypeSP type) {
-  // Go through the base classes and count non-empty ones.
-  uint32_t ret = 0;
-  uint32_t num_direct_bases = type->GetNumberOfDirectBaseClasses();
-
-  for (uint32_t i = 0; i < num_direct_bases; ++i) {
-    TypeSP base_type = type->GetDirectBaseClassAtIndex(i).type;
-    if (base_type->GetNumberOfFields() > 0 ||
-        GetNumberOfNonEmptyBaseClasses(base_type) > 0) {
-      ret += 1;
-    }
-  }
-  return ret;
-}
-
-static Type::MemberInfo GetFieldWithNameIndexPath(ParserContext& ctx,
-                                                  TypeSP type,
-                                                  const std::string& name,
-                                                  std::vector<uint32_t>* idx) {
-  // Go through the fields first.
-  uint32_t num_fields = type->GetNumberOfFields();
-  for (uint32_t i = 0; i < num_fields; ++i) {
-    auto field = type->GetFieldAtIndex(i);
-    // Name can be null if this is a padding field.
-    if (field.name == name) {
-      if (idx) {
-        assert(idx->empty());
-        // Direct base classes are located before fields, so field members
-        // needs to be offset by the number of base classes.
-        idx->push_back(i + GetNumberOfNonEmptyBaseClasses(type));
-      }
-      return field;
-    } else if (field.type->IsAnonymousType()) {
-      // Every member of an anonymous struct is considered to be a member of
-      // the enclosing struct or union. This applies recursively if the
-      // enclosing struct or union is also anonymous.
-      //
-      //  struct S {
-      //    struct {
-      //      int x;
-      //    };
-      //  } s;
-      //
-      //  s.x = 1;
-
-      assert(!field.name && "Field should be unnamed.");
-
-      auto field_in_anon_type =
-          GetFieldWithNameIndexPath(ctx, field.type, name, idx);
-      if (field_in_anon_type) {
-        if (idx) {
-          idx->push_back(i + GetNumberOfNonEmptyBaseClasses(type));
-        }
-        return field_in_anon_type;
-      }
-    }
-  }
-
-  // LLDB can't access inherited fields of anonymous struct members.
-  if (type->IsAnonymousType()) {
-    return {{}, ctx.GetEmptyType(), false, 0};
-  }
-
-  // Go through the base classes and look for the field there.
-  uint32_t num_non_empty_bases = 0;
-  uint32_t num_direct_bases = type->GetNumberOfDirectBaseClasses();
-  for (uint32_t i = 0; i < num_direct_bases; ++i) {
-    auto base = type->GetDirectBaseClassAtIndex(i).type;
-    auto field = GetFieldWithNameIndexPath(ctx, base, name, idx);
-    if (field) {
-      if (idx) {
-        idx->push_back(num_non_empty_bases);
-      }
-      return field;
-    }
-    if (base->GetNumberOfFields() > 0) {
-      num_non_empty_bases += 1;
-    }
-  }
-
-  return {{}, ctx.GetEmptyType(), false, 0};
-}
-
-static std::tuple<Type::MemberInfo, std::vector<uint32_t>> GetFieldWithName(
-    ParserContext& ctx, TypeSP type, const std::string& name) {
-  std::vector<uint32_t> idx;
-  auto member = GetFieldWithNameIndexPath(ctx, type, name, &idx);
-  std::reverse(idx.begin(), idx.end());
-  return {member, std::move(idx)};
-}
-
 static const char* GetTypeTag(TypeSP type) {
   switch (type->GetTypeClass()) {
       // clang-format off
@@ -3814,7 +3723,7 @@ ExprResult Parser::BuildMemberOf(ExprResult lhs, std::string member_id,
     return std::make_unique<ErrorNode>(ctx_->GetEmptyType());
   }
 
-  auto [member, idx] = GetFieldWithName(*ctx_, lhs_type, member_id);
+  auto [member, idx] = ctx_->GetMemberInfo(lhs_type, member_id);
   if (!member) {
     BailOut(ErrorCode::kInvalidOperandType,
             llvm::formatv("no member named '{0}' in {1}", member_id,

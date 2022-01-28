@@ -30,9 +30,36 @@
 
 namespace lldb_eval {
 
+static std::unordered_map<std::string, TypeSP> ConvertToTypeMap(
+    ContextVariableList context_vars) {
+  std::unordered_map<std::string, TypeSP> ret;
+  for (size_t i = 0; i < context_vars.size; ++i) {
+    lldb::SBValue value = context_vars.data[i].value;
+    ret.emplace(context_vars.data[i].name, LLDBType::CreateSP(value.GetType()));
+  }
+  return ret;
+}
+
+static std::unordered_map<std::string, Value> ConvertToValueMap(
+    ContextVariableList context_vars) {
+  std::unordered_map<std::string, Value> ret;
+  for (size_t i = 0; i < context_vars.size; ++i) {
+    ret.emplace(context_vars.data[i].name, Value(context_vars.data[i].value));
+  }
+  return ret;
+}
+
 static lldb::SBValue EvaluateExpressionImpl(std::shared_ptr<Context> ctx,
-                                            lldb::SBError& error) {
+                                            std::shared_ptr<SourceManager> sm,
+                                            Options opts, lldb::SBTarget target,
+                                            Value scope, lldb::SBError& error) {
   error.Clear();
+
+  // Handle parsing options.
+  if (opts.context_vars.size > 0) {
+    ctx->SetContextVars(ConvertToTypeMap(opts.context_vars));
+  }
+  ctx->SetAllowSideEffects(opts.allow_side_effects);
 
   Error err;
   Parser p(ctx);
@@ -43,7 +70,11 @@ static lldb::SBValue EvaluateExpressionImpl(std::shared_ptr<Context> ctx,
     return lldb::SBValue();
   }
 
-  Interpreter eval(ctx);
+  // Note that `scope` may be invalid in the case of frame context evaluation.
+  Interpreter eval(target, sm, scope);
+  if (opts.context_vars.size > 0) {
+    eval.SetContextVars(ConvertToValueMap(opts.context_vars));
+  }
   Value ret = eval.Eval(tree.get(), err);
   if (err) {
     error.SetError(static_cast<uint32_t>(err.code()), lldb::eErrorTypeGeneric);
@@ -65,28 +96,6 @@ static lldb::SBValue EvaluateExpressionImpl(std::shared_ptr<Context> ctx,
   return value;
 }
 
-static std::unordered_map<std::string, lldb::SBValue> ConvertToMap(
-    ContextVariableList context_vars) {
-  std::unordered_map<std::string, lldb::SBValue> ret;
-  for (size_t i = 0; i < context_vars.size; ++i) {
-    ret.emplace(context_vars.data[i].name, context_vars.data[i].value);
-  }
-  return ret;
-}
-
-template <typename T>
-static std::shared_ptr<Context> CreateContext(T frame_or_scope,
-                                              const char* expression,
-                                              Options opts) {
-  auto context = Context::Create(expression, frame_or_scope);
-  if (opts.context_vars.size > 0) {
-    context->SetContextVars(ConvertToMap(opts.context_vars));
-  }
-  context->SetAllowSideEffects(opts.allow_side_effects);
-
-  return context;
-}
-
 lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
                                  lldb::SBError& error) {
   return EvaluateExpression(frame, expression, Options{}, error);
@@ -94,7 +103,10 @@ lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
 
 lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
                                  Options opts, lldb::SBError& error) {
-  return EvaluateExpressionImpl(CreateContext(frame, expression, opts), error);
+  auto sm = SourceManager::Create(expression);
+  auto context = Context::Create(sm, frame);
+  auto target = frame.GetThread().GetProcess().GetTarget();
+  return EvaluateExpressionImpl(context, sm, opts, target, Value(), error);
 }
 
 lldb::SBValue EvaluateExpression(lldb::SBValue scope, const char* expression,
@@ -104,7 +116,11 @@ lldb::SBValue EvaluateExpression(lldb::SBValue scope, const char* expression,
 
 lldb::SBValue EvaluateExpression(lldb::SBValue scope, const char* expression,
                                  Options opts, lldb::SBError& error) {
-  return EvaluateExpressionImpl(CreateContext(scope, expression, opts), error);
+  auto target = scope.GetTarget();
+  auto scope_value = Value(scope);
+  auto sm = SourceManager::Create(expression);
+  auto context = Context::Create(sm, target, scope_value.type());
+  return EvaluateExpressionImpl(context, sm, opts, target, scope_value, error);
 }
 
 }  // namespace lldb_eval

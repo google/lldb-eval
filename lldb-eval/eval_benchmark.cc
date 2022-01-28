@@ -119,7 +119,8 @@ BENCHMARK_F(BM, TypeCasting)(benchmark::State& state) {
 }
 
 BENCHMARK_F(BM, ParseInteger)(benchmark::State& state) {
-  auto context = lldb_eval::Context::Create("1+1u+1l+1ul+1ll+1ull", frame);
+  auto context = lldb_eval::Context::Create(
+      lldb_eval::SourceManager::Create("1+1u+1l+1ul+1ll+1ull"), frame);
 
   for (auto _ : state) {
     lldb_eval::Error err;

@@ -184,7 +184,8 @@ class AstPrinter : Visitor {
 }  // namespace lldb_eval
 
 void PrintExpr(lldb::SBFrame frame, const std::string& expr) {
-  auto ctx = lldb_eval::Context::Create(expr, frame);
+  auto ctx =
+      lldb_eval::Context::Create(lldb_eval::SourceManager::Create(expr), frame);
   ctx->SetAllowSideEffects(true);
 
   lldb_eval::Error err;
