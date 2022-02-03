@@ -131,7 +131,9 @@ lldb::BasicType Context::GetPtrDiffType() {
   }
 }
 
-TypeSP Context::GetEmptyType() { return LLDBType::CreateSP(lldb::SBType()); }
+TypeSP Context::GetEmptyType() const {
+  return LLDBType::CreateSP(lldb::SBType());
+}
 
 TypeSP Context::ResolveTypeByName(const std::string& name) const {
   // TODO(b/163308825): Do scope-aware type lookup. Look for the types defined
@@ -218,7 +220,7 @@ static lldb::SBValue LookupStaticIdentifier(lldb::SBTarget target,
 }
 
 std::unique_ptr<ParserContext::IdentifierInfo> Context::LookupIdentifier(
-    const std::string& name) {
+    const std::string& name) const {
   // Lookup context variables first.
   auto context_var = context_vars_.find(name);
   if (context_var != context_vars_.end()) {

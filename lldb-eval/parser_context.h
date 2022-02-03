@@ -61,10 +61,10 @@ class ParserContext {
   virtual clang::SourceManager& GetSourceManager() const = 0;
   virtual TypeSP ResolveTypeByName(const std::string& name) const = 0;
   virtual std::unique_ptr<IdentifierInfo> LookupIdentifier(
-      const std::string& name) = 0;
+      const std::string& name) const = 0;
   virtual bool IsContextVar(const std::string& name) const = 0;
   virtual TypeSP GetBasicType(lldb::BasicType) = 0;
-  virtual TypeSP GetEmptyType() = 0;
+  virtual TypeSP GetEmptyType() const = 0;
   virtual lldb::BasicType GetPtrDiffType() = 0;
   virtual lldb::BasicType GetSizeType() = 0;
   virtual ~ParserContext() = default;
@@ -73,7 +73,7 @@ class ParserContext {
   bool AllowSideEffects() const;
 
   std::tuple<Type::MemberInfo, std::vector<uint32_t>> GetMemberInfo(
-      TypeSP type, const std::string& name);
+      TypeSP type, const std::string& name) const;
 
  private:
   // Whether side effects should be allowed.

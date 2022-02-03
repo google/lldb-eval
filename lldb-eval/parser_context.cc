@@ -126,7 +126,7 @@ void ParserContext::SetAllowSideEffects(bool allow_side_effects) {
 bool ParserContext::AllowSideEffects() const { return allow_side_effects_; }
 
 std::tuple<Type::MemberInfo, std::vector<uint32_t>>
-ParserContext::GetMemberInfo(TypeSP type, const std::string& name) {
+ParserContext::GetMemberInfo(TypeSP type, const std::string& name) const {
   std::vector<uint32_t> idx;
   auto member = GetFieldWithNameIndexPath(type, name, &idx, GetEmptyType());
   std::reverse(idx.begin(), idx.end());

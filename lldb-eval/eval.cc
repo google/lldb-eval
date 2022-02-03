@@ -164,6 +164,9 @@ static bool IsInvalidDivisionByMinusOne(Value lhs, Value rhs) {
 }
 
 static Value EvaluateMemberOf(Value value, const std::vector<uint32_t>& path) {
+  // The given `value` can be a pointer, but GetChildAtIndex works for pointers
+  // too, so we don't need to dereference it explicitely. This also avoid having
+  // an "ephemeral" parent Value, representing the dereferenced value.
   lldb::SBValue member_val = value.inner_value();
   // Objects from the standard library (e.g. containers, smart pointers) have
   // synthetic children (e.g. stored values for containers, wrapped object for
@@ -347,6 +350,7 @@ void Interpreter::Visit(const IdentifierNode* node) {
   }
 
   assert(val.IsValid() && "identifier doesn't resolve to a valid value");
+  // TODO: Check that `val` type is matching the node's result type.
 
   // If value is a reference, dereference it to get to the underlying type. All
   // operations on a reference should be actually operations on the referent.
@@ -666,9 +670,6 @@ void Interpreter::Visit(const MemberOfNode* node) {
     return;
   }
 
-  // LHS can be a pointer to value, but GetChildAtIndex works for pointers too,
-  // so we don't need to dereference it explicitely. This also avoid having an
-  // "ephemeral" parent Value, representing the dereferenced LHS.
   result_ = EvaluateMemberOf(lhs, node->member_index());
 }
 
@@ -1244,13 +1245,13 @@ Value Interpreter::EvaluateBinarySubAssign(Value lhs, Value rhs) {
 
   if (lhs.IsPointer()) {
     assert(rhs.IsInteger() && "invalid ast: rhs must be an integer");
-    ret = EvaluateBinarySubtraction(lhs, rhs, rhs.type());
+    ret = EvaluateBinarySubtraction(lhs, rhs, lhs.type());
   } else {
     assert(lhs.IsScalar() && "invalid ast: lhs must be an arithmetic type");
     assert(rhs.type()->IsBasicType() &&
            "invalid ast: rhs must be a basic type");
     ret = CastScalarToBasicType(target_, lhs, rhs.type(), error_);
-    ret = EvaluateBinarySubtraction(ret, rhs, rhs.type());
+    ret = EvaluateBinarySubtraction(ret, rhs, ret.type());
     ret = CastScalarToBasicType(target_, ret, lhs.type(), error_);
   }
 

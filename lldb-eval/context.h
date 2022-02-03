@@ -123,12 +123,12 @@ class Context : public ParserContext {
 
  public:
   TypeSP GetBasicType(lldb::BasicType basic_type) override;
-  TypeSP GetEmptyType() override;
+  TypeSP GetEmptyType() const override;
   lldb::BasicType GetSizeType() override;
   lldb::BasicType GetPtrDiffType() override;
   TypeSP ResolveTypeByName(const std::string& name) const override;
   std::unique_ptr<ParserContext::IdentifierInfo> LookupIdentifier(
-      const std::string& name) override;
+      const std::string& name) const override;
   bool IsContextVar(const std::string& name) const override;
 
  private:
