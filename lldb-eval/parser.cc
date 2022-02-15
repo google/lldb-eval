@@ -610,18 +610,6 @@ static std::unique_ptr<BuiltinFunctionDef> GetBuiltinFunctionDef(
   return nullptr;
 }
 
-static std::string TypeDescription(TypeSP type) {
-  auto name = type->GetName();
-  auto canonical_name = type->GetCanonicalType()->GetName();
-  if (name.empty() || canonical_name.empty()) {
-    return "''";  // should not happen
-  }
-  if (name == canonical_name) {
-    return llvm::formatv("'{0}'", name);
-  }
-  return llvm::formatv("'{0}' (aka '{1}')", name, canonical_name);
-}
-
 // Checks whether `target_base` is a virtual base of `type` (direct or
 // indirect). If it is, stores the first virtual base type on the path from
 // `type` to `target_type`.
@@ -650,38 +638,6 @@ static bool IsVirtualBase(TypeSP type, TypeSP target_base, TypeSP* virtual_base,
     auto base = type->GetDirectBaseClassAtIndex(i).type;
     if (IsVirtualBase(base, target_base, virtual_base, carry_virtual)) {
       return true;
-    }
-  }
-
-  return false;
-}
-
-// Checks whether `target_base` is a direct or indirect base of `type`.
-// If `idx` is provided, it stores the sequence of direct base types from
-// `target_base` to `type`. If `offset` is provided, it stores the positive
-// offset of the inherited type in bytes.
-static bool GetPathToBaseClass(TypeSP type, TypeSP target_base,
-                               std::vector<uint32_t>* idx, uint64_t* offset) {
-  if (CompareTypes(type, target_base)) {
-    return true;
-  }
-
-  uint32_t num_non_empty_bases = 0;
-  uint32_t num_direct_bases = type->GetNumberOfDirectBaseClasses();
-  for (uint32_t i = 0; i < num_direct_bases; ++i) {
-    auto member = type->GetDirectBaseClassAtIndex(i);
-    auto base = member.type;
-    if (GetPathToBaseClass(base, target_base, idx, offset)) {
-      if (idx) {
-        idx->push_back(num_non_empty_bases);
-      }
-      if (offset) {
-        *offset += member.offset;
-      }
-      return true;
-    }
-    if (base->GetNumberOfFields() > 0) {
-      num_non_empty_bases++;
     }
   }
 
@@ -2713,8 +2669,8 @@ ExprResult Parser::BuildCxxStaticCastForInheritedTypes(
 
   // Handle derived-to-base conversion.
   std::vector<uint32_t> idx;
-  if (GetPathToBaseClass(rhs_record_type, record_type, &idx,
-                         /*offset*/ nullptr)) {
+  if (GetPathToBaseType(rhs_record_type, record_type, &idx,
+                        /*offset*/ nullptr)) {
     std::reverse(idx.begin(), idx.end());
     // At this point `idx` represents indices of direct base classes on path
     // from the `rhs` type to the target `type`.
@@ -2724,8 +2680,8 @@ ExprResult Parser::BuildCxxStaticCastForInheritedTypes(
 
   // Handle base-to-derived conversion.
   uint64_t offset = 0;
-  if (GetPathToBaseClass(record_type, rhs_record_type, /*idx*/ nullptr,
-                         &offset)) {
+  if (GetPathToBaseType(record_type, rhs_record_type, /*path*/ nullptr,
+                        &offset)) {
     TypeSP virtual_base;
     if (IsVirtualBase(record_type, rhs_record_type, &virtual_base)) {
       // Base-to-derived conversion isn't possible for virtually inherited

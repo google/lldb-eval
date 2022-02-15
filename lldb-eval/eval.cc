@@ -323,6 +323,7 @@ void Interpreter::Visit(const IdentifierNode* node) {
       val = identifier.value();
       assert(val.IsValid() && "invalid ast: invalid identifier value");
       break;
+
     case Kind::kContextVar:
       assert(node->is_context_var() && "invalid ast: context var expected");
       val = ResolveContextVar(node->name());
@@ -331,17 +332,45 @@ void Interpreter::Visit(const IdentifierNode* node) {
             ErrorCode::kUndeclaredIdentifier,
             llvm::formatv("use of undeclared identifier '{0}'", node->name()),
             node->location());
+        result_ = Value();
+        return;
+      }
+      if (!CompareTypes(node->result_type_deref(), val.type())) {
+        SetError(ErrorCode::kInvalidOperandType,
+                 llvm::formatv("unexpected type of context variable '{0}' "
+                               "(expected {1}, got {2})",
+                               node->name(),
+                               TypeDescription(node->result_type_deref()),
+                               TypeDescription(val.type())),
+                 node->location());
+        result_ = Value();
         return;
       }
       break;
+
     case Kind::kMemberPath:
-      // TODO: Replace assertion with a user error.
-      assert(scope_.IsValid() && "value context is not valid");
+      if (!scope_.IsValid()) {
+        SetError(
+            ErrorCode::kUnknown,
+            llvm::formatv(
+                "unable to resolve '{0}', evaluation requires a value context",
+                node->name()),
+            node->location());
+        result_ = Value();
+        return;
+      }
       val = EvaluateMemberOf(scope_, identifier.path());
       break;
+
     case Kind::kThisKeyword:
-      // TODO: Replace assertion with a user error.
-      assert(scope_.IsValid() && "value context is not valid");
+      if (!scope_.IsValid()) {
+        SetError(
+            ErrorCode::kUnknown,
+            "unable to resolve 'this', evaluation requires a value context",
+            node->location());
+        result_ = Value();
+        return;
+      }
       val = scope_.AddressOf();
       break;
 

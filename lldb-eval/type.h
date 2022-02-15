@@ -78,6 +78,14 @@ class Type {
 };
 
 bool CompareTypes(TypeSP lhs, TypeSP rhs);
+std::string TypeDescription(TypeSP type);
+
+// Checks whether `target_base` is a direct or indirect base of `type`.
+// If `path` is provided, it stores the sequence of direct base types from
+// `target_base` to `type`.
+bool GetPathToBaseType(TypeSP type, TypeSP target_base,
+                       std::vector<uint32_t>* path, uint64_t* offset);
+
 }  // namespace lldb_eval
 
 #endif  // LLDB_EVAL_TYPE_H_

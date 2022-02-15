@@ -119,7 +119,8 @@ class Context : public ParserContext {
   }
   lldb::SBExecutionContext GetExecutionContext() const { return ctx_; }
 
-  void SetContextVars(std::unordered_map<std::string, TypeSP> context_vars);
+  void SetContextVars(std::unordered_map<std::string, Value> context_vars);
+  void SetContextArgs(std::unordered_map<std::string, TypeSP> context_args);
 
  public:
   TypeSP GetBasicType(lldb::BasicType basic_type) override;
@@ -149,7 +150,10 @@ class Context : public ParserContext {
   TypeSP scope_;
 
   // Context variables used for identifier lookup.
-  std::unordered_map<std::string, TypeSP> context_vars_;
+  std::unordered_map<std::string, Value> context_vars_;
+
+  // Context arguments used for identifier lookup.
+  std::unordered_map<std::string, TypeSP> context_args_;
 
   // Cache of the basic types for the current target.
   std::unordered_map<lldb::BasicType, TypeSP> basic_types_;

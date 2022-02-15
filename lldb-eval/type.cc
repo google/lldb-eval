@@ -2,6 +2,8 @@
 
 #include "lldb-eval/traits.h"
 #include "lldb/lldb-enumerations.h"
+#include "llvm/Support/FormatAdapters.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Regex.h"
 
 namespace lldb_eval {
@@ -119,4 +121,45 @@ bool CompareTypes(TypeSP lhs, TypeSP rhs) {
 
   return lhs->CompareTo(rhs);
 }
+
+std::string TypeDescription(TypeSP type) {
+  auto name = type->GetName();
+  auto canonical_name = type->GetCanonicalType()->GetName();
+  if (name.empty() || canonical_name.empty()) {
+    return "''";  // should not happen
+  }
+  if (name == canonical_name) {
+    return llvm::formatv("'{0}'", name);
+  }
+  return llvm::formatv("'{0}' (aka '{1}')", name, canonical_name);
+}
+
+bool GetPathToBaseType(TypeSP type, TypeSP target_base,
+                       std::vector<uint32_t>* path, uint64_t* offset) {
+  if (CompareTypes(type, target_base)) {
+    return true;
+  }
+
+  uint32_t num_non_empty_bases = 0;
+  uint32_t num_direct_bases = type->GetNumberOfDirectBaseClasses();
+  for (uint32_t i = 0; i < num_direct_bases; ++i) {
+    auto member = type->GetDirectBaseClassAtIndex(i);
+    auto base = member.type;
+    if (GetPathToBaseType(base, target_base, path, offset)) {
+      if (path) {
+        path->push_back(num_non_empty_bases);
+      }
+      if (offset) {
+        *offset += member.offset;
+      }
+      return true;
+    }
+    if (base->GetNumberOfFields() > 0) {
+      num_non_empty_bases++;
+    }
+  }
+
+  return false;
+}
+
 }  // namespace lldb_eval
