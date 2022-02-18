@@ -64,7 +64,7 @@ class Context : public ParserContext {
    public:
     enum class Kind {
       kValue,
-      kContextVar,
+      kContextArg,
       kMemberPath,
       kThisKeyword,
     };
@@ -74,9 +74,9 @@ class Context : public ParserContext {
       return IdentifierInfoPtr(new IdentifierInfo(Kind::kValue, std::move(type),
                                                   Value(std::move(value)), {}));
     }
-    static IdentifierInfoPtr FromContextVar(TypeSP type) {
+    static IdentifierInfoPtr FromContextArg(TypeSP type) {
       return IdentifierInfoPtr(
-          new IdentifierInfo(Kind::kContextVar, std::move(type), Value(), {}));
+          new IdentifierInfo(Kind::kContextArg, std::move(type), Value(), {}));
     }
     static IdentifierInfoPtr FromMemberPath(TypeSP type, MemberPath path) {
       return IdentifierInfoPtr(new IdentifierInfo(
@@ -119,7 +119,6 @@ class Context : public ParserContext {
   }
   lldb::SBExecutionContext GetExecutionContext() const { return ctx_; }
 
-  void SetContextVars(std::unordered_map<std::string, Value> context_vars);
   void SetContextArgs(std::unordered_map<std::string, TypeSP> context_args);
 
  public:
@@ -148,9 +147,6 @@ class Context : public ParserContext {
   // used as `this` pointer and local variables from the current frame are not
   // available.
   TypeSP scope_;
-
-  // Context variables used for identifier lookup.
-  std::unordered_map<std::string, Value> context_vars_;
 
   // Context arguments used for identifier lookup.
   std::unordered_map<std::string, TypeSP> context_args_;

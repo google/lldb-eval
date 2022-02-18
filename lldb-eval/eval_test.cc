@@ -102,17 +102,12 @@ class EvaluatorHelper {
     return ret;
   }
 
-  EvalResult Eval(lldb_eval::ParsedExpression& parsed_expr) {
+  EvalResult Eval(std::shared_ptr<lldb_eval::CompiledExpr> compiled_expr) {
+    assert(scope_ && "compiled expression requires a value context");
+
     EvalResult ret;
-
-    if (scope_) {
-      ret.lldb_eval_value = lldb_eval::EvaluateParsedExpression(
-          scope_, parsed_expr, ret.lldb_eval_error);
-    } else {
-      ret.lldb_eval_value =
-          lldb_eval::EvaluateParsedExpression(parsed_expr, ret.lldb_eval_error);
-    }
-
+    ret.lldb_eval_value = lldb_eval::EvaluateExpression(scope_, compiled_expr,
+                                                        ret.lldb_eval_error);
     return ret;
   }
 
@@ -153,9 +148,9 @@ class EvaluatorHelper {
   }
 
   EvalResult EvalWithContext(
-      lldb_eval::ParsedExpression& parsed_expr,
+      std::shared_ptr<lldb_eval::CompiledExpr> compiled_expr,
       const std::unordered_map<std::string, lldb::SBValue>& vars) {
-    EvalResult ret;
+    assert(scope_ && "compiled expression requires a value context");
 
     std::vector<lldb_eval::ContextVariable> ctx_vec;
     ctx_vec.reserve(vars.size());
@@ -164,33 +159,28 @@ class EvaluatorHelper {
     }
     lldb_eval::ContextVariableList context_vars{ctx_vec.data(), ctx_vec.size()};
 
-    if (scope_) {
-      ret.lldb_eval_value = lldb_eval::EvaluateParsedExpression(
-          scope_, parsed_expr, context_vars, ret.lldb_eval_error);
-    } else {
-      ret.lldb_eval_value = lldb_eval::EvaluateParsedExpression(
-          parsed_expr, context_vars, ret.lldb_eval_error);
-    }
-
+    EvalResult ret;
+    ret.lldb_eval_value = lldb_eval::EvaluateExpression(
+        scope_, compiled_expr, context_vars, ret.lldb_eval_error);
     return ret;
   }
 
-  lldb_eval::ParsedExpression Parse(const std::string& expr,
-                                    lldb::SBError& error) {
+  std::shared_ptr<lldb_eval::CompiledExpr> Compile(const std::string& expr,
+                                                   lldb::SBError& error) {
+    assert(scope_ && "compiling an expression requires a type context");
+
     lldb_eval::Options opts;
     opts.allow_side_effects = side_effects_;
-    if (scope_) {
-      return lldb_eval::ParseExpression(scope_.GetTarget(), scope_.GetType(),
+    return lldb_eval::CompileExpression(scope_.GetTarget(), scope_.GetType(),
                                         expr.c_str(), opts, error);
-    } else {
-      return lldb_eval::ParseExpression(frame_, expr.c_str(), opts, error);
-    }
   }
 
-  lldb_eval::ParsedExpression ParseWithContext(
+  std::shared_ptr<lldb_eval::CompiledExpr> CompileWithContext(
       const std::string& expr,
       const std::unordered_map<std::string, lldb::SBType>& args,
       lldb::SBError& error) {
+    assert(scope_ && "compiling an expression requires a type context");
+
     std::vector<lldb_eval::ContextArgument> ctx_vec;
     ctx_vec.reserve(args.size());
     for (const auto& [name, type] : args) {
@@ -201,12 +191,8 @@ class EvaluatorHelper {
     opts.allow_side_effects = side_effects_;
     opts.context_args = {ctx_vec.data(), ctx_vec.size()};
 
-    if (scope_) {
-      return lldb_eval::ParseExpression(scope_.GetTarget(), scope_.GetType(),
+    return lldb_eval::CompileExpression(scope_.GetTarget(), scope_.GetType(),
                                         expr.c_str(), opts, error);
-    } else {
-      return lldb_eval::ParseExpression(frame_, expr.c_str(), opts, error);
-    }
   }
 
  private:
@@ -421,34 +407,8 @@ class EvalTest : public ::testing::Test {
         .Eval(expr);
   }
 
-  lldb_eval::ParsedExpression Parse(const std::string& expr,
-                                    lldb::SBError& error) {
-    return EvaluatorHelper(frame_, compare_with_lldb_, allow_side_effects_)
-        .Parse(expr, error);
-  }
-
-  lldb_eval::ParsedExpression ParseWithContext(
-      const std::string& expr,
-      const std::unordered_map<std::string, lldb::SBType>& args,
-      lldb::SBError& error) {
-    return EvaluatorHelper(frame_, compare_with_lldb_, allow_side_effects_)
-        .ParseWithContext(expr, args, error);
-  }
-
-  EvalResult Eval(lldb_eval::ParsedExpression& expr) {
-    return EvaluatorHelper(frame_, compare_with_lldb_, allow_side_effects_)
-        .Eval(expr);
-  }
-
   EvalResult EvalWithContext(
       const std::string& expr,
-      const std::unordered_map<std::string, lldb::SBValue>& vars) {
-    return EvaluatorHelper(frame_, compare_with_lldb_, allow_side_effects_)
-        .EvalWithContext(expr, vars);
-  }
-
-  EvalResult EvalWithContext(
-      lldb_eval::ParsedExpression& expr,
       const std::unordered_map<std::string, lldb::SBValue>& vars) {
     return EvaluatorHelper(frame_, compare_with_lldb_, allow_side_effects_)
         .EvalWithContext(expr, vars);
@@ -3348,22 +3308,19 @@ TEST_F(EvalTest, TestTypeVsIdentifier) {
 TEST_F(EvalTest, TestSeparateParsing) {
   lldb::SBError error;
 
-  auto expr_a = Scope("a").Parse("a_", error);
+  auto expr_a = Scope("a").Compile("a_", error);
   ASSERT_TRUE(error.Success());
 
-  auto expr_b = Scope("b").Parse("b_", error);
+  auto expr_b = Scope("b").Compile("b_", error);
   ASSERT_TRUE(error.Success());
 
-  auto expr_c = Scope("c").Parse("a_ * b_ * c_", error);
+  auto expr_c = Scope("c").Compile("a_ * b_ * c_", error);
   ASSERT_TRUE(error.Success());
 
-  auto expr_d = Scope("d").Parse("a_ * b_ * c_ * d_", error);
+  auto expr_d = Scope("d").Compile("a_ * b_ * c_ * d_", error);
   ASSERT_TRUE(error.Success());
 
-  auto expr_c_this = Scope("c").Parse("this", error);
-  ASSERT_TRUE(error.Success());
-
-  auto expr_in_frame = Parse("a.a_ + 1", error);
+  auto expr_c_this = Scope("c").Compile("this", error);
   ASSERT_TRUE(error.Success());
 
   EXPECT_THAT(Scope("a").Eval(expr_a), IsEqual("1"));
@@ -3381,19 +3338,6 @@ TEST_F(EvalTest, TestSeparateParsing) {
   EXPECT_THAT(
       Scope("c").Eval(expr_d),
       IsError("expression isn't parsed in the context of compatible type"));
-
-  // Expression parsed in frame context, evaluated in value context.
-  EXPECT_THAT(Scope("c").Eval(expr_in_frame),
-              IsError("expression isn't parsed in the context of a type"));
-
-  // Expression parsed in value context, evaluated in frame context.
-  EXPECT_THAT(
-      Eval(expr_c),
-      IsError("unable to resolve 'a_', evaluation requires a value context"));
-
-  EXPECT_THAT(
-      Eval(expr_c_this),
-      IsError("unable to resolve 'this', evaluation requires a value context"));
 }
 
 TEST_F(EvalTest, TestSeparateParsingWithContextVars) {
@@ -3405,22 +3349,15 @@ TEST_F(EvalTest, TestSeparateParsingWithContextVars) {
 
   lldb::SBError error;
 
-  auto expr_frame = ParseWithContext("$x + $y", args, error);
+  auto expr_c = Scope("c").CompileWithContext("c_ + $x + $y", args, error);
   ASSERT_TRUE(error.Success());
 
-  auto expr_c = Scope("c").ParseWithContext("c_ + $x + $y", args, error);
-  ASSERT_TRUE(error.Success());
-
-  EXPECT_THAT(EvalWithContext(expr_frame, vars_), IsEqual("3.5"));
   EXPECT_THAT(Scope("c").EvalWithContext(expr_c, vars_), IsEqual("8.5"));
   EXPECT_THAT(Scope("d").EvalWithContext(expr_c, vars_), IsEqual("11.5"));
 
   // Parsed context arguments don't match variables' types in evaluation.
   std::unordered_map<std::string, lldb::SBValue> wrong_vars = {
       {"$x", vars_["$y"]}, {"$y", vars_["$x"]}};
-  EXPECT_THAT(EvalWithContext(expr_frame, wrong_vars),
-              IsError("unexpected type of context variable '$x' (expected "
-                      "'int', got 'double'"));
   EXPECT_THAT(Scope("c").EvalWithContext(expr_c, wrong_vars),
               IsError("unexpected type of context variable '$x' (expected "
                       "'int', got 'double')"));
@@ -3428,8 +3365,6 @@ TEST_F(EvalTest, TestSeparateParsingWithContextVars) {
   // Context variable missing for parsed argument.
   std::unordered_map<std::string, lldb::SBValue> incomplete_vars = {
       {"$x", vars_["$x"]}};
-  EXPECT_THAT(EvalWithContext(expr_frame, incomplete_vars),
-              IsError("use of undeclared identifier '$y'"));
   EXPECT_THAT(Scope("c").EvalWithContext(expr_c, incomplete_vars),
               IsError("use of undeclared identifier '$y'"));
 }

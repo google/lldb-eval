@@ -324,7 +324,7 @@ void Interpreter::Visit(const IdentifierNode* node) {
       assert(val.IsValid() && "invalid ast: invalid identifier value");
       break;
 
-    case Kind::kContextVar:
+    case Kind::kContextArg:
       assert(node->is_context_var() && "invalid ast: context var expected");
       val = ResolveContextVar(node->name());
       if (!val.IsValid()) {

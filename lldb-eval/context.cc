@@ -70,11 +70,6 @@ std::shared_ptr<SourceManager> SourceManager::Create(std::string expr) {
   return std::shared_ptr<SourceManager>(new SourceManager(std::move(expr)));
 };
 
-void Context::SetContextVars(
-    std::unordered_map<std::string, Value> context_vars) {
-  context_vars_ = std::move(context_vars);
-}
-
 void Context::SetContextArgs(
     std::unordered_map<std::string, TypeSP> context_args) {
   context_args_ = std::move(context_args);
@@ -226,15 +221,10 @@ static lldb::SBValue LookupStaticIdentifier(lldb::SBTarget target,
 
 std::unique_ptr<ParserContext::IdentifierInfo> Context::LookupIdentifier(
     const std::string& name) const {
-  // Lookup context variables first.
-  auto context_var = context_vars_.find(name);
-  if (context_var != context_vars_.end()) {
-    return IdentifierInfo::FromValue(context_var->second.inner_value());
-  }
-
+  // Lookup context arguments first.
   auto context_arg = context_args_.find(name);
   if (context_arg != context_args_.end()) {
-    return IdentifierInfo::FromContextVar(context_arg->second);
+    return IdentifierInfo::FromContextArg(context_arg->second);
   }
 
   // Internally values don't have global scope qualifier in their names and
@@ -322,8 +312,7 @@ std::unique_ptr<ParserContext::IdentifierInfo> Context::LookupIdentifier(
 }
 
 bool Context::IsContextVar(const std::string& name) const {
-  return context_vars_.find(name) != context_vars_.end() ||
-         context_args_.find(name) != context_args_.end();
+  return context_args_.find(name) != context_args_.end();
 }
 
 std::shared_ptr<Context> Context::Create(std::shared_ptr<SourceManager> sm,

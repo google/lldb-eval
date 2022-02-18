@@ -42,6 +42,16 @@ static std::unordered_map<std::string, TypeSP> ConvertToTypeMap(
   return ret;
 }
 
+static std::unordered_map<std::string, TypeSP> ConvertToTypeMap(
+    ContextVariableList context_vars) {
+  std::unordered_map<std::string, TypeSP> ret;
+  for (size_t i = 0; i < context_vars.size; ++i) {
+    lldb::SBValue value = context_vars.data[i].value;
+    ret.emplace(context_vars.data[i].name, LLDBType::CreateSP(value.GetType()));
+  }
+  return ret;
+}
+
 static std::unordered_map<std::string, Value> ConvertToValueMap(
     ContextVariableList context_vars) {
   std::unordered_map<std::string, Value> ret;
@@ -58,19 +68,17 @@ static lldb::SBError CreateError(ErrorCode code, const char* message) {
   return error;
 }
 
-static ParsedExpression ParseExpressionImpl(
+static std::shared_ptr<CompiledExpr> CompileExpressionImpl(
     std::shared_ptr<SourceManager> source, std::shared_ptr<Context> ctx,
     Options opts, lldb::SBTarget target, lldb::SBType scope,
     lldb::SBError& error) {
   error.Clear();
 
   // Handle parsing options.
-  if (opts.context_vars.size > 0) {
-    ctx->SetContextVars(ConvertToValueMap(opts.context_vars));
-  }
-  if (opts.context_args.size > 0) {
-    ctx->SetContextArgs(ConvertToTypeMap(opts.context_args));
-  }
+  std::unordered_map<std::string, TypeSP> context_args =
+      ConvertToTypeMap(opts.context_args);
+  context_args.merge(ConvertToTypeMap(opts.context_vars));
+  ctx->SetContextArgs(std::move(context_args));
   ctx->SetAllowSideEffects(opts.allow_side_effects);
 
   Error err;
@@ -78,21 +86,21 @@ static ParsedExpression ParseExpressionImpl(
   ExprResult tree = p.Run(err);
   if (err) {
     error = CreateError(err.code(), err.message().c_str());
-    return {};
+    return nullptr;
   }
 
-  return {source, std::move(tree), target, scope};
+  return std::make_shared<CompiledExpr>(source, std::move(tree), scope);
 }
 
-static lldb::SBValue EvaluateExpressionImpl(ParsedExpression& parsed_expr,
-                                            ContextVariableList context_vars,
-                                            Value scope, lldb::SBError& error) {
-  Interpreter eval(parsed_expr.target, parsed_expr.source, scope);
+static lldb::SBValue EvaluateExpressionImpl(
+    std::shared_ptr<CompiledExpr> parsed_expr, ContextVariableList context_vars,
+    lldb::SBTarget target, Value scope, lldb::SBError& error) {
+  Interpreter eval(target, parsed_expr->source, scope);
   if (context_vars.size > 0) {
     eval.SetContextVars(ConvertToValueMap(context_vars));
   }
   Error err;
-  Value ret = eval.Eval(parsed_expr.tree.get(), err);
+  Value ret = eval.Eval(parsed_expr->tree.get(), err);
   if (err) {
     error = CreateError(err.code(), err.message().c_str());
     return ret.inner_value();
@@ -113,12 +121,16 @@ lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
 
 lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
                                  Options opts, lldb::SBError& error) {
-  ParsedExpression parsed_expr =
-      ParseExpression(frame, expression, opts, error);
-  if (error.GetError()) {
+  auto source = SourceManager::Create(expression);
+  auto context = Context::Create(source, frame);
+  auto target = frame.GetThread().GetProcess().GetTarget();
+  auto compiled_expr = CompileExpressionImpl(source, context, opts, target,
+                                             lldb::SBType(), error);
+  if (error) {
     return lldb::SBValue();
   }
-  return EvaluateParsedExpression(parsed_expr, error);
+  return EvaluateExpressionImpl(compiled_expr, opts.context_vars, target,
+                                Value(), error);
 }
 
 lldb::SBValue EvaluateExpression(lldb::SBValue scope, const char* expression,
@@ -128,76 +140,48 @@ lldb::SBValue EvaluateExpression(lldb::SBValue scope, const char* expression,
 
 lldb::SBValue EvaluateExpression(lldb::SBValue scope, const char* expression,
                                  Options opts, lldb::SBError& error) {
-  ParsedExpression parsed_expr = ParseExpression(
-      scope.GetTarget(), scope.GetType(), expression, opts, error);
+  auto compiled_expr = CompileExpression(scope.GetTarget(), scope.GetType(),
+                                         expression, opts, error);
   if (error.GetError()) {
     return lldb::SBValue();
   }
-  return EvaluateParsedExpression(scope, parsed_expr, error);
+  return EvaluateExpression(scope, compiled_expr, opts.context_vars, error);
 }
 
-ParsedExpression ParseExpression(lldb::SBFrame frame, const char* expression,
-                                 lldb::SBError& error) {
-  return ParseExpression(frame, expression, Options{}, error);
+std::shared_ptr<CompiledExpr> CompileExpression(lldb::SBTarget target,
+                                                lldb::SBType scope,
+                                                const char* expression,
+                                                lldb::SBError& error) {
+  return CompileExpression(target, scope, expression, Options{}, error);
 }
 
-ParsedExpression ParseExpression(lldb::SBFrame frame, const char* expression,
-                                 Options opts, lldb::SBError& error) {
-  auto source = SourceManager::Create(expression);
-  auto context = Context::Create(source, frame);
-  auto target = frame.GetThread().GetProcess().GetTarget();
-  return ParseExpressionImpl(source, context, opts, target, lldb::SBType(),
-                             error);
-}
-
-ParsedExpression ParseExpression(lldb::SBTarget target, lldb::SBType scope,
-                                 const char* expression, lldb::SBError& error) {
-  return ParseExpression(target, scope, expression, Options{}, error);
-}
-
-ParsedExpression ParseExpression(lldb::SBTarget target, lldb::SBType scope,
-                                 const char* expression, Options opts,
-                                 lldb::SBError& error) {
+std::shared_ptr<CompiledExpr> CompileExpression(lldb::SBTarget target,
+                                                lldb::SBType scope,
+                                                const char* expression,
+                                                Options opts,
+                                                lldb::SBError& error) {
   auto source = SourceManager::Create(expression);
   auto context = Context::Create(source, target, LLDBType::CreateSP(scope));
-  return ParseExpressionImpl(source, context, opts, target, scope, error);
+  return CompileExpressionImpl(source, context, opts, target, scope, error);
 }
 
-lldb::SBValue EvaluateParsedExpression(ParsedExpression& expression,
-                                       lldb::SBError& error) {
-  return EvaluateParsedExpression(expression, ContextVariableList{}, error);
+lldb::SBValue EvaluateExpression(lldb::SBValue scope,
+                                 std::shared_ptr<CompiledExpr> expression,
+                                 lldb::SBError& error) {
+  return EvaluateExpression(scope, expression, ContextVariableList{}, error);
 }
 
-lldb::SBValue EvaluateParsedExpression(ParsedExpression& expression,
-                                       ContextVariableList context_vars,
-                                       lldb::SBError& error) {
-  return EvaluateExpressionImpl(expression, context_vars, Value(), error);
-}
-
-lldb::SBValue EvaluateParsedExpression(lldb::SBValue scope,
-                                       ParsedExpression& expression,
-                                       lldb::SBError& error) {
-  return EvaluateParsedExpression(scope, expression, ContextVariableList{},
-                                  error);
-}
-
-lldb::SBValue EvaluateParsedExpression(lldb::SBValue scope,
-                                       ParsedExpression& expression,
-                                       ContextVariableList context_vars,
-                                       lldb::SBError& error) {
+lldb::SBValue EvaluateExpression(lldb::SBValue scope,
+                                 std::shared_ptr<CompiledExpr> expression,
+                                 ContextVariableList context_vars,
+                                 lldb::SBError& error) {
   // The `scope` value should be casted to the context type used for parsing.
   // This is allowed only in cases when the `scope`'s type is equal to the
   // context type or it is derived from the context type.
 
-  if (!expression.scope.IsValid()) {
-    error = CreateError(ErrorCode::kUnknown,
-                        "expression isn't parsed in the context of a type");
-    return lldb::SBValue();
-  }
-
   std::vector<uint32_t> path;
   if (!GetPathToBaseType(LLDBType::CreateSP(scope.GetType()),
-                         LLDBType::CreateSP(expression.scope), &path,
+                         LLDBType::CreateSP(expression->scope), &path,
                          /*offset*/ nullptr)) {
     // If it's not possible to cast the given `scope` value to the type context
     // of parsed expression, return with an error.
@@ -214,7 +198,8 @@ lldb::SBValue EvaluateParsedExpression(lldb::SBValue scope,
   }
   assert(scope.IsValid() && "failed to cast scope variable");
 
-  return EvaluateExpressionImpl(expression, context_vars, Value(scope), error);
+  return EvaluateExpressionImpl(expression, context_vars, scope.GetTarget(),
+                                Value(scope), error);
 }
 
 }  // namespace lldb_eval

@@ -217,7 +217,6 @@ static void TestMemberOfInheritance() {
   Parent* parent = &obj;
 
   // BREAK(TestMemberOfInheritance)
-  // BREAK(TestSomething)
 }
 
 static void TestMemberOfAnonymousMember() {
