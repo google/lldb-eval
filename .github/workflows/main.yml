@@ -37,7 +37,7 @@ jobs:
           echo "CXX=clang++-${{ matrix.tag }}" >> $GITHUB_ENV
 
       - name: Setup LLVM (Windows)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-2019'
         run: |
           C:\msys64\usr\bin\wget.exe -q "https://github.com/google/lldb-eval/releases/download/llvm-11/${{ matrix.llvm_archive }}.7z"
           7z x -y "${{ matrix.llvm_archive }}.7z"
