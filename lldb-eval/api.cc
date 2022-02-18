@@ -70,8 +70,7 @@ static lldb::SBError CreateError(ErrorCode code, const char* message) {
 
 static std::shared_ptr<CompiledExpr> CompileExpressionImpl(
     std::shared_ptr<SourceManager> source, std::shared_ptr<Context> ctx,
-    Options opts, lldb::SBTarget target, lldb::SBType scope,
-    lldb::SBError& error) {
+    Options opts, lldb::SBType scope, lldb::SBError& error) {
   error.Clear();
 
   // Handle parsing options.
@@ -123,12 +122,14 @@ lldb::SBValue EvaluateExpression(lldb::SBFrame frame, const char* expression,
                                  Options opts, lldb::SBError& error) {
   auto source = SourceManager::Create(expression);
   auto context = Context::Create(source, frame);
-  auto target = frame.GetThread().GetProcess().GetTarget();
-  auto compiled_expr = CompileExpressionImpl(source, context, opts, target,
-                                             lldb::SBType(), error);
+  auto compiled_expr =
+      CompileExpressionImpl(source, context, opts, lldb::SBType(), error);
+
   if (error) {
     return lldb::SBValue();
   }
+
+  auto target = frame.GetThread().GetProcess().GetTarget();
   return EvaluateExpressionImpl(compiled_expr, opts.context_vars, target,
                                 Value(), error);
 }
@@ -162,7 +163,7 @@ std::shared_ptr<CompiledExpr> CompileExpression(lldb::SBTarget target,
                                                 lldb::SBError& error) {
   auto source = SourceManager::Create(expression);
   auto context = Context::Create(source, target, LLDBType::CreateSP(scope));
-  return CompileExpressionImpl(source, context, opts, target, scope, error);
+  return CompileExpressionImpl(source, context, opts, scope, error);
 }
 
 lldb::SBValue EvaluateExpression(lldb::SBValue scope,
