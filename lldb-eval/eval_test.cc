@@ -3401,7 +3401,7 @@ TEST_F(EvalTest, TestRegistersNoDollar) {
 
   // Not shadowed by anything.
   for (std::string reg_name : {"rdx", "rdi", "rsi", "rbp", "rsp", "flags"}) {
-    const char* reg_value = frame_.FindRegister(reg_name.c_str()).GetValue();
-    EXPECT_THAT(Eval(reg_name), IsEqual(reg_value));
+    lldb::SBValue reg = frame_.FindRegister(reg_name.c_str());
+    EXPECT_THAT(Eval(reg_name), IsEqual(reg.GetValue()));
   }
 }
