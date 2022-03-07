@@ -221,17 +221,25 @@ static lldb::SBValue LookupStaticIdentifier(lldb::SBTarget target,
 
 std::unique_ptr<ParserContext::IdentifierInfo> Context::LookupIdentifier(
     const std::string& name) const {
-  // Lookup context arguments first.
+  // Context arguments take precedence over other identifiers (local/global
+  // variables, enum values, registers).
   auto context_arg = context_args_.find(name);
   if (context_arg != context_args_.end()) {
     return IdentifierInfo::FromContextArg(context_arg->second);
   }
 
+  llvm::StringRef name_ref(name);
+
+  // Support $rax as a special syntax for accessing registers.
+  // Will return an invalid value in case the requested register doesn't exist.
+  if (name_ref.startswith("$")) {
+    const char* reg_name = name_ref.drop_front(1).data();
+    return IdentifierInfo::FromValue(ctx_.GetFrame().FindRegister(reg_name));
+  }
+
   // Internally values don't have global scope qualifier in their names and
   // LLDB doesn't support queries with it too.
-  llvm::StringRef name_ref(name);
   bool global_scope = false;
-
   if (name_ref.startswith("::")) {
     name_ref = name_ref.drop_front(2);
     global_scope = true;
@@ -286,6 +294,7 @@ std::unique_ptr<ParserContext::IdentifierInfo> Context::LookupIdentifier(
     value = LookupStaticIdentifier(ctx_.GetTarget(), name_with_type_prefix);
   }
 
+  // Lookup a regular global variable.
   if (!value) {
     value = LookupStaticIdentifier(ctx_.GetTarget(), name_ref);
   }
@@ -305,6 +314,11 @@ std::unique_ptr<ParserContext::IdentifierInfo> Context::LookupIdentifier(
         break;
       }
     }
+  }
+
+  // Last resort, lookup as a register (e.g. `rax` or `rip`).
+  if (!value) {
+    value = ctx_.GetFrame().FindRegister(name_ref.data());
   }
 
   // Force static value, otherwise we can end up with the "real" type.

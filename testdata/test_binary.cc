@@ -1170,6 +1170,20 @@ static void TestSeparateParsing() {
   // BREAK(TestSeparateParsingWithContextVars)
 }
 
+// Used by TestRegistersNoDollar
+int rcx = 42;
+
+struct RegisterCtx {
+  int rbx = 42;
+
+  void TestRegisters() {
+    int rax = 42;
+
+    // BREAK(TestRegisters)
+    // BREAK(TestRegistersNoDollar)
+  }
+};
+
 namespace test_binary {
 
 void main() {
@@ -1218,6 +1232,9 @@ void main() {
   TestTypeComparison();
   TestTypeVsIdentifier();
   TestSeparateParsing();
+
+  RegisterCtx rc;
+  rc.TestRegisters();
 
   // BREAK HERE
 }

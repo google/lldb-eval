@@ -3368,3 +3368,40 @@ TEST_F(EvalTest, TestSeparateParsingWithContextVars) {
   EXPECT_THAT(Scope("c").EvalWithContext(expr_c, incomplete_vars),
               IsError("use of undeclared identifier '$y'"));
 }
+
+TEST_F(EvalTest, TestRegisters) {
+  // LLDB loses the value formatter when evaluating registers and prints their
+  // value "as is". In lldb-eval the value formatter is preserved and the
+  // register can be "pretty-printed" depending on its type (e.g. vector
+  // registers are printed as vectors).
+  // Add an explicit cast so that the values are the same and can be compared.
+  EXPECT_THAT(Eval("(uint64_t) $rax"), IsOk());
+  EXPECT_THAT(Eval("(uint64_t) $rbx"), IsOk());
+  EXPECT_THAT(Eval("(uint64_t) $rcx"), IsOk());
+  EXPECT_THAT(Eval("(uint64_t) $rdx"), IsOk());
+  EXPECT_THAT(Eval("(uint64_t) $rdi"), IsOk());
+  EXPECT_THAT(Eval("(uint64_t) $rsi"), IsOk());
+  EXPECT_THAT(Eval("(uint64_t) $rbp"), IsOk());
+  EXPECT_THAT(Eval("(uint64_t) $rsp"), IsOk());
+  EXPECT_THAT(Eval("(uint64_t) $flags"), IsOk());
+}
+
+TEST_F(EvalTest, TestRegistersNoDollar) {
+  this->compare_with_lldb_ = false;
+
+  // lldb-eval also supports accessing registers without `$`. Any other
+  // identifier (e.g. local variable) will shadow the register.
+
+  // Shadowed by a local variable.
+  EXPECT_THAT(Eval("rax"), IsEqual("42"));
+  // Shadowed by a member field.
+  EXPECT_THAT(Eval("rbx"), IsEqual("42"));
+  // Shadowed by a global field.
+  EXPECT_THAT(Eval("rcx"), IsEqual("42"));
+
+  // Not shadowed by anything.
+  for (std::string reg_name : {"rdx", "rdi", "rsi", "rbp", "rsp", "flags"}) {
+    const char* reg_value = frame_.FindRegister(reg_name.c_str()).GetValue();
+    EXPECT_THAT(Eval(reg_name), IsEqual(reg_value));
+  }
+}
