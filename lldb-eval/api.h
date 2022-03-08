@@ -19,11 +19,8 @@
 
 #include <memory>
 
-#include "lldb-eval/ast.h"
-#include "lldb-eval/context.h"
 #include "lldb/API/SBError.h"
 #include "lldb/API/SBFrame.h"
-#include "lldb/API/SBTarget.h"
 #include "lldb/API/SBValue.h"
 
 #ifdef _MSC_VER
@@ -41,6 +38,11 @@
 #endif
 
 namespace lldb_eval {
+
+// Including full definitions of the following classes also includes many
+// unnecessary structures from LLVM. Forward declaration is sufficient.
+class AstNode;
+class SourceManager;
 
 // Context variables (aka. convenience variables) are variables living entirely
 // within LLDB. They are prefixed with '$' and created via expression evaluation
@@ -81,12 +83,10 @@ struct CompiledExpr {
   std::shared_ptr<SourceManager> source;
   std::unique_ptr<AstNode> tree;
   lldb::SBType scope;
+  lldb::SBType result_type;
 
   CompiledExpr(std::shared_ptr<SourceManager> source,
-               std::unique_ptr<AstNode> tree, lldb::SBType scope)
-      : source(std::move(source)),
-        tree(std::move(tree)),
-        scope(std::move(scope)) {}
+               std::unique_ptr<AstNode> tree, lldb::SBType scope);
 };
 
 LLDB_EVAL_API
