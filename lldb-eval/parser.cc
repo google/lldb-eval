@@ -138,15 +138,15 @@ std::tuple<lldb::BasicType, bool> PickIntegerType(
 }
 
 lldb::BasicType PickCharType(clang::CharLiteralParser& literal) {
-  if(literal.isMultiChar()){
+  if (literal.isMultiChar()) {
     return lldb::eBasicTypeInt;
-  }else if(literal.isAscii()){
+  } else if (literal.isAscii()) {
     return lldb::eBasicTypeChar;
-  }else if(literal.isWide()){
+  } else if (literal.isWide()) {
     return lldb::eBasicTypeWChar;
-  }else if(literal.isUTF16()){
+  } else if (literal.isUTF16()) {
     return lldb::eBasicTypeChar16;
-  }else if(literal.isUTF32()){
+  } else if (literal.isUTF32()) {
     return lldb::eBasicTypeChar32;
   }
   return lldb::eBasicTypeChar;
@@ -1297,8 +1297,10 @@ ExprResult Parser::ParsePrimaryExpression() {
   } else if (token_.isOneOf(clang::tok::kw_true, clang::tok::kw_false)) {
     return ParseBooleanLiteral();
   } else if (token_.isOneOf(clang::tok::char_constant,
-            clang::tok::wide_char_constant, clang::tok::utf8_char_constant,
-            clang::tok::utf16_char_constant, clang::tok::utf32_char_constant)) {
+                            clang::tok::wide_char_constant,
+                            clang::tok::utf8_char_constant,
+                            clang::tok::utf16_char_constant,
+                            clang::tok::utf32_char_constant)) {
     return ParseCharLiteral();
   } else if (token_.is(clang::tok::kw_nullptr)) {
     return ParsePointerLiteral();
@@ -2160,8 +2162,8 @@ ExprResult Parser::ParseCharLiteral() {
   llvm::SmallString<8> CharBuffer;
   bool CharInvalid = false;
   llvm::StringRef ThisTok = pp_->getSpelling(token_, CharBuffer, &CharInvalid);
-  clang::CharLiteralParser charLiteral(ThisTok.begin(), ThisTok.end(),
-                               loc, *pp_, token_.getKind());
+  clang::CharLiteralParser charLiteral(ThisTok.begin(), ThisTok.end(), loc,
+                                       *pp_, token_.getKind());
 
   if (CharInvalid || charLiteral.hadError()) {
     BailOut(
@@ -2173,8 +2175,8 @@ ExprResult Parser::ParseCharLiteral() {
 
   auto basicType = PickCharType(charLiteral);
   llvm::APInt literal_value(
-                  ctx_->GetBasicType(basicType)->GetByteSize()*CHAR_BIT,
-                  charLiteral.getValue());
+      ctx_->GetBasicType(basicType)->GetByteSize()*CHAR_BIT,
+      charLiteral.getValue());
 
   ConsumeToken();
   return std::make_unique<LiteralNode>(
