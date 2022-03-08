@@ -2175,7 +2175,7 @@ ExprResult Parser::ParseCharLiteral() {
 
   auto basicType = PickCharType(charLiteral);
   llvm::APInt literal_value(
-      ctx_->GetBasicType(basicType)->GetByteSize()*CHAR_BIT,
+      ctx_->GetBasicType(basicType)->GetByteSize() * CHAR_BIT,
       charLiteral.getValue());
 
   ConsumeToken();
