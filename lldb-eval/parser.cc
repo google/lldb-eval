@@ -137,6 +137,21 @@ std::tuple<lldb::BasicType, bool> PickIntegerType(
   return {lldb::eBasicTypeUnsignedLongLong, true};
 }
 
+lldb::BasicType PickCharType(clang::CharLiteralParser& literal) {
+  if(literal.isMultiChar()){
+    return lldb::eBasicTypeInt;
+  }else if(literal.isAscii()){
+    return lldb::eBasicTypeChar;
+  }else if(literal.isWide()){
+    return lldb::eBasicTypeWChar;
+  }else if(literal.isUTF16()){
+    return lldb::eBasicTypeChar16;
+  }else if(literal.isUTF32()){
+    return lldb::eBasicTypeChar32;
+  }
+  return lldb::eBasicTypeChar;
+}
+
 static bool TokenEndsTemplateArgumentList(const clang::Token& token) {
   // Note: in C++11 ">>" can be treated as "> >" and thus be a valid token
   // for the template argument list.
@@ -1281,6 +1296,10 @@ ExprResult Parser::ParsePrimaryExpression() {
     return ParseNumericLiteral();
   } else if (token_.isOneOf(clang::tok::kw_true, clang::tok::kw_false)) {
     return ParseBooleanLiteral();
+  } else if (token_.isOneOf(clang::tok::char_constant,
+            clang::tok::wide_char_constant, clang::tok::utf8_char_constant,
+            clang::tok::utf16_char_constant, clang::tok::utf32_char_constant)) {
+    return ParseCharLiteral();
   } else if (token_.is(clang::tok::kw_nullptr)) {
     return ParsePointerLiteral();
   } else if (token_.isOneOf(clang::tok::coloncolon, clang::tok::identifier)) {
@@ -2131,6 +2150,36 @@ ExprResult Parser::ParseBooleanLiteral() {
   return std::make_unique<LiteralNode>(
       loc, ctx_->GetBasicType(lldb::eBasicTypeBool), literal_value,
       /*is_literal_zero*/ false);
+}
+
+ExprResult Parser::ParseCharLiteral() {
+  ExpectOneOf(clang::tok::char_constant, clang::tok::wide_char_constant,
+              clang::tok::utf16_char_constant, clang::tok::utf32_char_constant);
+  clang::SourceLocation loc = token_.getLocation();
+
+  llvm::SmallString<8> CharBuffer;
+  bool CharInvalid = false;
+  llvm::StringRef ThisTok = pp_->getSpelling(token_, CharBuffer, &CharInvalid);
+  clang::CharLiteralParser charLiteral(ThisTok.begin(), ThisTok.end(),
+                               loc, *pp_, token_.getKind());
+
+  if (CharInvalid || charLiteral.hadError()) {
+    BailOut(
+        ErrorCode::kInvalidCharLiteral,
+        "Failed to parse token as char-constant: " + TokenDescription(token_),
+        token_.getLocation());
+    return std::make_unique<ErrorNode>(ctx_->GetEmptyType());
+  }
+
+  auto basicType = PickCharType(charLiteral);
+  llvm::APInt literal_value(
+                  ctx_->GetBasicType(basicType)->GetByteSize()*CHAR_BIT,
+                  charLiteral.getValue());
+
+  ConsumeToken();
+  return std::make_unique<LiteralNode>(
+      loc, ctx_->GetBasicType(basicType), literal_value,
+      /*is_literal_zero*/ literal_value.isNullValue());
 }
 
 // Parse an pointer_literal.

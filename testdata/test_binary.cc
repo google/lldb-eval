@@ -1184,6 +1184,10 @@ struct RegisterCtx {
   }
 };
 
+static void TestCharParsing() {
+  // BREAK(TestCharParsing)
+}
+
 namespace test_binary {
 
 void main() {
@@ -1236,6 +1240,7 @@ void main() {
   RegisterCtx rc;
   rc.TestRegisters();
 
+  TestCharParsing();
   // BREAK HERE
 }
 

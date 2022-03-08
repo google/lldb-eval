@@ -162,6 +162,7 @@ class Parser {
 
   ExprResult ParseNumericLiteral();
   ExprResult ParseBooleanLiteral();
+  ExprResult ParseCharLiteral();
   ExprResult ParsePointerLiteral();
 
   ExprResult ParseNumericConstant(clang::Token token);

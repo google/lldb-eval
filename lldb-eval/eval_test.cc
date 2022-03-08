@@ -3405,3 +3405,30 @@ TEST_F(EvalTest, TestRegistersNoDollar) {
     EXPECT_THAT(Eval(reg_name), IsEqual(reg.GetValue()));
   }
 }
+
+TEST_F(EvalTest, TestCharParsing) {
+  EXPECT_THAT(Eval("1 + 'A'"), IsEqual("66"));
+  EXPECT_THAT(Eval("'B' - 'A'"), IsEqual("1"));
+  EXPECT_THAT(Eval("'A' == 'B'"), IsEqual("false"));
+  EXPECT_THAT(Eval("'A' == 'A'"), IsEqual("true"));
+
+  EXPECT_THAT(Eval("1 + u'A'"), IsEqual("66"));
+  EXPECT_THAT(Eval("u'B' - u'A'"), IsEqual("1"));
+  EXPECT_THAT(Eval("u'A' == u'B'"), IsEqual("false"));
+  EXPECT_THAT(Eval("u'A' == u'A'"), IsEqual("true"));
+
+  EXPECT_THAT(Eval("1 + U'A'"), IsEqual("66"));
+  EXPECT_THAT(Eval("U'B' - U'A'"), IsEqual("1"));
+  EXPECT_THAT(Eval("U'A' == U'B'"), IsEqual("false"));
+  EXPECT_THAT(Eval("U'A' == U'A'"), IsEqual("true"));
+
+  EXPECT_THAT(Eval("1 + L'A'"), IsEqual("66"));
+  EXPECT_THAT(Eval("L'B' - L'A'"), IsEqual("1"));
+  EXPECT_THAT(Eval("L'A' == L'B'"), IsEqual("false"));
+  EXPECT_THAT(Eval("L'A' == L'A'"), IsEqual("true"));
+
+  EXPECT_THAT(Eval("1 + 'ABC'"), IsEqual("4276804"));
+  EXPECT_THAT(Eval("'ABD' - 'ABC'"), IsEqual("1"));
+  EXPECT_THAT(Eval("'ABC' == 'BCD'"), IsEqual("false"));
+  EXPECT_THAT(Eval("'ABC' == 'ABC'"), IsEqual("true"));
+}
