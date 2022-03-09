@@ -3412,6 +3412,14 @@ TEST_F(EvalTest, TestCharParsing) {
   EXPECT_THAT(Eval("'A' == 'B'"), IsEqual("false"));
   EXPECT_THAT(Eval("'A' == 'A'"), IsEqual("true"));
 
+  /*Following test fails detecting different results from
+   *as u8 prefix is not handled in lldb
+   *EXPECT_THAT(Eval("1 + u8'A'"), IsEqual("66"));
+   *EXPECT_THAT(Eval("u8'B' - u8'A'"), IsEqual("1"));
+   *EXPECT_THAT(Eval("u8'A' == u8'B'"), IsEqual("false"));
+   *EXPECT_THAT(Eval("u8'A' == u8'A'"), IsEqual("true"));
+   */
+
   EXPECT_THAT(Eval("1 + u'A'"), IsEqual("66"));
   EXPECT_THAT(Eval("u'B' - u'A'"), IsEqual("1"));
   EXPECT_THAT(Eval("u'A' == u'B'"), IsEqual("false"));
@@ -3431,4 +3439,9 @@ TEST_F(EvalTest, TestCharParsing) {
   EXPECT_THAT(Eval("'ABD' - 'ABC'"), IsEqual("1"));
   EXPECT_THAT(Eval("'ABC' == 'BCD'"), IsEqual("false"));
   EXPECT_THAT(Eval("'ABC' == 'ABC'"), IsEqual("true"));
+
+  EXPECT_THAT(Eval("U'ъ'== U'猫'"), IsEqual("false"));
+  EXPECT_THAT(Eval("U'ü'== U'ü'"), IsEqual("true"));
+  EXPECT_THAT(Eval("U'u'== U'ü'"), IsEqual("false"));
+  EXPECT_THAT(Eval("'ABCDE'=='ABCDF'"), IsEqual("false"));
 }

@@ -1241,6 +1241,7 @@ void main() {
   rc.TestRegisters();
 
   TestCharParsing();
+
   // BREAK HERE
 }
 

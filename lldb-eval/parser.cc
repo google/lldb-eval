@@ -137,13 +137,16 @@ std::tuple<lldb::BasicType, bool> PickIntegerType(
   return {lldb::eBasicTypeUnsignedLongLong, true};
 }
 
-lldb::BasicType PickCharType(clang::CharLiteralParser& literal) {
+lldb::BasicType PickCharType(const clang::CharLiteralParser& literal) {
   if (literal.isMultiChar()) {
     return lldb::eBasicTypeInt;
   } else if (literal.isAscii()) {
     return lldb::eBasicTypeChar;
   } else if (literal.isWide()) {
     return lldb::eBasicTypeWChar;
+  } else if (literal.isUTF8()) {
+    //TODO: Change to eBasicTypeChar8 when support for u8 is added
+    return lldb::eBasicTypeChar;
   } else if (literal.isUTF16()) {
     return lldb::eBasicTypeChar16;
   } else if (literal.isUTF32()) {
@@ -2156,32 +2159,33 @@ ExprResult Parser::ParseBooleanLiteral() {
 
 ExprResult Parser::ParseCharLiteral() {
   ExpectOneOf(clang::tok::char_constant, clang::tok::wide_char_constant,
-              clang::tok::utf16_char_constant, clang::tok::utf32_char_constant);
+              clang::tok::utf8_char_constant, clang::tok::utf16_char_constant,
+              clang::tok::utf32_char_constant);
   clang::SourceLocation loc = token_.getLocation();
 
-  llvm::SmallString<8> CharBuffer;
-  bool CharInvalid = false;
-  llvm::StringRef ThisTok = pp_->getSpelling(token_, CharBuffer, &CharInvalid);
-  clang::CharLiteralParser charLiteral(ThisTok.begin(), ThisTok.end(), loc,
-                                       *pp_, token_.getKind());
+  std::string token_spelling = pp_->getSpelling(token_);
 
-  if (CharInvalid || charLiteral.hadError()) {
-    BailOut(
-        ErrorCode::kInvalidCharLiteral,
-        "Failed to parse token as char-constant: " + TokenDescription(token_),
-        token_.getLocation());
+  const char* token_begin = token_spelling.c_str();
+  clang::CharLiteralParser char_literal(token_begin,
+                                        token_begin + token_spelling.size(),
+                                        loc, *pp_, token_.getKind());
+
+  if (char_literal.hadError()) {
+    // TODO: Add new ErrorCode kInvalidCharLiteral and use it
+    BailOut(ErrorCode::kInvalidNumericLiteral,
+            llvm::formatv("Failed to parse token as char-constant: {0}",
+                          TokenDescription(token_)),
+            token_.getLocation());
     return std::make_unique<ErrorNode>(ctx_->GetEmptyType());
   }
 
-  auto basicType = PickCharType(charLiteral);
-  llvm::APInt literal_value(
-      ctx_->GetBasicType(basicType)->GetByteSize() * CHAR_BIT,
-      charLiteral.getValue());
+  auto ctx_basic_type = ctx_->GetBasicType(PickCharType(char_literal));
+  llvm::APInt literal_value(ctx_basic_type->GetByteSize() * CHAR_BIT,
+                            char_literal.getValue());
 
   ConsumeToken();
-  return std::make_unique<LiteralNode>(
-      loc, ctx_->GetBasicType(basicType), literal_value,
-      /*is_literal_zero*/ literal_value.isNullValue());
+  return std::make_unique<LiteralNode>(loc, ctx_basic_type, literal_value,
+                                       /*is_literal_zero*/ false);
 }
 
 // Parse an pointer_literal.

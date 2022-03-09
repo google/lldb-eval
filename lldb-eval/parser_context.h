@@ -11,7 +11,6 @@ enum class ErrorCode : unsigned char {
   kOk = 0,
   kInvalidExpressionSyntax,
   kInvalidNumericLiteral,
-  kInvalidCharLiteral,
   kInvalidOperandType,
   kUndeclaredIdentifier,
   kNotImplemented,
