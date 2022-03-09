@@ -145,7 +145,7 @@ lldb::BasicType PickCharType(const clang::CharLiteralParser& literal) {
   } else if (literal.isWide()) {
     return lldb::eBasicTypeWChar;
   } else if (literal.isUTF8()) {
-    //TODO: Change to eBasicTypeChar8 when support for u8 is added
+    // TODO: Change to eBasicTypeChar8 when support for u8 is added
     return lldb::eBasicTypeChar;
   } else if (literal.isUTF16()) {
     return lldb::eBasicTypeChar16;
