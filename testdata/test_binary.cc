@@ -1188,6 +1188,10 @@ static void TestCharParsing() {
   // BREAK(TestCharParsing)
 }
 
+static void TestStringParsing() {
+  // BREAK(TestStringParsing)
+}
+
 namespace test_binary {
 
 void main() {
@@ -1241,6 +1245,7 @@ void main() {
   rc.TestRegisters();
 
   TestCharParsing();
+  TestStringParsing();
 
   // BREAK HERE
 }

@@ -25,6 +25,7 @@ class Type {
   virtual bool IsAnonymousType() = 0;
   virtual llvm::StringRef GetName() = 0;
   virtual TypeSP GetArrayElementType() = 0;
+  virtual TypeSP GetArrayType(uint64_t) = 0;
   virtual TypeSP GetEnumerationIntegerType(ParserContext&) = 0;
   virtual bool IsEnumerationIntegerTypeSigned() = 0;
   virtual TypeSP GetPointerType() = 0;

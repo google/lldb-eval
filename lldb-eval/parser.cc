@@ -25,7 +25,9 @@
 #include <vector>
 
 #include "clang/Basic/Diagnostic.h"
+#include "clang/Basic/LLVM.h"
 #include "clang/Basic/LangOptions.h"
+#include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/TargetOptions.h"
@@ -40,6 +42,8 @@
 #include "lldb-eval/ast.h"
 #include "lldb-eval/defines.h"
 #include "lldb/lldb-enumerations.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatAdapters.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -146,6 +150,22 @@ lldb::BasicType PickCharType(const clang::CharLiteralParser& literal) {
     return lldb::eBasicTypeWChar;
   } else if (literal.isUTF8()) {
     // TODO: Change to eBasicTypeChar8 when support for u8 is added
+    return lldb::eBasicTypeChar;
+  } else if (literal.isUTF16()) {
+    return lldb::eBasicTypeChar16;
+  } else if (literal.isUTF32()) {
+    return lldb::eBasicTypeChar32;
+  }
+  return lldb::eBasicTypeChar;
+}
+
+lldb::BasicType PickCharType(const clang::StringLiteralParser& literal) {
+  if (literal.isAscii()) {
+    return lldb::eBasicTypeChar;
+  } else if (literal.isWide()) {
+    return lldb::eBasicTypeWChar;
+  } else if (literal.isUTF8()) {
+    // TODO: Change to eBasicTypeChar8 when support for u8 is added.
     return lldb::eBasicTypeChar;
   } else if (literal.isUTF16()) {
     return lldb::eBasicTypeChar16;
@@ -697,14 +717,24 @@ Parser::Parser(std::shared_ptr<ParserContext> ctx) : ctx_(std::move(ctx)) {
 
 ExprResult Parser::Run(Error& error) {
   ConsumeToken();
-  auto expr = ParseExpression();
+
+  ExprResult expr;
+  if (clang::tok::isStringLiteral(token_.getKind()) &&
+      pp_->LookAhead(0).is(clang::tok::eof)) {
+    // A special case to handle a single string-literal token.
+    expr = ParseStringLiteral();
+  } else {
+    expr = ParseExpression();
+  }
+
   Expect(clang::tok::eof);
 
   error = error_;
   error_.Clear();
 
-  // Explicitly return ErrorNode if there was an error during the parsing. Some
-  // routines raise an error, but don't change the return value (e.g. Expect).
+  // Explicitly return ErrorNode if there was an error during the parsing.
+  // Some routines raise an error, but don't change the return value (e.g.
+  // Expect).
   if (error) {
     return std::make_unique<ErrorNode>(ctx_->GetEmptyType());
   }
@@ -1305,6 +1335,12 @@ ExprResult Parser::ParsePrimaryExpression() {
                             clang::tok::utf16_char_constant,
                             clang::tok::utf32_char_constant)) {
     return ParseCharLiteral();
+  } else if (clang::tok::isStringLiteral(token_.getKind())) {
+    // Note: Only expressions that consist of a single string literal can be
+    // handled by lldb-eval.
+    BailOut(ErrorCode::kNotImplemented, "string literals are not supported",
+            token_.getLocation());
+    return std::make_unique<ErrorNode>(ctx_->GetEmptyType());
   } else if (token_.is(clang::tok::kw_nullptr)) {
     return ParsePointerLiteral();
   } else if (token_.isOneOf(clang::tok::coloncolon, clang::tok::identifier)) {
@@ -2186,6 +2222,44 @@ ExprResult Parser::ParseCharLiteral() {
   ConsumeToken();
   return std::make_unique<LiteralNode>(loc, ctx_basic_type, literal_value,
                                        /*is_literal_zero*/ false);
+}
+
+ExprResult Parser::ParseStringLiteral() {
+  ExpectOneOf(clang::tok::string_literal, clang::tok::wide_string_literal,
+              clang::tok::utf8_string_literal, clang::tok::utf16_string_literal,
+              clang::tok::utf32_string_literal);
+  clang::SourceLocation loc = token_.getLocation();
+
+  // TODO: Support parsing of joined string-literals (e.g. "abc" "def").
+  // Currently, only a single token can be parsed into a string.
+  clang::StringLiteralParser string_literal(
+      clang::ArrayRef<clang::Token>(token_), *pp_);
+
+  if (string_literal.hadError) {
+    // TODO: Use ErrorCode::kInvalidStringLiteral in the future.
+    BailOut(ErrorCode::kInvalidNumericLiteral,
+            llvm::formatv("Failed to parse token as string-literal: {0}",
+                          TokenDescription(token_)),
+            loc);
+    return std::make_unique<ErrorNode>(ctx_->GetEmptyType());
+  }
+
+  auto char_type = ctx_->GetBasicType(PickCharType(string_literal));
+  // Strings are terminated by a null value (add +1).
+  uint64_t array_size =
+      string_literal.GetStringLength() / char_type->GetByteSize() + 1;
+  auto array_type = char_type->GetArrayType(array_size);
+
+  clang::StringRef value = string_literal.GetString();
+  std::vector<char> data(value.data(), value.data() + value.size());
+  // Add the terminating null bytes.
+  data.insert(data.end(), char_type->GetByteSize(), 0);
+
+  assert(data.size() == array_type->GetByteSize() &&
+         "invalid string literal: unexpected data size");
+
+  ConsumeToken();
+  return std::make_unique<LiteralNode>(loc, array_type, std::move(data), false);
 }
 
 // Parse an pointer_literal.

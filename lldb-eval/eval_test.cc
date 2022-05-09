@@ -3450,3 +3450,72 @@ TEST_F(EvalTest, TestCharParsing) {
   EXPECT_THAT(Eval("'Xabcd' == 'Yabcd'"), IsEqual("true"));
   EXPECT_THAT(Eval("'abcdX' == 'abcdY'"), IsEqual("false"));
 }
+
+TEST_F(EvalTest, TestStringParsing) {
+  lldb::SBError ignore;
+  // Comparing is done manually (instead of using IsOk and IsEqual matchers).
+  // This is because `SBValue::GetValue()` returns a nullptr for array types.
+  {
+    auto result = Eval("\"abc\"");
+    EXPECT_TRUE(result.lldb_eval_error.Success());
+    EXPECT_TRUE(result.lldb_eval_value.IsValid());
+    auto data = result.lldb_eval_value.GetData();
+    EXPECT_EQ(data.GetByteSize(), 4);
+    EXPECT_STREQ(data.GetString(ignore, 0), "abc");
+  }
+  {
+    auto result = Eval("\"\"");
+    EXPECT_TRUE(result.lldb_eval_error.Success());
+    EXPECT_TRUE(result.lldb_eval_value.IsValid());
+    auto data = result.lldb_eval_value.GetData();
+    EXPECT_EQ(data.GetByteSize(), 1);
+    EXPECT_STREQ(data.GetString(ignore, 0), "");
+  }
+  {
+    auto result = Eval("u8\"abc\"");
+    EXPECT_TRUE(result.lldb_eval_value.IsValid());
+    auto data = result.lldb_eval_value.GetData();
+    EXPECT_EQ(data.GetByteSize(), 4);
+    EXPECT_STREQ(data.GetString(ignore, 0), "abc");
+  }
+  {
+    auto result = Eval("u\"abc\"");
+    EXPECT_TRUE(result.lldb_eval_value.IsValid());
+    EXPECT_EQ(result.lldb_eval_value.GetData().GetByteSize(), 8);
+    const char16_t* data = reinterpret_cast<const char16_t*>(
+        result.lldb_eval_value.GetData().GetString(ignore, 0));
+    EXPECT_EQ(data[0], u'a');
+    EXPECT_EQ(data[1], u'b');
+    EXPECT_EQ(data[2], u'c');
+    EXPECT_EQ(data[3], 0);
+  }
+  {
+    auto result = Eval("U\"猫ъü\"");
+    EXPECT_TRUE(result.lldb_eval_value.IsValid());
+    EXPECT_EQ(result.lldb_eval_value.GetData().GetByteSize(), 16);
+  }
+  {
+    auto result = Eval("L\"abc\"");
+    EXPECT_TRUE(result.lldb_eval_value.IsValid());
+#ifdef _WIN32
+    // On Windows it holds sizeof(wchar_t) == 2.
+    EXPECT_EQ(result.lldb_eval_value.GetData().GetByteSize(), 8);
+#else
+    EXPECT_EQ(result.lldb_eval_value.GetData().GetByteSize(), 16);
+#endif
+    const wchar_t* data = reinterpret_cast<const wchar_t*>(
+        result.lldb_eval_value.GetData().GetString(ignore, 0));
+    EXPECT_EQ(data[0], L'a');
+    EXPECT_EQ(data[1], L'b');
+    EXPECT_EQ(data[2], L'c');
+    EXPECT_EQ(data[3], 0);
+  }
+
+  // TODO: lldb-eval should be able to handle these cases once string-literals
+  // are properly supported.
+  EXPECT_THAT(Eval("\"abc\" \"def\""),
+              IsError("string literals are not supported"));
+  EXPECT_THAT(Eval("\"abc\" + 1"),
+              IsError("string literals are not supported"));
+  EXPECT_THAT(Eval("*\"abc\""), IsError("string literals are not supported"));
+}

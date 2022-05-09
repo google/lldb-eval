@@ -24,6 +24,7 @@
 #include "lldb/API/SBType.h"
 #include "lldb/API/SBValue.h"
 #include "lldb/lldb-enumerations.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 
 namespace lldb_eval {
@@ -306,6 +307,9 @@ void Interpreter::Visit(const LiteralNode* node) {
       return CreateValueFromAPFloat(target, val, type);
     }
     Value operator()(bool val) { return CreateValueFromBool(target, val); }
+    Value operator()(const std::vector<char>& val) {
+      return CreateValueFromBytes(target, val.data(), type);
+    }
 
     lldb::SBTarget target;
     lldb::SBType type;

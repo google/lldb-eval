@@ -50,6 +50,9 @@ class LLDBType : public Type {
   TypeSP GetArrayElementType() override {
     return CreateSP(type_.GetArrayElementType());
   }
+  TypeSP GetArrayType(uint64_t size) override {
+    return CreateSP(type_.GetArrayType(size));
+  }
   TypeSP GetPointerType() override {
     return LLDBType::CreateSP(type_.GetPointerType());
   }

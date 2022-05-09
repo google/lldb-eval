@@ -67,6 +67,9 @@ class AstPrinter : Visitor {
         std::cout << std::string(buffer.data(), buffer.size());
       }
       void operator()(bool val) { std::cout << val; }
+      void operator()(const std::vector<char>& val) {
+        std::cout << std::string(val.begin(), val.end());
+      }
 
       bool is_signed_;
     } visitor{node->result_type()->IsInteger() &&

@@ -28,6 +28,7 @@
 #include "lldb-eval/type.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace lldb_eval {
 
@@ -100,7 +101,7 @@ class LiteralNode : public AstNode {
 
  private:
   TypeSP type_;
-  std::variant<llvm::APInt, llvm::APFloat, bool> value_;
+  std::variant<llvm::APInt, llvm::APFloat, bool, std::vector<char>> value_;
   bool is_literal_zero_;
 };
 
