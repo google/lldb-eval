@@ -28,7 +28,6 @@
 #include "lldb-eval/type.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
-#include "llvm/ADT/StringRef.h"
 
 namespace lldb_eval {
 

@@ -25,7 +25,6 @@
 #include <vector>
 
 #include "clang/Basic/Diagnostic.h"
-#include "clang/Basic/LLVM.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
@@ -42,7 +41,6 @@
 #include "lldb-eval/ast.h"
 #include "lldb-eval/defines.h"
 #include "lldb/lldb-enumerations.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatAdapters.h"

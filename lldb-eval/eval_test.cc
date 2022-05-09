@@ -3481,34 +3481,46 @@ TEST_F(EvalTest, TestStringParsing) {
   {
     auto result = Eval("u\"abc\"");
     EXPECT_TRUE(result.lldb_eval_value.IsValid());
-    EXPECT_EQ(result.lldb_eval_value.GetData().GetByteSize(), 8);
-    const char16_t* data = reinterpret_cast<const char16_t*>(
-        result.lldb_eval_value.GetData().GetString(ignore, 0));
-    EXPECT_EQ(data[0], u'a');
-    EXPECT_EQ(data[1], u'b');
-    EXPECT_EQ(data[2], u'c');
-    EXPECT_EQ(data[3], 0);
+    auto data = result.lldb_eval_value.GetData();
+    EXPECT_EQ(data.GetByteSize(), 8);
+    char16_t val[4];
+    EXPECT_EQ(data.ReadRawData(ignore, 0, reinterpret_cast<void*>(val), 8), 8);
+    EXPECT_EQ(val[0], u'a');
+    EXPECT_EQ(val[1], u'b');
+    EXPECT_EQ(val[2], u'c');
+    EXPECT_EQ(val[3], 0);
   }
   {
     auto result = Eval("U\"猫ъü\"");
     EXPECT_TRUE(result.lldb_eval_value.IsValid());
-    EXPECT_EQ(result.lldb_eval_value.GetData().GetByteSize(), 16);
+    auto data = result.lldb_eval_value.GetData();
+    EXPECT_EQ(data.GetByteSize(), 16);
+    char32_t val[4];
+    EXPECT_EQ(data.ReadRawData(ignore, 0, reinterpret_cast<void*>(val), 16),
+              16);
+    EXPECT_EQ(val[0], U'猫');
+    EXPECT_EQ(val[1], U'ъ');
+    EXPECT_EQ(val[2], U'ü');
+    EXPECT_EQ(val[3], 0);
   }
   {
     auto result = Eval("L\"abc\"");
     EXPECT_TRUE(result.lldb_eval_value.IsValid());
+    auto data = result.lldb_eval_value.GetData();
+    wchar_t val[4];
 #ifdef _WIN32
     // On Windows it holds sizeof(wchar_t) == 2.
-    EXPECT_EQ(result.lldb_eval_value.GetData().GetByteSize(), 8);
+    EXPECT_EQ(data.GetByteSize(), 8);
+    EXPECT_EQ(data.ReadRawData(ignore, 0, reinterpret_cast<void*>(val), 8), 8);
 #else
-    EXPECT_EQ(result.lldb_eval_value.GetData().GetByteSize(), 16);
+    EXPECT_EQ(data.GetByteSize(), 16);
+    EXPECT_EQ(data.ReadRawData(ignore, 0, reinterpret_cast<void*>(val), 16),
+              16);
 #endif
-    const wchar_t* data = reinterpret_cast<const wchar_t*>(
-        result.lldb_eval_value.GetData().GetString(ignore, 0));
-    EXPECT_EQ(data[0], L'a');
-    EXPECT_EQ(data[1], L'b');
-    EXPECT_EQ(data[2], L'c');
-    EXPECT_EQ(data[3], 0);
+    EXPECT_EQ(val[0], L'a');
+    EXPECT_EQ(val[1], L'b');
+    EXPECT_EQ(val[2], L'c');
+    EXPECT_EQ(val[3], 0);
   }
 
   // TODO: lldb-eval should be able to handle these cases once string-literals

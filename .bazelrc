@@ -18,6 +18,7 @@ build:linux --action_env=CXX=clang++
 build:windows --cxxopt=/std:c++17
 build:windows --copt=/W4
 build:windows --copt=/WX
+build:windows --copt=/utf-8  # Enable char32_t literals used in tests, e.g. U'x'
 build:windows --cxxopt=/GR-  # Disable RTTI
 
 # Disable some warnings completely, since in MSVC 19.28.29333 "/external" option doesn't work:
