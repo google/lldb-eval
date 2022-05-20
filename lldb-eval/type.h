@@ -3,9 +3,11 @@
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include "lldb/lldb-enumerations.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Optional.h"
 namespace lldb_eval {
 class ParserContext;
 class Type;
