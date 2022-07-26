@@ -389,7 +389,7 @@ Value CreateValueFromBytes(lldb::SBTarget target, const void* bytes,
   // storage. `value` should be valid up until this point.
   return Value(
       // Force static value, otherwise we can end up with the "real" type.
-      target.CreateValueFromData("result", data, type).GetStaticValue());
+      target.CreateValueFromData("$result", data, type).GetStaticValue());
 }
 
 Value CreateValueFromBytes(lldb::SBTarget target, const void* bytes,
