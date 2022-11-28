@@ -38,7 +38,7 @@ jobs:
 
       - name: Run benchmarks
         run: |
-          RUN_BENCHMARK="bazel run -c opt -cxxopt="-Wno-unused-but-set-variable" lldb-eval:eval_benchmark -- --benchmark_format=json --benchmark_min_time=10"
+          RUN_BENCHMARK="bazel run -c opt --cxxopt="-Wno-unused-but-set-variable" lldb-eval:eval_benchmark -- --benchmark_format=json --benchmark_min_time=10"
           echo "CCC_OVERRIDE_OPTIONS=+-Wno-unused-but-set-variable" >> $GITHUB_ENV
 
           git checkout ${{ github.event.pull_request.base.sha }}
