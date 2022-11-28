@@ -12,8 +12,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            tag: 15
+          - os: ubuntu-20.04
+            tag: 11
           - os: windows-2019
             llvm_archive: llvm-11.0.0-x86_64-windows-msvc-release-md
 
