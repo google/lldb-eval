@@ -145,7 +145,7 @@ lldb::BasicType PickCharType(const clang::CharLiteralParser& literal) {
 #if LLVM_VERSION_MAJOR < 15
   } else if (literal.isAscii()) {
 #else
-  } else if (literal.isOrdinal()) {
+  } else if (literal.isOrdinary()) {
 #endif
     return lldb::eBasicTypeChar;
   } else if (literal.isWide()) {
@@ -165,7 +165,7 @@ lldb::BasicType PickCharType(const clang::StringLiteralParser& literal) {
 #if LLVM_VERSION_MAJOR < 15
   if (literal.isAscii()) {
 #else
-  if (literal.isOrdinal()) {
+  if (literal.isOrdinary()) {
 #endif
     return lldb::eBasicTypeChar;
   } else if (literal.isWide()) {
