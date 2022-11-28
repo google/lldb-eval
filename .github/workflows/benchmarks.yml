@@ -19,6 +19,8 @@ jobs:
           sudo ./llvm.sh 11
           sudo apt install -y llvm-11-dev libclang-11-dev liblldb-11-dev
           echo "LLVM_INSTALL_PATH=/usr/lib/llvm-11" >> $GITHUB_ENV
+          echo "CC=clang-11" >> $GITHUB_ENV
+          echo "CXX=clang++-11" >> $GITHUB_ENV
 
       - name: Checkout
         uses: actions/checkout@v2
