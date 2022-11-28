@@ -48,7 +48,7 @@ jobs:
 
       - name: Compare results
         run: |
-          git clone --depth 1 --branch "v1.5.3" https://github.com/google/benchmark google_benchmark
+          git clone --depth 1 --branch "v1.7.1" https://github.com/google/benchmark google_benchmark
           cd google_benchmark
 
           # Use python3 to run the compare script, because numpy already dropped
