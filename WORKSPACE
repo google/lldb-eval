@@ -20,7 +20,7 @@ http_archive(
 
 http_archive(
     name = "com_google_benchmark",
-    sha256 = "bdefa4b03c32d1a27bd50e37ca466d8127c1688d834800c38f3c587a396188ee",
+    sha256 = "aeec52381284ec3752505a220d36096954c869da4573c2e1df3642d2f0a4aac6",
     strip_prefix = "benchmark-1.7.1",
     urls = ["https://github.com/google/benchmark/archive/v1.7.1.zip"],
 )
