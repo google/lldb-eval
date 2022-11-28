@@ -20,8 +20,7 @@
 
 #include <memory>
 
-#include <benchmark/benchmark.h>
-
+#include "benchmark/benchmark.h"
 #include "lldb-eval/api.h"
 #include "lldb-eval/context.h"
 #include "lldb-eval/parser.h"
