@@ -21,8 +21,8 @@ http_archive(
 http_archive(
     name = "com_google_benchmark",
     sha256 = "bdefa4b03c32d1a27bd50e37ca466d8127c1688d834800c38f3c587a396188ee",
-    strip_prefix = "benchmark-1.5.3",
-    urls = ["https://github.com/google/benchmark/archive/v1.5.3.zip"],
+    strip_prefix = "benchmark-1.7.1",
+    urls = ["https://github.com/google/benchmark/archive/v1.7.1.zip"],
 )
 
 http_archive(
