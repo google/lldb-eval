@@ -16,9 +16,9 @@ jobs:
         run: |
           wget https://apt.llvm.org/llvm.sh
           chmod +x ./llvm.sh
-          sudo ./llvm.sh 11
-          sudo apt install -y llvm-11-dev libclang-11-dev liblldb-11-dev
-          echo "LLVM_INSTALL_PATH=/usr/lib/llvm-11" >> $GITHUB_ENV
+          sudo ./llvm.sh 14
+          sudo apt install -y llvm-14-dev libclang-14-dev liblldb-14-dev
+          echo "LLVM_INSTALL_PATH=/usr/lib/llvm-14" >> $GITHUB_ENV
           echo "CC=gcc-10" >> $GITHUB_ENV
           echo "CXX=g++-10" >> $GITHUB_ENV
 
