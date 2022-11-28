@@ -13,7 +13,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            tag: 13
+            tag: 15
           - os: windows-2019
             llvm_archive: llvm-11.0.0-x86_64-windows-msvc-release-md
 
