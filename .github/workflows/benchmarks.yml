@@ -19,8 +19,8 @@ jobs:
           sudo ./llvm.sh 11
           sudo apt install -y llvm-11-dev libclang-11-dev liblldb-11-dev
           echo "LLVM_INSTALL_PATH=/usr/lib/llvm-11" >> $GITHUB_ENV
-          echo "CC=gcc-10" >> $GITHUB_ENV
-          echo "CXX=g++-10" >> $GITHUB_ENV
+#          echo "CC=gcc-10" >> $GITHUB_ENV
+#          echo "CXX=g++-10" >> $GITHUB_ENV
 
       - name: Checkout
         uses: actions/checkout@v2
@@ -38,8 +38,7 @@ jobs:
 
       - name: Run benchmarks
         run: |
-          RUN_BENCHMARK="bazel run -c opt --cxxopt="-Wno-unused-but-set-variable" lldb-eval:eval_benchmark -- --benchmark_format=json --benchmark_min_time=10"
-          echo "CCC_OVERRIDE_OPTIONS=+-Wno-unused-but-set-variable" >> $GITHUB_ENV
+          RUN_BENCHMARK="bazel run -c opt lldb-eval:eval_benchmark -- --benchmark_format=json --benchmark_min_time=10"
 
           git checkout ${{ github.event.pull_request.base.sha }}
           $RUN_BENCHMARK > ${{ env.BASELINE_JSON }}
