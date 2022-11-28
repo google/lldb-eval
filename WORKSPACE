@@ -35,9 +35,9 @@ http_archive(
 
 http_archive(
     name = "rules_fuzzing",
-    sha256 = "71fa2724c9802c597199a86111a0499fc4fb22426d322334d3f191dadeff5132",
-    strip_prefix = "rules_fuzzing-0.1.0",
-    urls = ["https://github.com/bazelbuild/rules_fuzzing/archive/v0.1.0.zip"],
+    sha256 = "d9002dd3cd6437017f08593124fdd1b13b3473c7b929ceb0e60d317cb9346118",
+    strip_prefix = "rules_fuzzing-0.3.2",
+    urls = ["https://github.com/bazelbuild/rules_fuzzing/archive/v0.3.2.zip"],
 )
 
 load("@rules_fuzzing//fuzzing:repositories.bzl", "rules_fuzzing_dependencies")
