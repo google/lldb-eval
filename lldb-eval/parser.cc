@@ -142,7 +142,11 @@ std::tuple<lldb::BasicType, bool> PickIntegerType(
 lldb::BasicType PickCharType(const clang::CharLiteralParser& literal) {
   if (literal.isMultiChar()) {
     return lldb::eBasicTypeInt;
+#if LLVM_VERSION_MAJOR < 15
   } else if (literal.isAscii()) {
+#else
+  } else if (literal.isOrdinal()) {
+#endif
     return lldb::eBasicTypeChar;
   } else if (literal.isWide()) {
     return lldb::eBasicTypeWChar;
@@ -158,7 +162,11 @@ lldb::BasicType PickCharType(const clang::CharLiteralParser& literal) {
 }
 
 lldb::BasicType PickCharType(const clang::StringLiteralParser& literal) {
+#if LLVM_VERSION_MAJOR < 15
   if (literal.isAscii()) {
+#else
+  if (literal.isOrdinal()) {
+#endif
     return lldb::eBasicTypeChar;
   } else if (literal.isWide()) {
     return lldb::eBasicTypeWChar;
